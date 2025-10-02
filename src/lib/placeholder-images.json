@@ -1,3 +1,34 @@
 {
-  "placeholderImages": []
+  "placeholderImages": [
+    {
+      "id": "1",
+      "description": "A modern wooden chair with a sleek design.",
+      "imageUrl": "https://images.unsplash.com/photo-1758486561455-ebd0d3ba7423?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw4fHxtb2Rlcm4lMjBjaGFpcnxlbnwwfHx8fDE3NTkzNzkxMjh8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "modern chair"
+    },
+    {
+      "id": "2",
+      "description": "A minimalist wooden table perfect for dining rooms.",
+      "imageUrl": "https://images.unsplash.com/photo-1517870662726-c1d98ee36250?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw5fHxkaW5pbmclMjB0YWJsZXxlbnwwfHx8fDE3NTkzODI3NzF8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "dining table"
+    },
+    {
+      "id": "3",
+      "description": "A comfortable sofa with plush cushions.",
+      "imageUrl": "https://images.unsplash.com/photo-1758406514955-2cf43afc3c9d?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw1fHxwbHVzaCUyMHNvZmF8ZW58MHx8fHwxNzU5NDA1NzkxfDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "plush sofa"
+    },
+    {
+      "id": "4",
+      "description": "A sturdy bookshelf with multiple shelves.",
+      "imageUrl": "https://images.unsplash.com/photo-1603058817990-2b9a9abbce86?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw0fHx3b29kZW4lMjBib29rc2hlbGZ8ZW58MHx8fHwxNzU5MzcxNzA1fDA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "wooden bookshelf"
+    },
+    {
+      "id": "5",
+      "description": "An elegant coffee table with a glass top.",
+      "imageUrl": "https://images.unsplash.com/photo-1614348531934-c338408a46bb?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3NDE5ODJ8MHwxfHNlYXJjaHw3fHxjb2ZmZWUlMjB0YWJsZXxlbnwwfHx8fDE3NTkzODcxOTl8MA&ixlib=rb-4.1.0&q=80&w=1080",
+      "imageHint": "coffee table"
+    }
+  ]
 }

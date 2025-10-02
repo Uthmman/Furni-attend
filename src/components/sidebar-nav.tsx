@@ -1,0 +1,69 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+import {
+  SidebarContent,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuItem,
+  SidebarMenuButton,
+} from "@/components/ui/sidebar";
+import { Logo } from "./logo";
+import {
+  Archive,
+  LayoutDashboard,
+  Package,
+  Users,
+  Wallet,
+} from "lucide-react";
+
+const links = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/orders", label: "Orders", icon: Package },
+  { href: "/store", label: "Store", icon: Archive },
+  { href: "/employees", label: "Employees", icon: Users },
+  { href: "/payroll", label: "Payroll", icon: Wallet },
+];
+
+export function SidebarNav() {
+  const pathname = usePathname();
+
+  return (
+    <>
+      <SidebarHeader className="border-b">
+        <div className="flex items-center gap-3 p-2">
+          <Logo className="w-8 h-8 text-primary" />
+          <div className="flex flex-col">
+            <p className="font-headline text-lg font-bold">FurnishWise</p>
+          </div>
+        </div>
+      </SidebarHeader>
+      <SidebarContent className="p-2">
+        <SidebarMenu>
+          {links.map((link) => (
+            <SidebarMenuItem key={link.href}>
+              <Link href={link.href} passHref legacyBehavior>
+                <SidebarMenuButton
+                  asChild
+                  isActive={
+                    link.href === "/"
+                      ? pathname === link.href
+                      : pathname.startsWith(link.href)
+                  }
+                  tooltip={link.label}
+                >
+                  <a>
+                    <link.icon className="h-5 w-5" />
+                    <span>{link.label}</span>
+                  </a>
+                </SidebarMenuButton>
+              </Link>
+            </SidebarMenuItem>
+          ))}
+        </SidebarMenu>
+      </SidebarContent>
+    </>
+  );
+}
