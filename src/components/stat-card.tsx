@@ -23,7 +23,7 @@ export function StatCard({ title, value, icon, description }: StatCardProps) {
       <CardContent>
         <div className="text-2xl font-bold">{value}</div>
         {description && (
-          <p className="text-xs text-muted-foreground">{description}</p>
+          <p className="text-xs text-muted-foreground truncate">{description}</p>
         )}
       </CardContent>
     </Card>

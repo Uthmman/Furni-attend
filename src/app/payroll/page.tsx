@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { employees, attendanceRecords } from "@/lib/data";
-import { subWeeks, startOfWeek, endOfWeek, isWithinInterval, startOfMonth, endOfMonth } from "date-fns";
+import { subWeeks, startOfWeek, endOfWeek, isWithinInterval, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
 type PayrollEntry = {
   employeeId: string;
@@ -35,8 +35,8 @@ const calculatePayroll = (): PayrollEntry[] => {
     end: endOfWeek(subWeeks(new Date(), 1)),
   };
   const lastMonth = {
-      start: startOfMonth(subWeeks(new Date(), 4)),
-      end: endOfMonth(subWeeks(new Date(), 4))
+      start: startOfMonth(subMonths(new Date(), 1)),
+      end: endOfMonth(subMonths(new Date(), 1))
   }
 
   employees.forEach(employee => {
