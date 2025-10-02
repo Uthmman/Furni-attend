@@ -30,13 +30,21 @@ type PayrollEntry = {
 
 const calculatePayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
+  const today = new Date();
+  
+  const ethiopianDateFormatter = new Intl.DateTimeFormat('en-u-ca-ethiopic', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+  });
+
   const lastWeek = {
-    start: startOfWeek(subWeeks(new Date(), 1)),
-    end: endOfWeek(subWeeks(new Date(), 1)),
+    start: startOfWeek(subWeeks(today, 1)),
+    end: endOfWeek(subWeeks(today, 1)),
   };
   const lastMonth = {
-      start: startOfMonth(subMonths(new Date(), 1)),
-      end: endOfMonth(subMonths(new Date(), 1))
+      start: startOfMonth(subMonths(today, 1)),
+      end: endOfMonth(subMonths(today, 1))
   }
 
   employees.forEach(employee => {
@@ -48,21 +56,22 @@ const calculatePayroll = (): PayrollEntry[] => {
           isWithinInterval(new Date(record.date), lastWeek)
       ).length;
 
-      payroll.push({
-        employeeId: employee.id,
-        employeeName: employee.name,
-        paymentMethod: 'Weekly',
-        period: `${lastWeek.start.toLocaleDateString()} - ${lastWeek.end.toLocaleDateString()}`,
-        amount: presentDays * employee.dailyRate,
-        status: 'Unpaid',
-      });
+      if(presentDays > 0) {
+        payroll.push({
+            employeeId: employee.id,
+            employeeName: employee.name,
+            paymentMethod: 'Weekly',
+            period: `${ethiopianDateFormatter.format(lastWeek.start)} - ${ethiopianDateFormatter.format(lastWeek.end)}`,
+            amount: presentDays * employee.dailyRate,
+            status: 'Unpaid',
+        });
+      }
     } else if (employee.paymentMethod === 'Monthly' && employee.monthlyRate) {
-      // Assuming monthly payment is for the previous calendar month
       payroll.push({
         employeeId: employee.id,
         employeeName: employee.name,
         paymentMethod: 'Monthly',
-        period: lastMonth.start.toLocaleString('default', { month: 'long', year: 'numeric' }),
+        period: new Intl.DateTimeFormat('en-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(lastMonth.start),
         amount: employee.monthlyRate,
         status: 'Unpaid',
       });
@@ -110,7 +119,7 @@ export default function PayrollPage() {
                   <TableCell>
                     <Badge variant="outline">{entry.paymentMethod}</Badge>
                   </TableCell>
-                  <TableCell>${entry.amount.toFixed(2)}</TableCell>
+                  <TableCell>ETB {entry.amount.toFixed(2)}</TableCell>
                   <TableCell>
                     <Badge variant={entry.status === 'Paid' ? 'default' : 'destructive'}>
                       {entry.status}

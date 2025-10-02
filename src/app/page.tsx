@@ -33,13 +33,21 @@ type PayrollEntry = {
 
 const calculateRecentPayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
+  const today = new Date();
+  
+  const ethiopianDateFormatter = new Intl.DateTimeFormat('en-u-ca-ethiopic', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+  });
+  
   const thisWeek = {
-    start: startOfWeek(new Date()),
-    end: endOfWeek(new Date()),
+    start: startOfWeek(today),
+    end: endOfWeek(today),
   };
   const lastMonth = {
-    start: startOfMonth(subMonths(new Date(), 1)),
-    end: endOfMonth(subMonths(new Date(), 1)),
+    start: startOfMonth(subMonths(today, 1)),
+    end: endOfMonth(subMonths(today, 1)),
   };
 
   employees.forEach(employee => {
@@ -56,20 +64,19 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
           employeeId: employee.id,
           employeeName: employee.name,
           paymentMethod: 'Weekly',
-          period: `${thisWeek.start.toLocaleDateString()} - ${thisWeek.end.toLocaleDateString()}`,
+          period: `${ethiopianDateFormatter.format(thisWeek.start)} - ${ethiopianDateFormatter.format(thisWeek.end)}`,
           amount: presentDays * employee.dailyRate,
           status: 'Unpaid',
         });
       }
     } else if (employee.paymentMethod === 'Monthly' && employee.monthlyRate) {
-      // Assuming monthly payment is for the previous calendar month
-      const isLastMonthApplicable = new Date().getDate() < 7; // e.g. show last month's payroll in the first week of new month
+      const isLastMonthApplicable = today.getDate() < 7; 
       if (isLastMonthApplicable) {
         payroll.push({
           employeeId: employee.id,
           employeeName: employee.name,
           paymentMethod: 'Monthly',
-          period: lastMonth.start.toLocaleString('default', { month: 'long', year: 'numeric' }),
+          period: new Intl.DateTimeFormat('en-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(lastMonth.start),
           amount: employee.monthlyRate,
           status: 'Unpaid',
         });
@@ -107,19 +114,22 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <StatCard
           title="Active Orders"
           value={activeOrders}
           icon={<Package className="h-6 w-6 text-muted-foreground" />}
           description="Orders currently in progress"
         />
-        <StatCard
-          title="Low Stock Items"
-          value={lowStockItems.length}
-          icon={<Archive className="h-6 w-6 text-muted-foreground" />}
-          description={`${lowStockItems.map(i => i.name).join(', ')}`}
-        />
+        {lowStockItems.map(item => (
+            <StatCard 
+                key={item.id}
+                title={item.name}
+                value={`${item.stock} ${item.unit}`}
+                icon={<Archive className="h-6 w-6 text-muted-foreground" />}
+                description="Low stock"
+            />
+        ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -159,32 +169,35 @@ export default function DashboardPage() {
 
         <Card>
             <CardHeader>
-                <CardTitle>የቅርብ ጊዜ የደመወዝ ክፍያ</CardTitle>
+                <CardTitle>Recent Payroll</CardTitle>
             </CardHeader>
             <CardContent>
                 <Table>
                     <TableHeader>
                         <TableRow>
-                            <TableHead>ሰራተኛ</TableHead>
-                            <TableHead>መጠን</TableHead>
-                            <TableHead>ሁኔታ</TableHead>
+                            <TableHead>Employee</TableHead>
+                            <TableHead>Amount</TableHead>
+                            <TableHead>Status</TableHead>
                         </TableRow>
                     </TableHeader>
                     <TableBody>
                         {recentPayroll.length > 0 ? recentPayroll.map((entry) => (
                             <TableRow key={`${entry.employeeId}-${entry.period}`}>
-                                <TableCell className="font-medium">{entry.employeeName}</TableCell>
-                                <TableCell>${entry.amount.toFixed(2)}</TableCell>
+                                <TableCell>
+                                    <div className="font-medium">{entry.employeeName}</div>
+                                    <div className="text-sm text-muted-foreground">{entry.period}</div>
+                                </TableCell>
+                                <TableCell>ETB {entry.amount.toFixed(2)}</TableCell>
                                 <TableCell>
                                     <Badge variant={entry.status === 'Paid' ? 'default' : 'destructive'}>
-                                    {entry.status === 'Paid' ? 'የተከፈለ' : 'ያልተከፈለ'}
+                                    {entry.status}
                                     </Badge>
                                 </TableCell>
                             </TableRow>
                         )) : (
                             <TableRow>
                                 <TableCell colSpan={3} className="text-center text-muted-foreground">
-                                    ምንም በመጠባበቅ ላይ ያለ የደመወዝ ክፍያ የለም።
+                                    No pending payroll to display.
                                 </TableCell>
                             </TableRow>
                         )}
