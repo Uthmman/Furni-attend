@@ -1,3 +1,6 @@
+"use client";
+
+import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { PlusCircle, UserCheck, UserX } from "lucide-react";
@@ -20,6 +23,8 @@ import { employees, attendanceRecords } from "@/lib/data";
 import type { AttendanceStatus, Employee } from "@/lib/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Calendar } from "@/components/ui/calendar";
+import { isSameDay } from "date-fns";
 
 const getInitials = (name: string) => {
   const names = name.split(" ");
@@ -51,10 +56,15 @@ const getAttendanceStatusIcon = (status: AttendanceStatus) => {
 }
 
 export default function EmployeesPage() {
+  const [selectedDate, setSelectedDate] = useState<Date | undefined>(new Date());
 
   const getEmployeeName = (employeeId: string) => {
     return employees.find(e => e.id === employeeId)?.name || 'Unknown';
   }
+  
+  const filteredAttendance = selectedDate 
+    ? attendanceRecords.filter(record => isSameDay(new Date(record.date), selectedDate))
+    : [];
 
   return (
     <div>
@@ -110,40 +120,58 @@ export default function EmployeesPage() {
           </Card>
         </TabsContent>
         <TabsContent value="attendance">
-           <Card>
-            <CardHeader>
-              <CardTitle>Daily Attendance</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Morning Entry</TableHead>
-                    <TableHead>Afternoon Entry</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                    {attendanceRecords.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(record => (
-                        <TableRow key={record.id}>
-                            <TableCell>{new Date(record.date).toLocaleDateString()}</TableCell>
-                            <TableCell>{getEmployeeName(record.employeeId)}</TableCell>
-                            <TableCell>{record.morningEntry || 'N/A'}</TableCell>
-                            <TableCell>{record.afternoonEntry || 'N/A'}</TableCell>
-                            <TableCell>
-                                <Badge variant={getAttendanceStatusVariant(record.status)} className="flex items-center gap-2">
-                                    {getAttendanceStatusIcon(record.status)}
-                                    {record.status}
-                                </Badge>
-                            </TableCell>
-                        </TableRow>
-                    ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-           </Card>
+           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="md:col-span-1">
+                 <Calendar
+                    mode="single"
+                    selected={selectedDate}
+                    onSelect={setSelectedDate}
+                    className="rounded-md border"
+                  />
+            </div>
+            <div className="md:col-span-2">
+                <Card>
+                <CardHeader>
+                    <CardTitle>
+                        Attendance for {selectedDate ? selectedDate.toLocaleDateString() : '...'}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                <Table>
+                    <TableHeader>
+                    <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Morning Entry</TableHead>
+                        <TableHead>Afternoon Entry</TableHead>
+                        <TableHead>Status</TableHead>
+                    </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {filteredAttendance.length > 0 ? filteredAttendance.map(record => (
+                            <TableRow key={record.id}>
+                                <TableCell>{getEmployeeName(record.employeeId)}</TableCell>
+                                <TableCell>{record.morningEntry || 'N/A'}</TableCell>
+                                <TableCell>{record.afternoonEntry || 'N/A'}</TableCell>
+                                <TableCell>
+                                    <Badge variant={getAttendanceStatusVariant(record.status)} className="flex items-center gap-2">
+                                        {getAttendanceStatusIcon(record.status)}
+                                        {record.status}
+                                    </Badge>
+                                </TableCell>
+                            </TableRow>
+                        )) : (
+                            <TableRow>
+                                <TableCell colSpan={4} className="text-center text-muted-foreground">
+                                    No attendance records for this date.
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+                </CardContent>
+            </Card>
+            </div>
+           </div>
         </TabsContent>
       </Tabs>
     </div>
