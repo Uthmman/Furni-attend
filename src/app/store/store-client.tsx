@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
+import { useSearchParams } from "next/navigation";
 import type { StoreItem } from "@/lib/types";
 import {
   Card,
@@ -23,21 +24,61 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogFooter,
   DialogClose,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-type AdjustmentType = 'add' | 'use';
+type AdjustmentType = "add" | "use";
+
+const ItemTable = ({ items, onOpenDialog }: { items: StoreItem[], onOpenDialog: (item: StoreItem, type: AdjustmentType) => void }) => {
+    if (items.length === 0) {
+        return <p className="text-center text-muted-foreground py-8">No items to display.</p>
+    }
+
+    return (
+        <Table>
+            <TableHeader>
+                <TableRow>
+                <TableHead>Item Name</TableHead>
+                <TableHead>In Stock</TableHead>
+                <TableHead>Unit</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {items.map((item) => (
+                <TableRow key={item.id}>
+                    <TableCell className="font-medium">{item.name}</TableCell>
+                    <TableCell>{item.stock}</TableCell>
+                    <TableCell className="capitalize">{item.unit}</TableCell>
+                    <TableCell className="text-right">
+                    <Button variant="ghost" size="sm" onClick={() => onOpenDialog(item, 'add')}>
+                        <PlusCircle className="mr-2 h-4 w-4" /> Add
+                    </Button>
+                    <Button variant="ghost" size="sm" onClick={() => onOpenDialog(item, 'use')}>
+                        <MinusCircle className="mr-2 h-4 w-4" /> Use
+                    </Button>
+                    </TableCell>
+                </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    )
+}
 
 export function StoreClient({ initialItems }: { initialItems: StoreItem[] }) {
+  const searchParams = useSearchParams();
+  const defaultTab = searchParams.get("tab") || "all";
   const [items, setItems] = useState<StoreItem[]>(initialItems);
   const [selectedItem, setSelectedItem] = useState<StoreItem | null>(null);
-  const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>('add');
+  const [adjustmentType, setAdjustmentType] = useState<AdjustmentType>("add");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [adjustmentValue, setAdjustmentValue] = useState(0);
+
+  const outOfStockItems = useMemo(() => items.filter(item => item.stock === 0), [items]);
 
   const handleOpenDialog = (item: StoreItem, type: AdjustmentType) => {
     setSelectedItem(item);
@@ -49,12 +90,13 @@ export function StoreClient({ initialItems }: { initialItems: StoreItem[] }) {
   const handleAdjustStock = () => {
     if (!selectedItem || adjustmentValue <= 0) return;
 
-    setItems(prevItems =>
-      prevItems.map(item => {
+    setItems((prevItems) =>
+      prevItems.map((item) => {
         if (item.id === selectedItem.id) {
-          const newStock = adjustmentType === 'add'
-            ? item.stock + adjustmentValue
-            : item.stock - adjustmentValue;
+          const newStock =
+            adjustmentType === "add"
+              ? item.stock + adjustmentValue
+              : item.stock - adjustmentValue;
           return { ...item, stock: Math.max(0, newStock) };
         }
         return item;
@@ -65,46 +107,39 @@ export function StoreClient({ initialItems }: { initialItems: StoreItem[] }) {
 
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle>All Items</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Item Name</TableHead>
-                <TableHead>In Stock</TableHead>
-                <TableHead>Unit</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {items.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.name}</TableCell>
-                  <TableCell>{item.stock}</TableCell>
-                  <TableCell className="capitalize">{item.unit}</TableCell>
-                  <TableCell className="text-right">
-                    <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(item, 'add')}>
-                      <PlusCircle className="mr-2 h-4 w-4" /> Add
-                    </Button>
-                    <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(item, 'use')}>
-                      <MinusCircle className="mr-2 h-4 w-4" /> Use
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+      <Tabs defaultValue={defaultTab}>
+        <TabsList>
+          <TabsTrigger value="all">All Items</TabsTrigger>
+          <TabsTrigger value="out-of-stock">Out of Stock</TabsTrigger>
+        </TabsList>
+        <TabsContent value="all">
+            <Card>
+                <CardHeader>
+                    <CardTitle>All Items</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <ItemTable items={items} onOpenDialog={handleOpenDialog} />
+                </CardContent>
+            </Card>
+        </TabsContent>
+        <TabsContent value="out-of-stock">
+             <Card>
+                <CardHeader>
+                    <CardTitle>Out of Stock Items</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <ItemTable items={outOfStockItems} onOpenDialog={handleOpenDialog} />
+                </CardContent>
+            </Card>
+        </TabsContent>
+      </Tabs>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
             <DialogTitle>
-              {adjustmentType === 'add' ? 'Add Stock to' : 'Use Stock from'} {selectedItem?.name}
+              {adjustmentType === "add" ? "Add Stock to" : "Use Stock from"}{" "}
+              {selectedItem?.name}
             </DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -124,7 +159,7 @@ export function StoreClient({ initialItems }: { initialItems: StoreItem[] }) {
           </div>
           <DialogFooter>
             <DialogClose asChild>
-                <Button variant="outline">Cancel</Button>
+              <Button variant="outline">Cancel</Button>
             </DialogClose>
             <Button onClick={handleAdjustStock}>Confirm Adjustment</Button>
           </DialogFooter>

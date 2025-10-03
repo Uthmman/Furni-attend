@@ -77,7 +77,7 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
     month: "long",
     day: "numeric",
   });
-  
+
   const twoDaysFromNow = addDays(today, 2);
 
   employees.forEach((employee) => {
@@ -88,12 +88,9 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
     if (!hourlyRate) return;
 
     if (employee.paymentMethod === "Weekly") {
-      // Saturday is 6 in getDay()
-      const isTodaySaturday = getDay(today) === 6;
-      const isPaymentDayApproaching = isWithinInterval(addDays(today,2), { start: today, end: addDays(today, 2) }) && getDay(addDays(today,2)) === 6;
+      const isPaymentDayApproaching = isWithinInterval(addDays(today, 2), { start: today, end: addDays(today, 2) }) && getDay(addDays(today,2)) === 6;
 
-
-      if (isTodaySaturday || isPaymentDayApproaching) {
+      if (isPaymentDayApproaching) {
         const weekStart = addDays(today, -getDay(today));
         const weekEnd = addDays(weekStart, 6);
         const weekPeriod = { start: weekStart, end: weekEnd };
@@ -177,8 +174,8 @@ export default function DashboardPage() {
     (order) => order.status === "In Progress" || order.status === "Pending"
   ).length;
   const totalEmployees = employees.length;
-  const lowStockItems = storeItems.filter(
-    (item: StoreItem) => item.stock < 10
+  const outOfStockItems = storeItems.filter(
+    (item: StoreItem) => item.stock === 0
   );
 
   const recentOrders = [...orders]
@@ -207,12 +204,12 @@ export default function DashboardPage() {
             description="Number of active employees."
             />
         </Link>
-        <Link href="/store" className="hover:shadow-lg transition-shadow rounded-xl">
+        <Link href="/store?tab=out-of-stock" className="hover:shadow-lg transition-shadow rounded-xl">
             <StatCard
-            title="Low Stock Items"
-            value={lowStockItems.length}
+            title="Out of Stock"
+            value={outOfStockItems.length}
             icon={<Archive className="size-5 text-muted-foreground" />}
-            description="Items that are running low in inventory."
+            description="Items that are completely out of stock."
             />
         </Link>
       </div>
@@ -259,16 +256,16 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
         
-        {lowStockItems.length > 0 && (
+        {outOfStockItems.length > 0 && (
            <Card>
            <CardHeader>
-             <CardTitle>Low Stock</CardTitle>
+             <CardTitle>Out of Stock</CardTitle>
               <CardDescription>
-                These items are running out. Consider reordering.
+                These items are completely out of stock.
               </CardDescription>
            </CardHeader>
            <CardContent className="grid gap-4">
-              {lowStockItems.map((item) => (
+              {outOfStockItems.map((item) => (
                 <div key={item.id} className="flex items-center gap-4">
                   <Image
                     data-ai-hint="wood"
