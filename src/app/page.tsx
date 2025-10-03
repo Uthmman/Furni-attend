@@ -20,7 +20,8 @@ import {
   Archive,
   Package,
 } from "lucide-react";
-import { subMonths, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from "date-fns";
+import Image from "next/image";
+import { subMonths, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek, addDays } from "date-fns";
 
 type PayrollEntry = {
   employeeId: string;
@@ -34,24 +35,28 @@ type PayrollEntry = {
 const calculateRecentPayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
   const today = new Date();
-  const dayOfWeek = today.getDay(); // Sunday is 0, Saturday is 6
-
+  
   const ethiopianDateFormatter = new Intl.DateTimeFormat('en-u-ca-ethiopic', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
   });
-  
-  const ethiopianDay = parseInt(new Intl.DateTimeFormat('am-ET-u-ca-ethiopic', { day: 'numeric' }).format(today));
-  
+
   const thisWeek = {
     start: startOfWeek(today),
     end: endOfWeek(today),
   };
+  
+  const todayInEthiopian = new Date(today.toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' }));
+  const dayOfWeek = todayInEthiopian.getDay(); // Sunday is 0, Saturday is 6
+  const dayOfMonth = todayInEthiopian.getDate();
+  const endOfMonthDate = endOfMonth(todayInEthiopian);
 
+  const isSaturdaySoon = dayOfWeek >= 4; // Thursday, Friday, Saturday
+  const isEndOfMonthSoon = endOfMonthDate.getDate() - dayOfMonth <= 2;
+  
   employees.forEach(employee => {
-    // Show weekly payroll 2 days before Saturday (i.e., from Thursday onwards)
-    if (employee.paymentMethod === 'Weekly' && employee.dailyRate && dayOfWeek >= 4) {
+    if (employee.paymentMethod === 'Weekly' && employee.dailyRate && isSaturdaySoon) {
       const presentDays = attendanceRecords.filter(
         record =>
           record.employeeId === employee.id &&
@@ -70,8 +75,7 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
         });
       }
     } 
-    // Show monthly payroll 2 days before the end of the month (day 28)
-    else if (employee.paymentMethod === 'Monthly' && employee.monthlyRate && ethiopianDay >= 26) {
+    else if (employee.paymentMethod === 'Monthly' && employee.monthlyRate && isEndOfMonthSoon) {
        payroll.push({
           employeeId: employee.id,
           employeeName: employee.name,
@@ -82,7 +86,7 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
         });
     }
   });
-
+  
   return payroll.filter(p => p.amount > 0);
 };
 
@@ -113,22 +117,40 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-2">
         <StatCard
           title="Active Orders"
           value={activeOrders}
           icon={<Package className="h-6 w-6 text-muted-foreground" />}
           description="Orders currently in progress"
         />
-        {lowStockItems.map(item => (
-            <StatCard 
-                key={item.id}
-                title={item.name}
-                value={`${item.stock} ${item.unit}`}
-                icon={<Archive className="h-6 w-6 text-muted-foreground" />}
-                description="Low stock"
-            />
-        ))}
+        {lowStockItems.length > 0 && (
+            <Card>
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                        <Archive className="h-6 w-6 text-muted-foreground" />
+                        Low Stock
+                    </CardTitle>
+                </CardHeader>
+                <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {lowStockItems.map(item => (
+                        <div key={item.id} className="flex flex-col items-center gap-2">
+                            <Image 
+                                src={`https://picsum.photos/seed/${item.id}/200/200`} 
+                                alt={item.name}
+                                width={80}
+                                height={80}
+                                className="rounded-md object-cover"
+                            />
+                            <div className="text-center">
+                                <p className="font-medium text-sm">{item.name}</p>
+                                <p className="text-xs text-muted-foreground">{item.stock} {item.unit}</p>
+                            </div>
+                        </div>
+                    ))}
+                </CardContent>
+            </Card>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
