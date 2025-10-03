@@ -20,7 +20,7 @@ import {
   Archive,
   Package,
 } from "lucide-react";
-import { subMonths, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from "date-fns";
+import { subMonths, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek, subWeeks } from "date-fns";
 
 type PayrollEntry = {
   employeeId: string;
@@ -34,12 +34,15 @@ type PayrollEntry = {
 const calculateRecentPayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
   const today = new Date();
-  
+  const dayOfWeek = today.getDay(); // Sunday is 0, Saturday is 6
+
   const ethiopianDateFormatter = new Intl.DateTimeFormat('en-u-ca-ethiopic', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
   });
+  
+  const ethiopianDay = parseInt(new Intl.DateTimeFormat('en-u-ca-ethiopic', { day: 'numeric' }).format(today));
   
   const thisWeek = {
     start: startOfWeek(today),
@@ -51,7 +54,8 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
   };
 
   employees.forEach(employee => {
-    if (employee.paymentMethod === 'Weekly' && employee.dailyRate) {
+    // Show weekly payroll only on Saturdays
+    if (employee.paymentMethod === 'Weekly' && employee.dailyRate && dayOfWeek === 6) {
       const presentDays = attendanceRecords.filter(
         record =>
           record.employeeId === employee.id &&
@@ -69,18 +73,17 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
           status: 'Unpaid',
         });
       }
-    } else if (employee.paymentMethod === 'Monthly' && employee.monthlyRate) {
-      const isLastMonthApplicable = today.getDate() < 7; 
-      if (isLastMonthApplicable) {
-        payroll.push({
+    } 
+    // Show monthly payroll at the end of the Ethiopian month (day 28 or later)
+    else if (employee.paymentMethod === 'Monthly' && employee.monthlyRate && ethiopianDay >= 28) {
+       payroll.push({
           employeeId: employee.id,
           employeeName: employee.name,
           paymentMethod: 'Monthly',
-          period: new Intl.DateTimeFormat('en-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(lastMonth.start),
+          period: new Intl.DateTimeFormat('en-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(startOfMonth(today)),
           amount: employee.monthlyRate,
           status: 'Unpaid',
         });
-      }
     }
   });
 
@@ -167,44 +170,40 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
-            <CardHeader>
-                <CardTitle>Recent Payroll</CardTitle>
-            </CardHeader>
-            <CardContent>
-                <Table>
-                    <TableHeader>
-                        <TableRow>
-                            <TableHead>Employee</TableHead>
-                            <TableHead>Amount</TableHead>
-                            <TableHead>Status</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                        {recentPayroll.length > 0 ? recentPayroll.map((entry) => (
-                            <TableRow key={`${entry.employeeId}-${entry.period}`}>
-                                <TableCell>
-                                    <div className="font-medium">{entry.employeeName}</div>
-                                    <div className="text-sm text-muted-foreground">{entry.period}</div>
-                                </TableCell>
-                                <TableCell>ETB {entry.amount.toFixed(2)}</TableCell>
-                                <TableCell>
-                                    <Badge variant={entry.status === 'Paid' ? 'default' : 'destructive'}>
-                                    {entry.status}
-                                    </Badge>
-                                </TableCell>
-                            </TableRow>
-                        )) : (
-                            <TableRow>
-                                <TableCell colSpan={3} className="text-center text-muted-foreground">
-                                    No pending payroll to display.
-                                </TableCell>
-                            </TableRow>
-                        )}
-                    </TableBody>
-                </Table>
-            </CardContent>
-        </Card>
+        {recentPayroll.length > 0 && (
+          <Card>
+              <CardHeader>
+                  <CardTitle>Recent Payroll</CardTitle>
+              </CardHeader>
+              <CardContent>
+                  <Table>
+                      <TableHeader>
+                          <TableRow>
+                              <TableHead>Employee</TableHead>
+                              <TableHead>Amount</TableHead>
+                              <TableHead>Status</TableHead>
+                          </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                          {recentPayroll.map((entry) => (
+                              <TableRow key={`${entry.employeeId}-${entry.period}`}>
+                                  <TableCell>
+                                      <div className="font-medium">{entry.employeeName}</div>
+                                      <div className="text-sm text-muted-foreground">{entry.period}</div>
+                                  </TableCell>
+                                  <TableCell>ETB {entry.amount.toFixed(2)}</TableCell>
+                                  <TableCell>
+                                      <Badge variant={entry.status === 'Paid' ? 'default' : 'destructive'}>
+                                      {entry.status}
+                                      </Badge>
+                                  </TableCell>
+                              </TableRow>
+                          ))}
+                      </TableBody>
+                  </Table>
+              </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
