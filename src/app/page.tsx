@@ -20,7 +20,7 @@ import {
   Archive,
   Package,
 } from "lucide-react";
-import { subMonths, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek, subWeeks } from "date-fns";
+import { subMonths, startOfMonth, endOfMonth, isWithinInterval, startOfWeek, endOfWeek } from "date-fns";
 
 type PayrollEntry = {
   employeeId: string;
@@ -42,20 +42,16 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
       day: 'numeric'
   });
   
-  const ethiopianDay = parseInt(new Intl.DateTimeFormat('en-u-ca-ethiopic', { day: 'numeric' }).format(today));
+  const ethiopianDay = parseInt(new Intl.DateTimeFormat('am-ET-u-ca-ethiopic', { day: 'numeric' }).format(today));
   
   const thisWeek = {
     start: startOfWeek(today),
     end: endOfWeek(today),
   };
-  const lastMonth = {
-    start: startOfMonth(subMonths(today, 1)),
-    end: endOfMonth(subMonths(today, 1)),
-  };
 
   employees.forEach(employee => {
-    // Show weekly payroll only on Saturdays
-    if (employee.paymentMethod === 'Weekly' && employee.dailyRate && dayOfWeek === 6) {
+    // Show weekly payroll 2 days before Saturday (i.e., from Thursday onwards)
+    if (employee.paymentMethod === 'Weekly' && employee.dailyRate && dayOfWeek >= 4) {
       const presentDays = attendanceRecords.filter(
         record =>
           record.employeeId === employee.id &&
@@ -74,13 +70,13 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
         });
       }
     } 
-    // Show monthly payroll at the end of the Ethiopian month (day 28 or later)
-    else if (employee.paymentMethod === 'Monthly' && employee.monthlyRate && ethiopianDay >= 28) {
+    // Show monthly payroll 2 days before the end of the month (day 28)
+    else if (employee.paymentMethod === 'Monthly' && employee.monthlyRate && ethiopianDay >= 26) {
        payroll.push({
           employeeId: employee.id,
           employeeName: employee.name,
           paymentMethod: 'Monthly',
-          period: new Intl.DateTimeFormat('en-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(startOfMonth(today)),
+          period: new Intl.DateTimeFormat('am-ET-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(startOfMonth(today)),
           amount: employee.monthlyRate,
           status: 'Unpaid',
         });
