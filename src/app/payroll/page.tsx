@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { employees, attendanceRecords } from "@/lib/data";
-import { subWeeks, startOfWeek, endOfWeek, isWithinInterval, startOfMonth, endOfMonth, subMonths } from "date-fns";
+import { subWeeks, startOfWeek, endOfWeek, isWithinInterval, startOfMonth, endOfMonth, subMonths, parse } from "date-fns";
 
 type PayrollEntry = {
   employeeId: string;
@@ -28,19 +28,46 @@ type PayrollEntry = {
   status: "Paid" | "Unpaid";
 };
 
+const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): number => {
+    if (!morningEntry || !afternoonEntry) return 0;
+
+    const morningStartTime = parse("08:00", "HH:mm", new Date());
+    const morningEndTime = parse("12:30", "HH:mm", new Date());
+    const afternoonStartTime = parse("13:30", "HH:mm", new Date());
+    const afternoonEndTime = parse("17:00", "HH:mm", new Date());
+
+    const morningEntryTime = parse(morningEntry, "HH:mm", new Date());
+    const afternoonEntryTime = parse(afternoonEntry, "HH:mm", new Date());
+    
+    let totalHours = 0;
+
+    if(morningEntryTime < morningEndTime) {
+        const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
+        totalHours += morningWorkMs / (1000 * 60 * 60);
+    }
+    
+    if(afternoonEntryTime < afternoonEndTime) {
+        const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
+        totalHours += afternoonWorkMs / (1000 * 60 * 60);
+    }
+
+    return Math.max(0, totalHours);
+};
+
+
 const calculatePayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
   const today = new Date();
   
-  const ethiopianDateFormatter = new Intl.DateTimeFormat('en-u-ca-ethiopic', {
+  const ethiopianDateFormatter = new Intl.DateTimeFormat('am-ET-u-ca-ethiopic', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
   });
 
   const lastWeek = {
-    start: startOfWeek(subWeeks(today, 1)),
-    end: endOfWeek(subWeeks(today, 1)),
+    start: startOfWeek(subWeeks(today, 1), { weekStartsOn: 1 }),
+    end: endOfWeek(subWeeks(today, 1), { weekStartsOn: 1 }),
   };
   const lastMonth = {
       start: startOfMonth(subMonths(today, 1)),
@@ -48,33 +75,58 @@ const calculatePayroll = (): PayrollEntry[] => {
   }
 
   employees.forEach(employee => {
-    if (employee.paymentMethod === 'Weekly' && employee.dailyRate) {
-      const presentDays = attendanceRecords.filter(
+     const hourlyRate = employee.hourlyRate || 
+      (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
+      (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+
+    if (!hourlyRate) return;
+
+    if (employee.paymentMethod === 'Weekly') {
+      const relevantRecords = attendanceRecords.filter(
         record =>
           record.employeeId === employee.id &&
           (record.status === 'Present' || record.status === 'Late') &&
           isWithinInterval(new Date(record.date), lastWeek)
-      ).length;
+      );
+      
+      let totalHours = 0;
+      relevantRecords.forEach(record => {
+          totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
+      });
 
-      if(presentDays > 0) {
+      if(totalHours > 0) {
         payroll.push({
             employeeId: employee.id,
             employeeName: employee.name,
             paymentMethod: 'Weekly',
             period: `${ethiopianDateFormatter.format(lastWeek.start)} - ${ethiopianDateFormatter.format(lastWeek.end)}`,
-            amount: presentDays * employee.dailyRate,
+            amount: totalHours * hourlyRate,
             status: 'Unpaid',
         });
       }
-    } else if (employee.paymentMethod === 'Monthly' && employee.monthlyRate) {
-      payroll.push({
-        employeeId: employee.id,
-        employeeName: employee.name,
-        paymentMethod: 'Monthly',
-        period: new Intl.DateTimeFormat('en-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(lastMonth.start),
-        amount: employee.monthlyRate,
-        status: 'Unpaid',
+    } else if (employee.paymentMethod === 'Monthly') {
+       const relevantRecords = attendanceRecords.filter(
+        record =>
+          record.employeeId === employee.id &&
+          (record.status === 'Present' || record.status === 'Late') &&
+          isWithinInterval(new Date(record.date), lastMonth)
+      );
+
+      let totalHours = 0;
+      relevantRecords.forEach(record => {
+          totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
       });
+      
+      if (totalHours > 0) {
+        payroll.push({
+            employeeId: employee.id,
+            employeeName: employee.name,
+            paymentMethod: 'Monthly',
+            period: new Intl.DateTimeFormat('am-ET-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(lastMonth.start),
+            amount: totalHours * hourlyRate,
+            status: 'Unpaid',
+        });
+      }
     }
   });
 

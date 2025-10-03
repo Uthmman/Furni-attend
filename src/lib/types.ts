@@ -26,13 +26,14 @@ export interface StoreItem {
 export type PaymentMethod = "Weekly" | "Monthly";
 
 export interface Employee {
-  id: string;
+  id:string;
   name: string;
   phone: string;
   paymentMethod: PaymentMethod;
   accountNumber: string;
   dailyRate?: number;
   monthlyRate?: number;
+  hourlyRate?: number;
 }
 
 export type AttendanceStatus = "Present" | "Absent" | "Late";
