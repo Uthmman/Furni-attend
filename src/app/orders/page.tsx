@@ -18,6 +18,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { orders } from "@/lib/data";
 import type { Order } from "@/lib/types";
+import { format } from "date-fns";
 
 const getStatusVariant = (status: Order["status"]) => {
   switch (status) {
@@ -71,7 +72,7 @@ export default function OrdersPage() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {new Date(order.orderDate).toLocaleDateString()}
+                    {format(new Date(order.orderDate), 'MM/dd/yyyy')}
                   </TableCell>
                   <TableCell className="max-w-xs truncate">
                     {order.description}

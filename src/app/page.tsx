@@ -23,14 +23,12 @@ import { Archive, Package, Users } from "lucide-react";
 import Image from "next/image";
 import Link from 'next/link';
 import {
-  subMonths,
-  startOfMonth,
-  endOfMonth,
   isWithinInterval,
-  startOfWeek,
-  endOfWeek,
   addDays,
   parse,
+  endOfMonth,
+  getDay,
+  format,
 } from "date-fns";
 import { PageHeader } from "@/components/page-header";
 
@@ -74,7 +72,7 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
   const today = new Date();
   
-  const ethiopianDateFormatter = new Intl.DateTimeFormat("en-US-u-ca-ethiopic", {
+  const ethiopianDateFormatter = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -90,9 +88,16 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
     if (!hourlyRate) return;
 
     if (employee.paymentMethod === "Weekly") {
-      const thisSaturday = addDays(startOfWeek(today, { weekStartsOn: 1 }), 5);
-      if (isWithinInterval(thisSaturday, { start: today, end: twoDaysFromNow })) {
-         const weekPeriod = { start: startOfWeek(today, { weekStartsOn: 1 }), end: endOfWeek(today, { weekStartsOn: 1 }) };
+      // Saturday is 6 in getDay()
+      const isTodaySaturday = getDay(today) === 6;
+      const isPaymentDayApproaching = isWithinInterval(addDays(today,2), { start: today, end: addDays(today, 2) }) && getDay(addDays(today,2)) === 6;
+
+
+      if (isTodaySaturday || isPaymentDayApproaching) {
+        const weekStart = addDays(today, -getDay(today));
+        const weekEnd = addDays(weekStart, 6);
+        const weekPeriod = { start: weekStart, end: weekEnd };
+
          const relevantRecords = attendanceRecords.filter(
             (record) =>
               record.employeeId === employee.id &&
@@ -119,8 +124,11 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
       }
     } else if (employee.paymentMethod === "Monthly") {
         const endOfMonthDate = endOfMonth(today);
-        if (isWithinInterval(endOfMonthDate, { start: today, end: twoDaysFromNow })) {
-            const monthPeriod = { start: startOfMonth(today), end: endOfMonth(today) };
+        const isEndOfMonth = isWithinInterval(endOfMonthDate, { start: today, end: twoDaysFromNow });
+
+        if(isEndOfMonth) {
+            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            const monthPeriod = { start: monthStart, end: endOfMonthDate };
             const relevantRecords = attendanceRecords.filter(
                 (record) =>
                 record.employeeId === employee.id &&
@@ -239,7 +247,7 @@ export default function DashboardPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>
-                      {new Date(order.orderDate).toLocaleDateString()}
+                      {format(new Date(order.orderDate), 'MM/dd/yyyy')}
                     </TableCell>
                     <TableCell className="max-w-[200px] truncate">
                       {order.description}
