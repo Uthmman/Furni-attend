@@ -1,3 +1,5 @@
+'use client';
+
 import { StatCard } from "@/components/stat-card";
 import {
   Card,
@@ -19,6 +21,7 @@ import { orders, storeItems, employees, attendanceRecords } from "@/lib/data";
 import type { Order, StoreItem } from "@/lib/types";
 import { Archive, Package, Users } from "lucide-react";
 import Image from "next/image";
+import Link from 'next/link';
 import {
   subMonths,
   startOfMonth,
@@ -67,12 +70,11 @@ const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): n
     return Math.max(0, totalHours);
 };
 
-
 const calculateRecentPayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
   const today = new Date();
   
-  const ethiopianDateFormatter = new Intl.DateTimeFormat("am-ET-u-ca-ethiopic", {
+  const ethiopianDateFormatter = new Intl.DateTimeFormat("en-US-u-ca-ethiopic", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -136,7 +138,7 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
                     employeeId: employee.id,
                     employeeName: employee.name,
                     paymentMethod: "Monthly",
-                    period: new Intl.DateTimeFormat("am-ET-u-ca-ethiopic", { year: 'numeric', month: 'long' }).format(monthPeriod.start),
+                    period: new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(monthPeriod.start),
                     amount: totalHours * hourlyRate,
                     status: "Unpaid",
                     workingDays: relevantRecords.length,
@@ -177,30 +179,37 @@ export default function DashboardPage() {
   const recentPayroll = calculateRecentPayroll();
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 md:gap-8">
       <PageHeader title="Dashboard" description="An overview of your business" />
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        <StatCard
-          title="Active Orders"
-          value={activeOrders}
-          icon={<Package className="size-5 text-muted-foreground" />}
-          description="Orders currently in progress or pending."
-        />
-        <StatCard
-          title="Total Employees"
-          value={totalEmployees}
-          icon={<Users className="size-5 text-muted-foreground" />}
-          description="Number of active employees."
-        />
-        <StatCard
-          title="Low Stock Items"
-          value={lowStockItems.length}
-          icon={<Archive className="size-5 text-muted-foreground" />}
-          description="Items that are running low in inventory."
-        />
+      
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-8">
+        <Link href="/orders" className="hover:shadow-lg transition-shadow rounded-xl">
+            <StatCard
+            title="Active Orders"
+            value={activeOrders}
+            icon={<Package className="size-5 text-muted-foreground" />}
+            description="Orders currently in progress or pending."
+            />
+        </Link>
+        <Link href="/employees" className="hover:shadow-lg transition-shadow rounded-xl">
+            <StatCard
+            title="Total Employees"
+            value={totalEmployees}
+            icon={<Users className="size-5 text-muted-foreground" />}
+            description="Number of active employees."
+            />
+        </Link>
+        <Link href="/store" className="hover:shadow-lg transition-shadow rounded-xl">
+            <StatCard
+            title="Low Stock Items"
+            value={lowStockItems.length}
+            icon={<Archive className="size-5 text-muted-foreground" />}
+            description="Items that are running low in inventory."
+            />
+        </Link>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Recent Orders</CardTitle>
