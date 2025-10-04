@@ -70,13 +70,14 @@ export const storeItems: StoreItem[] = [
   { id: "ITM004", name: "Pine Wood Frame", stock: 25, unit: "piece" },
   { id: "ITM005", name: "Yellow Fabric", stock: 100, unit: "meter" },
   { id: "ITM006", name: "Varnish", stock: 15, unit: "liter" },
-  { id: "ITM007", name: "Mahogany Wood", stock: 9, unit: "sq. meter" },
+  { id: "ITM007", name: "Mahogany Wood", stock: 0, unit: "sq. meter" },
 ];
 
 export const employees: Employee[] = [
   {
     id: "EMP001",
     name: "John Smith",
+    position: "Lead Carpenter",
     phone: "123-456-7890",
     paymentMethod: "Monthly",
     accountNumber: "123456789",
@@ -85,6 +86,7 @@ export const employees: Employee[] = [
   {
     id: "EMP002",
     name: "Jane Doe",
+    position: "Upholstery Specialist",
     phone: "098-765-4321",
     paymentMethod: "Weekly",
     accountNumber: "987654321",
@@ -93,6 +95,7 @@ export const employees: Employee[] = [
   {
     id: "EMP003",
     name: "Peter Jones",
+    position: "Finisher",
     phone: "555-555-5555",
     paymentMethod: "Weekly",
     accountNumber: "555555555",

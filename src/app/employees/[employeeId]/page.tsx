@@ -35,6 +35,9 @@ import {
 import { useMemo, useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
+import { Button } from "@/components/ui/button";
+import { Copy, Phone } from "lucide-react";
+import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 
 const getInitials = (name: string) => {
   const names = name.split(" ");
@@ -71,6 +74,7 @@ const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): n
 export default function EmployeeProfilePage() {
   const params = useParams();
   const { employeeId } = params;
+  const [_copiedValue, copy] = useCopyToClipboard();
 
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
 
@@ -79,6 +83,13 @@ export default function EmployeeProfilePage() {
     attendanceRecords.filter((r) => r.employeeId === employeeId),
     [employeeId]
   );
+  
+  const hourlyRate = useMemo(() => {
+    if (!employee) return 0;
+    return employee.hourlyRate ||
+        (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
+        (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+  }, [employee]);
 
   const firstAttendanceDate = useMemo(() => {
     if (employeeAttendance.length === 0) return new Date();
@@ -153,11 +164,6 @@ export default function EmployeeProfilePage() {
       const totalHours = relevantRecords.reduce((acc, record) => {
           return acc + calculateHoursWorked(record.morningEntry, record.afternoonEntry);
       }, 0);
-
-      const hourlyRate =
-        employee.hourlyRate ||
-        (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
-        (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
         
       const amount = totalHours * (hourlyRate || 0);
 
@@ -165,7 +171,7 @@ export default function EmployeeProfilePage() {
           hours: totalHours,
           amount: amount
       }
-  }, [employee, filteredAttendance]);
+  }, [employee, filteredAttendance, hourlyRate]);
   
   const formatPeriod = (periodValue: string | undefined, employee: Employee) => {
       if (!periodValue) return "N/A";
@@ -189,7 +195,7 @@ export default function EmployeeProfilePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={employee.name} description={`Profile and attendance for ${employee.name}`} />
+      <PageHeader title={employee.name} description={employee.position || `Profile and attendance for ${employee.name}`} />
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-1 flex flex-col gap-6">
@@ -199,20 +205,39 @@ export default function EmployeeProfilePage() {
                 <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
               </Avatar>
               <CardTitle className="pt-4">{employee.name}</CardTitle>
+              <CardDescription>{employee.position}</CardDescription>
             </CardHeader>
             <CardContent className="text-sm">
-                <div className="grid gap-2">
-                    <div>
+                <div className="grid gap-4">
+                    <div className="flex items-center justify-between">
                         <p className="font-semibold">Phone Number</p>
-                        <p className="text-muted-foreground">{employee.phone}</p>
+                        <Button variant="ghost" size="sm" asChild>
+                            <a href={`tel:${employee.phone}`}>
+                                <Phone className="mr-2 h-4 w-4" />
+                                {employee.phone}
+                            </a>
+                        </Button>
                     </div>
-                     <div>
+                    <div className="flex items-center justify-between">
+                        <p className="font-semibold">Account Number</p>
+                        <div className="flex items-center gap-2">
+                           <p className="text-muted-foreground">{employee.accountNumber}</p>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copy(employee.accountNumber)}>
+                                <Copy className="h-4 w-4" />
+                            </Button>
+                        </div>
+                    </div>
+                    <div>
                         <p className="font-semibold">Payment Method</p>
                         <Badge variant="outline">{employee.paymentMethod}</Badge>
                     </div>
                     <div>
-                        <p className="font-semibold">Account Number</p>
-                        <p className="text-muted-foreground">{employee.accountNumber}</p>
+                        <p className="font-semibold">{employee.paymentMethod} Rate</p>
+                        <p className="text-muted-foreground">ETB {employee.monthlyRate || employee.dailyRate || "N/A"}</p>
+                    </div>
+                    <div>
+                        <p className="font-semibold">Calculated Hourly Rate</p>
+                        <p className="text-muted-foreground">ETB {hourlyRate.toFixed(2)}</p>
                     </div>
                 </div>
             </CardContent>
