@@ -20,7 +20,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { format, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, parse } from "date-fns";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  format,
+  startOfWeek,
+  endOfWeek,
+  startOfMonth,
+  endOfMonth,
+  isWithinInterval,
+  parse,
+} from "date-fns";
 import { useMemo, useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -60,28 +69,35 @@ export default function EmployeeProfilePage() {
   const params = useParams();
   const { employeeId } = params;
 
+  const [date, setDate] = useState<Date | undefined>(new Date());
+  const [filterType, setFilterType] = useState('monthly');
+
   const employee = employees.find((e) => e.id === employeeId);
   const employeeAttendance = useMemo(() => 
     attendanceRecords.filter((r) => r.employeeId === employeeId),
     [employeeId]
   );
-  
-  const [filter, setFilter] = useState('all');
 
+  const firstAttendanceDate = useMemo(() => {
+    if (employeeAttendance.length === 0) return undefined;
+    return employeeAttendance.reduce((earliest, current) => {
+      const currentDate = new Date(current.date);
+      return currentDate < new Date(earliest.date) ? current : earliest;
+    }).date;
+  }, [employeeAttendance]);
+
+  
   const filteredAttendance = useMemo(() => {
-    const now = new Date();
-    if (filter === 'weekly') {
-        const start = startOfWeek(now, { weekStartsOn: 1 });
-        const end = endOfWeek(now, { weekStartsOn: 1 });
-        return employeeAttendance.filter(r => isWithinInterval(new Date(r.date), {start, end}));
+    if (!date) return employeeAttendance;
+    
+    let interval;
+    if (filterType === 'weekly') {
+      interval = { start: startOfWeek(date, { weekStartsOn: 1 }), end: endOfWeek(date, { weekStartsOn: 1 }) };
+    } else { // monthly
+      interval = { start: startOfMonth(date), end: endOfMonth(date) };
     }
-    if (filter === 'monthly') {
-        const start = startOfMonth(now);
-        const end = endOfMonth(now);
-        return employeeAttendance.filter(r => isWithinInterval(new Date(r.date), {start, end}));
-    }
-    return employeeAttendance;
-  }, [employeeAttendance, filter]);
+    return employeeAttendance.filter(r => isWithinInterval(new Date(r.date), interval));
+  }, [employeeAttendance, date, filterType]);
 
   const payrollData = useMemo(() => {
       if (!employee) return { hours: 0, amount: 0 };
@@ -106,6 +122,20 @@ export default function EmployeeProfilePage() {
           amount: amount
       }
   }, [employee, filteredAttendance]);
+
+  const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions) => {
+    return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+  };
+  
+  const formatPeriod = (date: Date | undefined, type: string) => {
+      if (!date) return "N/A";
+      if (type === 'weekly') {
+          const start = startOfWeek(date, { weekStartsOn: 1 });
+          const end = endOfWeek(date, { weekStartsOn: 1 });
+          return `${ethiopianDateFormatter(start, { day: 'numeric', month: 'long', year: 'numeric' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'long', year: 'numeric' })}`;
+      }
+      return ethiopianDateFormatter(date, { month: 'long', year: 'numeric' });
+  }
 
 
   if (!employee) {
@@ -147,12 +177,12 @@ export default function EmployeeProfilePage() {
                 </div>
             </CardContent>
           </Card>
-          {(filter === 'weekly' || filter === 'monthly') && (
-            <Card>
+          
+           <Card>
                 <CardHeader>
                     <CardTitle>Payroll Summary</CardTitle>
                     <CardDescription>
-                        Calculated for the selected period.
+                        For {formatPeriod(date, filterType)}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
@@ -166,59 +196,76 @@ export default function EmployeeProfilePage() {
                     </div>
                 </CardContent>
             </Card>
-          )}
         </div>
         <div className="md:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Attendance History</CardTitle>
-              <CardDescription>A log of the employee's attendance.</CardDescription>
+              <CardDescription>Select a date to view attendance for that period.</CardDescription>
             </CardHeader>
-            <CardContent>
-                <div className="flex justify-end mb-4">
-                    <Select value={filter} onValueChange={setFilter}>
-                        <SelectTrigger className="w-[180px]">
-                            <SelectValue placeholder="Filter by date" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Time</SelectItem>
-                            <SelectItem value="weekly">This Week</SelectItem>
-                            <SelectItem value="monthly">This Month</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Morning</TableHead>
-                    <TableHead>Afternoon</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredAttendance.length > 0 ? (
-                    filteredAttendance.map((record) => (
-                      <TableRow key={record.id}>
-                        <TableCell>{format(new Date(record.date), "PPP")}</TableCell>
-                        <TableCell>
-                          <Badge variant={record.status === 'Absent' ? 'destructive' : 'secondary'}>
-                            {record.status}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{record.morningEntry || "N/A"}</TableCell>
-                        <TableCell>{record.afternoonEntry || "N/A"}</TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
+            <CardContent className="flex flex-col md:flex-row gap-4">
+               <div className="flex flex-col gap-4">
+                 <Calendar
+                    mode="single"
+                    selected={date}
+                    onSelect={setDate}
+                    className="rounded-md border"
+                    fromDate={firstAttendanceDate ? new Date(firstAttendanceDate) : undefined}
+                    toDate={new Date()}
+                    locale={{
+                        localize: {
+                            month: (n) => ethiopianDateFormatter(new Date(2021, n), { month: 'long' }),
+                            day: (n) => ethiopianDateFormatter(new Date(2021, 0, n+1), { weekday: 'short' })
+                        },
+                        formatLong: {
+                            date: () => ethiopianDateFormatter(new Date(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})
+                        }
+                    }}
+                 />
+                  <Select value={filterType} onValueChange={setFilterType}>
+                      <SelectTrigger>
+                          <SelectValue placeholder="Filter by" />
+                      </SelectTrigger>
+                      <SelectContent>
+                          <SelectItem value="monthly">Monthly</SelectItem>
+                          <SelectItem value="weekly">Weekly</SelectItem>
+                      </SelectContent>
+                  </Select>
+               </div>
+              <div className="flex-1">
+                <Table>
+                    <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={4} className="text-center h-24">
-                        No attendance records for this period.
-                      </TableCell>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Morning</TableHead>
+                        <TableHead>Afternoon</TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+                    </TableHeader>
+                    <TableBody>
+                    {filteredAttendance.length > 0 ? (
+                        filteredAttendance.map((record) => (
+                        <TableRow key={record.id}>
+                            <TableCell>{ethiopianDateFormatter(new Date(record.date), { year: 'numeric', month: 'long', day: 'numeric' })}</TableCell>
+                            <TableCell>
+                            <Badge variant={record.status === 'Absent' ? 'destructive' : 'secondary'}>
+                                {record.status}
+                            </Badge>
+                            </TableCell>
+                            <TableCell>{record.morningEntry || "N/A"}</TableCell>
+                            <TableCell>{record.afternoonEntry || "N/A"}</TableCell>
+                        </TableRow>
+                        ))
+                    ) : (
+                        <TableRow>
+                        <TableCell colSpan={4} className="text-center h-24">
+                            No attendance records for this period.
+                        </TableCell>
+                        </TableRow>
+                    )}
+                    </TableBody>
+                </Table>
+              </div>
             </CardContent>
           </Card>
         </div>
