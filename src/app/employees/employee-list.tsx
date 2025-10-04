@@ -8,14 +8,17 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
+import Link from "next/link";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { ChevronRight } from "lucide-react";
 
 const getInitials = (name: string) => {
   const names = name.split(" ");
@@ -29,46 +32,41 @@ export function EmployeeList({ employees }: { employees: Employee[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Employee Information</CardTitle>
-        <CardDescription>
-          Click on an employee to view their details.
-        </CardDescription>
+        <CardTitle>All Employees</CardTitle>
+        <CardDescription>Select an employee to view their profile.</CardDescription>
       </CardHeader>
       <CardContent>
-        <Accordion type="single" collapsible className="w-full">
-          {employees.map((employee) => (
-            <AccordionItem value={employee.id} key={employee.id}>
-              <AccordionTrigger>
-                <div className="flex items-center gap-3">
-                  <Avatar>
-                    <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
-                  </Avatar>
-                  <span className="font-medium">{employee.name}</span>
-                </div>
-              </AccordionTrigger>
-              <AccordionContent>
-                <div className="grid grid-cols-2 gap-4 px-4 py-2 text-sm">
-                  <div>
-                    <p className="font-semibold">Phone Number</p>
-                    <p className="text-muted-foreground">{employee.phone}</p>
-                  </div>
-                  <div>
-                    <p className="font-semibold">Payment Method</p>
-                    <div className="text-muted-foreground">
-                      <Badge variant="outline">{employee.paymentMethod}</Badge>
-                    </div>
-                  </div>
-                  <div>
-                    <p className="font-semibold">Account Number</p>
-                    <p className="text-muted-foreground">
-                      {employee.accountNumber}
-                    </p>
-                  </div>
-                </div>
-              </AccordionContent>
-            </AccordionItem>
-          ))}
-        </Accordion>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Employee</TableHead>
+              <TableHead>Phone</TableHead>
+              <TableHead>Payment Method</TableHead>
+              <TableHead className="text-right"></TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {employees.map((employee) => (
+              <TableRow key={employee.id}>
+                <TableCell>
+                  <Link href={`/employees/${employee.id}`} className="flex items-center gap-3 hover:underline">
+                    <Avatar>
+                      <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
+                    </Avatar>
+                    <span className="font-medium">{employee.name}</span>
+                  </Link>
+                </TableCell>
+                <TableCell>{employee.phone}</TableCell>
+                <TableCell>{employee.paymentMethod}</TableCell>
+                <TableCell className="text-right">
+                   <Link href={`/employees/${employee.id}`} className="text-muted-foreground">
+                    <ChevronRight className="h-5 w-5" />
+                   </Link>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       </CardContent>
     </Card>
   );

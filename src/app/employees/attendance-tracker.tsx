@@ -54,11 +54,28 @@ export function AttendanceTracker({
     new Date()
   );
 
-  const filteredAttendance = selectedDate
-    ? attendanceRecords.filter((record) =>
-        isSameDay(new Date(record.date), selectedDate)
-      )
-    : [];
+  const filteredAttendance = useMemo(() => {
+    if (!selectedDate) return [];
+    // Ensure we have a record for every employee for the selected date
+    return employees.map(employee => {
+        const existingRecord = attendanceRecords.find(record => 
+            record.employeeId === employee.id && isSameDay(new Date(record.date), selectedDate)
+        );
+        if (existingRecord) {
+            return existingRecord;
+        }
+        // Create a default 'Present' record if none exists for that day
+        return {
+            id: `new-${employee.id}-${selectedDate.toISOString()}`, 
+            employeeId: employee.id,
+            date: selectedDate.toISOString(),
+            status: "Present",
+            morningEntry: "",
+            afternoonEntry: ""
+        } as AttendanceRecord
+    });
+  }, [selectedDate, employees, attendanceRecords]);
+
 
   const handleAttendanceChange = (
     recordId: string,
