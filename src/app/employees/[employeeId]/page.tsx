@@ -20,7 +20,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Calendar } from "@/components/ui/calendar";
 import {
   format,
   startOfWeek,
@@ -29,9 +28,13 @@ import {
   endOfMonth,
   isWithinInterval,
   parse,
+  eachWeekOfInterval,
+  eachMonthOfInterval,
+  isValid,
 } from "date-fns";
 import { useMemo, useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { Employee } from "@/lib/types";
 
 const getInitials = (name: string) => {
   const names = name.split(" ");
@@ -69,8 +72,7 @@ export default function EmployeeProfilePage() {
   const params = useParams();
   const { employeeId } = params;
 
-  const [date, setDate] = useState<Date | undefined>(new Date());
-  const [filterType, setFilterType] = useState('monthly');
+  const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
 
   const employee = employees.find((e) => e.id === employeeId);
   const employeeAttendance = useMemo(() => 
@@ -79,25 +81,67 @@ export default function EmployeeProfilePage() {
   );
 
   const firstAttendanceDate = useMemo(() => {
-    if (employeeAttendance.length === 0) return undefined;
-    return employeeAttendance.reduce((earliest, current) => {
+    if (employeeAttendance.length === 0) return new Date();
+    const earliestRecord = employeeAttendance.reduce((earliest, current) => {
       const currentDate = new Date(current.date);
       return currentDate < new Date(earliest.date) ? current : earliest;
-    }).date;
+    });
+    return new Date(earliestRecord.date);
   }, [employeeAttendance]);
+
+  const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+    if (!isValid(date)) return "Invalid Date";
+    try {
+        return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+    } catch (e) {
+        return "Invalid Date";
+    }
+  };
+
+  const periodOptions = useMemo(() => {
+    if (!employee || !isValid(firstAttendanceDate)) return [];
+    
+    const today = new Date();
+    const interval = { start: firstAttendanceDate, end: today };
+    const options: { value: string, label: string }[] = [];
+
+    if (employee.paymentMethod === 'Monthly') {
+      const months = eachMonthOfInterval(interval);
+      months.reverse().forEach(monthStart => {
+        const period = { start: startOfMonth(monthStart), end: endOfMonth(monthStart) };
+        options.push({
+          value: period.start.toISOString(),
+          label: ethiopianDateFormatter(period.start, { month: 'long', year: 'numeric' })
+        });
+      });
+    } else { // Weekly
+      const weeks = eachWeekOfInterval(interval, { weekStartsOn: 1 });
+      weeks.reverse().forEach(weekStart => {
+        const period = { start: startOfWeek(weekStart, { weekStartsOn: 1 }), end: endOfWeek(weekStart, { weekStartsOn: 1 }) };
+        const startDay = ethiopianDateFormatter(period.start, { day: 'numeric', month: 'long' });
+        const endDay = ethiopianDateFormatter(period.end, { day: 'numeric', month: 'long', year: 'numeric' });
+        options.push({
+          value: period.start.toISOString(),
+          label: `${startDay} - ${endDay}`
+        });
+      });
+    }
+    return options;
+  }, [employee, firstAttendanceDate]);
 
   
   const filteredAttendance = useMemo(() => {
-    if (!date) return employeeAttendance;
+    if (!selectedPeriod || !employee) return [];
     
+    const startDate = new Date(selectedPeriod);
     let interval;
-    if (filterType === 'weekly') {
-      interval = { start: startOfWeek(date, { weekStartsOn: 1 }), end: endOfWeek(date, { weekStartsOn: 1 }) };
+    if (employee.paymentMethod === 'Weekly') {
+      interval = { start: startOfWeek(startDate, { weekStartsOn: 1 }), end: endOfWeek(startDate, { weekStartsOn: 1 }) };
     } else { // monthly
-      interval = { start: startOfMonth(date), end: endOfMonth(date) };
+      interval = { start: startOfMonth(startDate), end: endOfMonth(startDate) };
     }
     return employeeAttendance.filter(r => isWithinInterval(new Date(r.date), interval));
-  }, [employeeAttendance, date, filterType]);
+  }, [employeeAttendance, selectedPeriod, employee]);
 
   const payrollData = useMemo(() => {
       if (!employee) return { hours: 0, amount: 0 };
@@ -122,21 +166,17 @@ export default function EmployeeProfilePage() {
           amount: amount
       }
   }, [employee, filteredAttendance]);
-
-  const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions) => {
-    return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
-  };
   
-  const formatPeriod = (date: Date | undefined, type: string) => {
-      if (!date) return "N/A";
-      if (type === 'weekly') {
-          const start = startOfWeek(date, { weekStartsOn: 1 });
-          const end = endOfWeek(date, { weekStartsOn: 1 });
-          return `${ethiopianDateFormatter(start, { day: 'numeric', month: 'long', year: 'numeric' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'long', year: 'numeric' })}`;
+  const formatPeriod = (periodValue: string | undefined, employee: Employee) => {
+      if (!periodValue) return "N/A";
+      const startDate = new Date(periodValue);
+       if (employee.paymentMethod === 'Weekly') {
+          const start = startOfWeek(startDate, { weekStartsOn: 1 });
+          const end = endOfWeek(startDate, { weekStartsOn: 1 });
+          return `${ethiopianDateFormatter(start, { day: 'numeric', month: 'long' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'long', year: 'numeric' })}`;
       }
-      return ethiopianDateFormatter(date, { month: 'long', year: 'numeric' });
+      return ethiopianDateFormatter(startDate, { month: 'long', year: 'numeric' });
   }
-
 
   if (!employee) {
     return (
@@ -182,7 +222,7 @@ export default function EmployeeProfilePage() {
                 <CardHeader>
                     <CardTitle>Payroll Summary</CardTitle>
                     <CardDescription>
-                        For {formatPeriod(date, filterType)}
+                        For {formatPeriod(selectedPeriod, employee)}
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
@@ -201,38 +241,22 @@ export default function EmployeeProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle>Attendance History</CardTitle>
-              <CardDescription>Select a date to view attendance for that period.</CardDescription>
+              <CardDescription>Select a pay period to view attendance.</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col md:flex-row gap-4">
+            <CardContent className="flex flex-col gap-4">
                <div className="flex flex-col gap-4">
-                 <Calendar
-                    mode="single"
-                    selected={date}
-                    onSelect={setDate}
-                    className="rounded-md border"
-                    fromDate={firstAttendanceDate ? new Date(firstAttendanceDate) : undefined}
-                    toDate={new Date()}
-                    locale={{
-                        localize: {
-                            month: (n) => ethiopianDateFormatter(new Date(2021, n), { month: 'long' }),
-                            day: (n) => ethiopianDateFormatter(new Date(2021, 0, n+1), { weekday: 'short' })
-                        },
-                        formatLong: {
-                            date: () => ethiopianDateFormatter(new Date(), { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'})
-                        }
-                    }}
-                 />
-                  <Select value={filterType} onValueChange={setFilterType}>
+                  <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                       <SelectTrigger>
-                          <SelectValue placeholder="Filter by" />
+                          <SelectValue placeholder="Select a period" />
                       </SelectTrigger>
                       <SelectContent>
-                          <SelectItem value="monthly">Monthly</SelectItem>
-                          <SelectItem value="weekly">Weekly</SelectItem>
+                          {periodOptions.map(option => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                          ))}
                       </SelectContent>
                   </Select>
                </div>
-              <div className="flex-1">
+              <div className="flex-1 mt-4">
                 <Table>
                     <TableHeader>
                     <TableRow>
@@ -259,7 +283,7 @@ export default function EmployeeProfilePage() {
                     ) : (
                         <TableRow>
                         <TableCell colSpan={4} className="text-center h-24">
-                            No attendance records for this period.
+                            {selectedPeriod ? "No attendance records for this period." : "Please select a period to view records."}
                         </TableCell>
                         </TableRow>
                     )}
