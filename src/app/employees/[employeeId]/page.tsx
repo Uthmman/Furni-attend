@@ -156,7 +156,7 @@ export default function EmployeeProfilePage() {
   }, [employeeAttendance, selectedPeriod, employee]);
 
   const payrollData = useMemo(() => {
-    if (!employee) return { hours: 0, amount: 0, daysWorked: 0 };
+    if (!employee) return { hours: 0, amount: 0, daysWorked: 0, overtimePay: 0, totalAmount: 0 };
 
     const relevantRecords = filteredAttendance.filter(
       (record) => record.status === "Present" || record.status === "Late"
@@ -165,13 +165,21 @@ export default function EmployeeProfilePage() {
     const totalHours = relevantRecords.reduce((acc, record) => {
       return acc + calculateHoursWorked(record.morningEntry, record.afternoonEntry);
     }, 0);
+    
+    const totalOvertimeHours = relevantRecords.reduce((acc, record) => {
+        return acc + (record.overtimeHours || 0);
+    }, 0);
 
-    const amount = totalHours * (hourlyRate || 0);
+    const baseAmount = totalHours * (hourlyRate || 0);
+    const overtimePay = totalOvertimeHours * (hourlyRate || 0);
+    const totalAmount = baseAmount + overtimePay;
 
     return {
       hours: totalHours,
-      amount: amount,
+      amount: baseAmount,
       daysWorked: totalHours / 8,
+      overtimePay: overtimePay,
+      totalAmount: totalAmount
     };
   }, [employee, filteredAttendance, hourlyRate]);
   
@@ -261,9 +269,15 @@ export default function EmployeeProfilePage() {
                         <p className="font-semibold">Total Hours Worked</p>
                         <p className="text-2xl font-bold">{payrollData.hours.toFixed(2)}</p>
                     </div>
+                    {payrollData.overtimePay > 0 && (
+                        <div>
+                            <p className="font-semibold">Overtime Pay</p>
+                            <p className="text-2xl font-bold">ETB {payrollData.overtimePay.toFixed(2)}</p>
+                        </div>
+                    )}
                     <div>
                         <p className="font-semibold">Calculated Payroll</p>
-                        <p className="text-2xl font-bold text-primary">ETB {payrollData.amount.toFixed(2)}</p>
+                        <p className="text-2xl font-bold text-primary">ETB {payrollData.totalAmount.toFixed(2)}</p>
                     </div>
                 </CardContent>
             </Card>
