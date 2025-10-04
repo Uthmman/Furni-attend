@@ -301,7 +301,7 @@ export default function EmployeeProfilePage() {
                     {filteredAttendance.length > 0 ? (
                         filteredAttendance.map((record) => (
                         <TableRow key={record.id}>
-                            <TableCell>{ethiopianDateFormatter(new Date(record.date), { day: 'numeric' })}</TableCell>
+                            <TableCell>{ethiopianDateFormatter(new Date(record.date), { weekday: 'short', day: 'numeric' })}</TableCell>
                             <TableCell>
                             <Badge variant={record.status === 'Absent' ? 'destructive' : 'secondary'}>
                                 {record.status}
@@ -328,5 +328,7 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
+
+    
 
     
