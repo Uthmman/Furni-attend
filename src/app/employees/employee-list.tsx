@@ -54,9 +54,9 @@ export function EmployeeList({ employees }: { employees: Employee[] }) {
                   </div>
                   <div>
                     <p className="font-semibold">Payment Method</p>
-                    <p className="text-muted-foreground">
+                    <div className="text-muted-foreground">
                       <Badge variant="outline">{employee.paymentMethod}</Badge>
-                    </p>
+                    </div>
                   </div>
                   <div>
                     <p className="font-semibold">Account Number</p>
