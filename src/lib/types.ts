@@ -46,4 +46,5 @@ export interface AttendanceRecord {
   morningEntry?: string;
   afternoonEntry?: string;
   status: AttendanceStatus;
+  overtimeHours?: number;
 }

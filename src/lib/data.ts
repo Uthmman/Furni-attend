@@ -104,11 +104,11 @@ export const employees: Employee[] = [
 ];
 
 export const attendanceRecords: AttendanceRecord[] = [
-  { id: 'ATT001', employeeId: "EMP001", date: subDays(new Date(), 1).toISOString(), morningEntry: "08:55", afternoonEntry: "13:05", status: "Present" },
+  { id: 'ATT001', employeeId: "EMP001", date: subDays(new Date(), 1).toISOString(), morningEntry: "08:55", afternoonEntry: "13:05", status: "Present", overtimeHours: 1 },
   { id: 'ATT002', employeeId: "EMP002", date: subDays(new Date(), 1).toISOString(), morningEntry: "09:15", afternoonEntry: "13:00", status: "Late" },
   { id: 'ATT003', employeeId: "EMP003", date: subDays(new Date(), 1).toISOString(), status: "Absent" },
   { id: 'ATT004', employeeId: "EMP001", date: subDays(new Date(), 2).toISOString(), morningEntry: "09:00", afternoonEntry: "13:00", status: "Present" },
-  { id: 'ATT005', employeeId: "EMP002", date: subDays(new Date(), 2).toISOString(), morningEntry: "09:02", afternoonEntry: "13:01", status: "Present" },
+  { id: 'ATT005', employeeId: "EMP002", date: subDays(new Date(), 2).toISOString(), morningEntry: "09:02", afternoonEntry: "13:01", status: "Present", overtimeHours: 2 },
   { id: 'ATT006', employeeId: "EMP003", date: subDays(new Date(), 2).toISOString(), morningEntry: "08:58", afternoonEntry: "12:59", status: "Present" },
   { id: 'ATT007', employeeId: "EMP001", date: subDays(new Date(), 3).toISOString(), status: "Absent" },
   { id: 'ATT008', employeeId: "EMP002", date: subDays(new Date(), 3).toISOString(), morningEntry: "09:05", afternoonEntry: "13:10", status: "Present" },
