@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
@@ -8,17 +7,11 @@ import {
   employees as initialEmployees,
   attendanceRecords as initialAttendanceRecords,
 } from "@/lib/data";
-import type { Employee, AttendanceRecord } from "@/lib/types";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { EmployeeList } from "./employee-list";
 import { AttendanceTracker } from "./attendance-tracker";
 
 export default function EmployeesPage() {
-  const [employees, setEmployees] = useState<Employee[]>(initialEmployees);
-  const [attendanceRecords, setAttendanceRecords] = useState<
-    AttendanceRecord[]
-  >(initialAttendanceRecords);
-
   return (
     <div>
       <PageHeader
@@ -37,12 +30,12 @@ export default function EmployeesPage() {
           <TabsTrigger value="attendance">Attendance Log</TabsTrigger>
         </TabsList>
         <TabsContent value="employees">
-          <EmployeeList employees={employees} />
+          <EmployeeList employees={initialEmployees} />
         </TabsContent>
         <TabsContent value="attendance">
           <AttendanceTracker
-            employees={employees}
-            initialRecords={attendanceRecords}
+            employees={initialEmployees}
+            initialRecords={initialAttendanceRecords}
           />
         </TabsContent>
       </Tabs>
