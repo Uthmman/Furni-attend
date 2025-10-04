@@ -155,22 +155,23 @@ export default function EmployeeProfilePage() {
   }, [employeeAttendance, selectedPeriod, employee]);
 
   const payrollData = useMemo(() => {
-      if (!employee) return { hours: 0, amount: 0 };
-      
-      const relevantRecords = filteredAttendance.filter(
-          (record) => record.status === "Present" || record.status === "Late"
-      );
+    if (!employee) return { hours: 0, amount: 0, daysWorked: 0 };
 
-      const totalHours = relevantRecords.reduce((acc, record) => {
-          return acc + calculateHoursWorked(record.morningEntry, record.afternoonEntry);
-      }, 0);
-        
-      const amount = totalHours * (hourlyRate || 0);
+    const relevantRecords = filteredAttendance.filter(
+      (record) => record.status === "Present" || record.status === "Late"
+    );
 
-      return {
-          hours: totalHours,
-          amount: amount
-      }
+    const totalHours = relevantRecords.reduce((acc, record) => {
+      return acc + calculateHoursWorked(record.morningEntry, record.afternoonEntry);
+    }, 0);
+
+    const amount = totalHours * (hourlyRate || 0);
+
+    return {
+      hours: totalHours,
+      amount: amount,
+      daysWorked: totalHours / 8,
+    };
   }, [employee, filteredAttendance, hourlyRate]);
   
   const formatPeriod = (periodValue: string | undefined, employee: Employee) => {
@@ -251,6 +252,10 @@ export default function EmployeeProfilePage() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
+                     <div>
+                        <p className="font-semibold">Total Days Worked</p>
+                        <p className="text-2xl font-bold">{payrollData.daysWorked.toFixed(2)}</p>
+                    </div>
                     <div>
                         <p className="font-semibold">Total Hours Worked</p>
                         <p className="text-2xl font-bold">{payrollData.hours.toFixed(2)}</p>
