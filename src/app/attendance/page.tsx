@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -29,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { employees, attendanceRecords as initialRecords } from "@/lib/data";
-import type { AttendanceRecord, AttendanceStatus } from "@/lib/types";
+import type { AttendanceRecord, AttendanceStatus, Employee } from "@/lib/types";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -140,6 +141,23 @@ export default function AttendancePage() {
     setIsDialogOpen(false);
     setSelectedEmployeeAttendance(null);
   };
+  
+  const selectedEmployeeDetails: Employee | undefined = useMemo(() => {
+      return employees.find(e => e.id === selectedEmployeeAttendance?.employeeId);
+  }, [selectedEmployeeAttendance]);
+
+  const hourlyRate: number = useMemo(() => {
+    if (!selectedEmployeeDetails) return 0;
+    return selectedEmployeeDetails.hourlyRate ||
+        (selectedEmployeeDetails.dailyRate ? selectedEmployeeDetails.dailyRate / 8 : 0) ||
+        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 22 / 8 : 0);
+  }, [selectedEmployeeDetails]);
+  
+  const overtimePay: number = useMemo(() => {
+      if (!selectedEmployeeAttendance?.overtimeHours || !hourlyRate) return 0;
+      return selectedEmployeeAttendance.overtimeHours * hourlyRate;
+  }, [selectedEmployeeAttendance, hourlyRate]);
+
 
   const handleSaveChanges = () => {
     console.log(
@@ -278,6 +296,14 @@ export default function AttendancePage() {
                   disabled={selectedEmployeeAttendance.status === 'Absent'}
                 />
               </div>
+               {overtimePay > 0 && (
+                 <div className="grid grid-cols-4 items-center gap-4">
+                    <p className="col-span-1 text-right text-sm font-medium">Overtime Pay</p>
+                    <p className="col-span-3 text-lg font-semibold text-primary">
+                        ETB {overtimePay.toFixed(2)}
+                    </p>
+                </div>
+              )}
             </div>
           )}
           <DialogFooter>
