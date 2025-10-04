@@ -295,6 +295,7 @@ export default function EmployeeProfilePage() {
                         <TableHead>Status</TableHead>
                         <TableHead>Morning</TableHead>
                         <TableHead>Afternoon</TableHead>
+                        <TableHead>Overtime</TableHead>
                     </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -309,11 +310,12 @@ export default function EmployeeProfilePage() {
                             </TableCell>
                             <TableCell>{record.morningEntry || "N/A"}</TableCell>
                             <TableCell>{record.afternoonEntry || "N/A"}</TableCell>
+                            <TableCell>{record.overtimeHours ? `${record.overtimeHours} hr(s)` : "N/A"}</TableCell>
                         </TableRow>
                         ))
                     ) : (
                         <TableRow>
-                        <TableCell colSpan={4} className="text-center h-24">
+                        <TableCell colSpan={5} className="text-center h-24">
                             {selectedPeriod ? "No attendance records for this period." : "Please select a period to view records."}
                         </TableCell>
                         </TableRow>
