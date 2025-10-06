@@ -9,7 +9,7 @@ import { EmployeeList } from "./employee-list";
 
 export default function EmployeesPage() {
   return (
-    <div>
+    <div className="flex flex-col gap-6">
       <PageHeader
         title="Employees"
         description="Manage employee details and track attendance."

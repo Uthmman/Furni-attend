@@ -16,7 +16,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { ChevronRight, Phone } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 const getInitials = (name: string) => {
   const names = name.split(" ");
@@ -28,44 +30,34 @@ const getInitials = (name: string) => {
 
 export function EmployeeList({ employees }: { employees: Employee[] }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>All Employees</CardTitle>
-        <CardDescription>Select an employee to view their profile.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Employee</TableHead>
-              <TableHead>Phone</TableHead>
-              <TableHead>Payment Method</TableHead>
-              <TableHead className="text-right"></TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {employees.map((employee) => (
-              <TableRow key={employee.id}>
-                <TableCell>
-                  <Link href={`/employees/${employee.id}`} className="flex items-center gap-3 hover:underline">
-                    <Avatar>
-                      <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
-                    </Avatar>
-                    <span className="font-medium">{employee.name}</span>
-                  </Link>
-                </TableCell>
-                <TableCell>{employee.phone}</TableCell>
-                <TableCell>{employee.paymentMethod}</TableCell>
-                <TableCell className="text-right">
-                   <Link href={`/employees/${employee.id}`} className="text-muted-foreground">
-                    <ChevronRight className="h-5 w-5" />
-                   </Link>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {employees.map((employee) => (
+        <Link key={employee.id} href={`/employees/${employee.id}`} className="block hover:shadow-lg transition-shadow rounded-xl">
+           <Card className="flex flex-col h-full">
+            <CardHeader className="flex-row items-center gap-4">
+                <Avatar className="w-12 h-12">
+                  <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
+                </Avatar>
+                <div className="flex-1">
+                    <CardTitle className="text-lg">{employee.name}</CardTitle>
+                    <CardDescription>{employee.position}</CardDescription>
+                </div>
+                <ChevronRight className="h-5 w-5 text-muted-foreground" />
+            </CardHeader>
+             <CardContent className="flex flex-col justify-between flex-grow">
+               <div className="text-sm text-muted-foreground space-y-2">
+                 <div className="flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    <span>{employee.phone}</span>
+                 </div>
+                 <div className="flex items-center gap-2">
+                    <Badge variant="outline">{employee.paymentMethod}</Badge>
+                 </div>
+               </div>
+            </CardContent>
+          </Card>
+        </Link>
+      ))}
+    </div>
   );
 }
