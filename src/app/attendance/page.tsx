@@ -8,7 +8,6 @@ import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -155,7 +154,7 @@ export default function AttendancePage() {
     if (!selectedEmployeeDetails) return 0;
     return selectedEmployeeDetails.hourlyRate ||
         (selectedEmployeeDetails.dailyRate ? selectedEmployeeDetails.dailyRate / 8 : 0) ||
-        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 26 / 8 : 0);
+        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 22 / 8 : 0);
   }, [selectedEmployeeDetails]);
   
   const overtimePay: number = useMemo(() => {
@@ -179,8 +178,8 @@ export default function AttendancePage() {
          <div/>
         <Button onClick={handleSaveChanges}>Save All Changes</Button>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
           <Card>
             <CardHeader>
               <CardTitle>Select Date</CardTitle>
@@ -194,15 +193,15 @@ export default function AttendancePage() {
             </CardContent>
           </Card>
         </div>
-        <div className="md:col-span-2">
+        <div className="lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>
-                Employee Attendance for {format(selectedDate, "MMMM dd, yyyy")}
+                Employee Attendance
               </CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                     {attendance.map((att) => (
                         <button key={att.employeeId} onClick={() => openDialogForEmployee(att.employeeId)} className="text-left">
                             <Card className="hover:bg-accent transition-colors">
@@ -317,3 +316,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    

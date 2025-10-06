@@ -8,7 +8,6 @@ import { employees, attendanceRecords } from "@/lib/data";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -96,7 +95,7 @@ export default function EmployeeProfilePage() {
     if (!employee) return 0;
     return employee.hourlyRate ||
         (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
-        (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+        (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
   }, [employee]);
 
   const firstAttendanceDate = useMemo(() => {
@@ -211,15 +210,14 @@ export default function EmployeeProfilePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="md:col-span-1 flex flex-col gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1 flex flex-col gap-6">
           <Card>
             <CardHeader className="items-center">
               <Avatar className="w-24 h-24 text-3xl">
                 <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
               </Avatar>
               <CardTitle className="pt-4">{employee.name}</CardTitle>
-              <CardDescription>{employee.position}</CardDescription>
             </CardHeader>
             <CardContent className="text-sm">
                 <div className="grid gap-4">
@@ -260,9 +258,6 @@ export default function EmployeeProfilePage() {
            <Card>
                 <CardHeader>
                     <CardTitle>Payroll Summary</CardTitle>
-                    <div className="text-sm text-muted-foreground">
-                        For {formatPeriod(selectedPeriod, employee)}
-                    </div>
                 </CardHeader>
                 <CardContent className="grid gap-4">
                      <div>
@@ -286,7 +281,7 @@ export default function EmployeeProfilePage() {
                 </CardContent>
             </Card>
         </div>
-        <div className="md:col-span-2">
+        <div className="lg:col-span-2">
           <Card>
             <CardHeader>
               <CardTitle>Attendance History</CardTitle>
@@ -347,3 +342,5 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
+
+    
