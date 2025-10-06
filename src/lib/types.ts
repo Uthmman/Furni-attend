@@ -1,3 +1,4 @@
+
 export type PaymentMethod = "Weekly" | "Monthly";
 
 export interface Employee {
@@ -24,4 +25,12 @@ export interface AttendanceRecord {
   overtimeHours?: number;
 }
 
+export interface PayrollEntry {
+  employeeId: string;
+  employeeName: string;
+  paymentMethod: "Weekly" | "Monthly";
+  period: string;
+  amount: number;
+  status: "Paid" | "Unpaid";
+};
     

@@ -1,3 +1,6 @@
+
+"use client";
+
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
 import { CircleDollarSign } from "lucide-react";
@@ -25,15 +28,9 @@ import {
   endOfMonth,
   parse,
 } from "date-fns";
-
-type PayrollEntry = {
-  employeeId: string;
-  employeeName: string;
-  paymentMethod: "Weekly" | "Monthly";
-  period: string;
-  amount: number;
-  status: "Paid" | "Unpaid";
-};
+import type { PayrollEntry } from "@/lib/types";
+import Link from 'next/link';
+import { useMemo } from 'react';
 
 const calculateHoursWorked = (
   morningEntry?: string,
@@ -68,12 +65,13 @@ const calculateHoursWorked = (
   return Math.max(0, totalHours);
 };
 
+
 const calculateUpcomingPayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
   const today = new Date();
 
   const ethiopianDateFormatter = new Intl.DateTimeFormat(
-    "am-ET-u-ca-ethiopic",
+    "en-US-u-ca-ethiopic",
     {
       year: "numeric",
       month: "long",
@@ -106,15 +104,11 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
           isWithinInterval(new Date(record.date), currentWeek)
       );
 
-      let totalHours = 0;
-      relevantRecords.forEach((record) => {
-        totalHours += calculateHoursWorked(
-          record.morningEntry,
-          record.afternoonEntry
-        );
-      });
+      const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+      const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+      const totalAmount = (totalHours + totalOvertime) * hourlyRate;
 
-      if (totalHours > 0) {
+      if (totalAmount > 0) {
         payroll.push({
           employeeId: employee.id,
           employeeName: employee.name,
@@ -122,7 +116,7 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
           period: `${ethiopianDateFormatter.format(
             currentWeek.start
           )} - ${ethiopianDateFormatter.format(currentWeek.end)}`,
-          amount: totalHours * hourlyRate,
+          amount: totalAmount,
           status: "Unpaid",
         });
       }
@@ -134,24 +128,20 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
           isWithinInterval(new Date(record.date), currentMonth)
       );
 
-      let totalHours = 0;
-      relevantRecords.forEach((record) => {
-        totalHours += calculateHoursWorked(
-          record.morningEntry,
-          record.afternoonEntry
-        );
-      });
+      const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+      const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+      const totalAmount = (totalHours + totalOvertime) * hourlyRate;
 
-      if (totalHours > 0) {
+      if (totalAmount > 0) {
         payroll.push({
           employeeId: employee.id,
           employeeName: employee.name,
           paymentMethod: "Monthly",
-          period: new Intl.DateTimeFormat("am-ET-u-ca-ethiopic", {
+          period: new Intl.DateTimeFormat("en-US-u-ca-ethiopic", {
             year: "numeric",
             month: "long",
           }).format(currentMonth.start),
-          amount: totalHours * hourlyRate,
+          amount: totalAmount,
           status: "Unpaid",
         });
       }
@@ -162,13 +152,13 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
 };
 
 export default function PayrollPage() {
-  const payrollData = calculateUpcomingPayroll();
+  const payrollData = useMemo(() => calculateUpcomingPayroll(), []);
 
   return (
-    <div>
+    <div className="flex flex-col gap-6">
       <PageHeader
         title="Payroll"
-        description="Calculate and process employee payments."
+        description="Calculate and process employee payments for the current period."
       >
         <Button variant="secondary">
           <CircleDollarSign className="mr-2 h-4 w-4" />
@@ -192,10 +182,13 @@ export default function PayrollPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {payrollData.map((entry) => (
+              {payrollData.length > 0 ? (
+                payrollData.map((entry) => (
                 <TableRow key={`${entry.employeeId}-${entry.period}`}>
-                  <TableCell className="font-medium">
-                    {entry.employeeName}
+                  <TableCell>
+                     <Link href={`/employees/${entry.employeeId}`} className="font-medium hover:underline">
+                        {entry.employeeName}
+                     </Link>
                   </TableCell>
                   <TableCell>{entry.period}</TableCell>
                   <TableCell>
@@ -205,19 +198,20 @@ export default function PayrollPage() {
                   <TableCell>
                     <Badge
                       variant={
-                        entry.status === "Paid" ? "default" : "destructive"
+                        entry.status === "Paid" ? "secondary" : "destructive"
                       }
+                      className="capitalize"
                     >
                       {entry.status}
                     </Badge>
                   </TableCell>
                 </TableRow>
-              ))}
-              {payrollData.length === 0 && (
+                ))
+              ) : (
                 <TableRow>
                   <TableCell
                     colSpan={5}
-                    className="text-center text-muted-foreground"
+                    className="h-24 text-center text-muted-foreground"
                   >
                     No upcoming payroll for the current period.
                   </TableCell>
@@ -230,5 +224,3 @@ export default function PayrollPage() {
     </div>
   );
 }
-
-    
