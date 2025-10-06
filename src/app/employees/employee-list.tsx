@@ -8,16 +8,7 @@ import {
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import Link from "next/link";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { ChevronRight, Phone } from "lucide-react";
+import { Phone } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 const getInitials = (name: string) => {
@@ -33,7 +24,7 @@ export function EmployeeList({ employees }: { employees: Employee[] }) {
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {employees.map((employee) => (
         <Link key={employee.id} href={`/employees/${employee.id}`} className="block hover:shadow-lg transition-shadow rounded-xl">
-           <Card className="flex flex-col h-full">
+           <Card className="flex flex-col h-full w-full">
             <CardHeader className="flex-row items-center gap-4">
                 <Avatar className="w-12 h-12">
                   <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
@@ -42,7 +33,6 @@ export function EmployeeList({ employees }: { employees: Employee[] }) {
                     <CardTitle className="text-lg">{employee.name}</CardTitle>
                     <CardDescription>{employee.position}</CardDescription>
                 </div>
-                <ChevronRight className="h-5 w-5 text-muted-foreground" />
             </CardHeader>
              <CardContent className="flex flex-col justify-between flex-grow">
                <div className="text-sm text-muted-foreground space-y-2">
