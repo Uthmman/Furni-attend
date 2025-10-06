@@ -1,5 +1,7 @@
+
+"use client";
+
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
@@ -11,17 +13,27 @@ import { SidebarNav } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
 import { Bell, User } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
+import { PageTitleProvider, usePageTitle } from "@/components/page-title-provider";
 
-export const metadata: Metadata = {
-  title: "FurnishWise",
-  description: "Furniture and Order Management",
-};
-
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  maximumScale: 1,
-  userScalable: false,
+function AppHeader() {
+  const { title } = usePageTitle();
+  return (
+      <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-6">
+        <div className="flex-1">
+          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        </div>
+        <div className="flex items-center gap-4">
+            <Button variant="ghost" size="icon" className="rounded-full">
+                <Bell className="h-5 w-5" />
+                <span className="sr-only">Toggle notifications</span>
+            </Button>
+            <Button variant="ghost" size="icon" className="rounded-full">
+                <User className="h-5 w-5" />
+                <span className="sr-only">User menu</span>
+            </Button>
+        </div>
+    </header>
+  )
 }
 
 export default function RootLayout({
@@ -32,6 +44,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link
           rel="preconnect"
@@ -44,34 +57,22 @@ export default function RootLayout({
         />
       </head>
       <body className={cn("font-body", "min-h-screen w-full bg-background text-foreground")}>
-        <SidebarProvider>
-          <div className="md:flex">
-            <Sidebar className="hidden md:flex border-r">
-              <SidebarNav />
-            </Sidebar>
-            <div className="flex flex-col w-full">
-              <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-6">
-                  <div className="flex-1">
-                    {/* Can add a page title here if needed */}
-                  </div>
-                  <div className="flex items-center gap-4">
-                      <Button variant="ghost" size="icon" className="rounded-full">
-                          <Bell className="h-5 w-5" />
-                          <span className="sr-only">Toggle notifications</span>
-                      </Button>
-                      <Button variant="ghost" size="icon" className="rounded-full">
-                          <User className="h-5 w-5" />
-                          <span className="sr-only">User menu</span>
-                      </Button>
-                  </div>
-              </header>
-              <main className="flex-1 p-6 pb-24 md:pb-8">
-                  {children}
-              </main>
+        <PageTitleProvider>
+          <SidebarProvider>
+            <div className="md:flex">
+              <Sidebar className="hidden md:flex border-r">
+                <SidebarNav />
+              </Sidebar>
+              <div className="flex flex-col w-full">
+                <AppHeader />
+                <main className="flex-1 p-6 pb-24 md:pb-8">
+                    {children}
+                </main>
+              </div>
             </div>
-          </div>
-          <MobileNav />
-        </SidebarProvider>
+            <MobileNav />
+          </SidebarProvider>
+        </PageTitleProvider>
         <Toaster />
       </body>
     </html>

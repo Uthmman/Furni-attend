@@ -1,5 +1,8 @@
+
 'use client';
 
+import { useEffect } from "react";
+import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
 import {
   Card,
@@ -27,7 +30,6 @@ import {
   endOfMonth,
   getDay,
 } from "date-fns";
-import { PageHeader } from "@/components/page-header";
 
 type PayrollEntry = {
   employeeId: string;
@@ -154,21 +156,24 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
 };
 
 export default function DashboardPage() {
+  const { setTitle } = usePageTitle();
   const totalEmployees = employees.length;
   
   const recentPayroll = calculateRecentPayroll();
 
+  useEffect(() => {
+    setTitle("Dashboard");
+  }, [setTitle]);
+
+
   return (
     <div className="flex flex-col gap-8">
-      <PageHeader title="Dashboard" description="An overview of your business" />
-      
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <Link href="/employees" className="hover:shadow-lg transition-shadow rounded-xl">
             <StatCard
             title="Total Employees"
             value={totalEmployees}
             icon={<Users className="size-5 text-muted-foreground" />}
-            description="Number of active employees."
             />
         </Link>
       </div>
@@ -223,5 +228,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    

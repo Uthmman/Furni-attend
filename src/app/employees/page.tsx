@@ -1,4 +1,7 @@
-import { PageHeader } from "@/components/page-header";
+"use client";
+
+import { useEffect } from "react";
+import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import {
@@ -8,17 +11,21 @@ import { EmployeeList } from "./employee-list";
 
 
 export default function EmployeesPage() {
+  const { setTitle } = usePageTitle();
+
+  useEffect(() => {
+    setTitle("Employees");
+  }, [setTitle]);
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Employees"
-        description="Manage employee details and track attendance."
-      >
+       <div className="flex items-center justify-between">
+         <div/>
         <Button>
           <PlusCircle className="mr-2 h-4 w-4" />
           Add Employee
         </Button>
-      </PageHeader>
+      </div>
 
       <EmployeeList employees={initialEmployees} />
     </div>

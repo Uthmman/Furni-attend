@@ -1,15 +1,16 @@
 
 "use client";
 
-import { PageHeader } from "@/components/page-header";
+import { useMemo, useEffect } from 'react';
+import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
-import { CircleDollarSign, User, Calendar, Tag } from "lucide-react";
+import { CircleDollarSign, Calendar } from "lucide-react";
 import {
   Card,
   CardContent,
-  CardFooter,
   CardHeader,
   CardTitle,
+  CardFooter
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { employees, attendanceRecords } from "@/lib/data";
@@ -23,8 +24,6 @@ import {
 } from "date-fns";
 import type { PayrollEntry } from "@/lib/types";
 import Link from 'next/link';
-import { useMemo } from 'react';
-import { Separator } from "@/components/ui/separator";
 
 const calculateHoursWorked = (
   morningEntry?: string,
@@ -152,19 +151,22 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
 };
 
 export default function PayrollPage() {
+  const { setTitle } = usePageTitle();
   const payrollData = useMemo(() => calculateUpcomingPayroll(), []);
+
+  useEffect(() => {
+    setTitle("Payroll");
+  }, [setTitle]);
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Payroll"
-        description="Calculate and process employee payments for the current period."
-      >
+      <div className="flex items-center justify-between">
+        <div />
         <Button variant="secondary">
           <CircleDollarSign className="mr-2 h-4 w-4" />
           Process All Payments
         </Button>
-      </PageHeader>
+      </div>
 
       {payrollData.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -175,7 +177,7 @@ export default function PayrollPage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle>{entry.employeeName}</CardTitle>
-                      <div className="text-sm text-muted-foreground mt-1">
+                       <div className="text-sm text-muted-foreground mt-1">
                         <Badge variant="outline">{entry.paymentMethod}</Badge>
                       </div>
                     </div>
@@ -207,9 +209,10 @@ export default function PayrollPage() {
         </div>
       ) : (
         <div className="flex justify-center items-center h-64 border-2 border-dashed rounded-lg">
-          <p className="text-muted-foreground">
-            No upcoming payroll for the current period.
-          </p>
+          <div className="text-center text-muted-foreground">
+            <CircleDollarSign className="mx-auto h-12 w-12" />
+            <p className="mt-4">No upcoming payroll for the current period.</p>
+          </div>
         </div>
       )}
     </div>

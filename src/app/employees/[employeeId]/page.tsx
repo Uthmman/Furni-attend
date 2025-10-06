@@ -2,8 +2,9 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { usePageTitle } from "@/components/page-title-provider";
 import { employees, attendanceRecords } from "@/lib/data";
-import { PageHeader } from "@/components/page-header";
 import {
   Card,
   CardContent,
@@ -33,7 +34,6 @@ import {
   eachMonthOfInterval,
   isValid,
 } from "date-fns";
-import { useMemo, useState } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -75,6 +75,7 @@ const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): n
 export default function EmployeeProfilePage() {
   const params = useParams();
   const { employeeId } = params;
+  const { setTitle } = usePageTitle();
   const [_copiedValue, copy] = useCopyToClipboard();
 
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
@@ -85,6 +86,12 @@ export default function EmployeeProfilePage() {
     [employeeId]
   );
   
+  useEffect(() => {
+    if (employee) {
+      setTitle(employee.name);
+    }
+  }, [employee, setTitle]);
+
   const hourlyRate = useMemo(() => {
     if (!employee) return 0;
     return employee.hourlyRate ||
@@ -196,8 +203,7 @@ export default function EmployeeProfilePage() {
 
   if (!employee) {
     return (
-      <div>
-        <PageHeader title="Employee Not Found" />
+      <div className="flex flex-col gap-6">
         <p>The requested employee could not be found.</p>
       </div>
     );
@@ -205,8 +211,6 @@ export default function EmployeeProfilePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title={employee.name} description={employee.position || `Profile and attendance for ${employee.name}`} />
-
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-1 flex flex-col gap-6">
           <Card>
@@ -256,9 +260,9 @@ export default function EmployeeProfilePage() {
            <Card>
                 <CardHeader>
                     <CardTitle>Payroll Summary</CardTitle>
-                    <CardDescription>
+                    <div className="text-sm text-muted-foreground">
                         For {formatPeriod(selectedPeriod, employee)}
-                    </CardDescription>
+                    </div>
                 </CardHeader>
                 <CardContent className="grid gap-4">
                      <div>
@@ -286,7 +290,6 @@ export default function EmployeeProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle>Attendance History</CardTitle>
-              <CardDescription>Select a pay period to view attendance.</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
                <div className="flex flex-col gap-4">
@@ -323,7 +326,7 @@ export default function EmployeeProfilePage() {
                             </Badge>
                             </TableCell>
                             <TableCell>{record.morningEntry || "N/A"}</TableCell>
-                            <TableCell>{record.afternoonEntry || "N/A"}</TableCell>
+                            <TableCell>{record.afternoonEntry || "NA"}</TableCell>
                             <TableCell>{record.overtimeHours ? `${record.overtimeHours} hr(s)` : "N/A"}</TableCell>
                         </TableRow>
                         ))
@@ -344,9 +347,3 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
-
-    
-
-    
-
-    

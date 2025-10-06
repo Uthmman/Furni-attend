@@ -1,8 +1,8 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
-import { PageHeader } from "@/components/page-header";
+import { useState, useMemo, useEffect } from "react";
+import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import {
@@ -58,6 +58,7 @@ const getStatusVariant = (status: AttendanceStatus) => {
 
 
 export default function AttendancePage() {
+  const { setTitle } = usePageTitle();
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [attendance, setAttendance] = useState<DailyAttendance[]>(() => {
     return employees.map((emp) => {
@@ -82,6 +83,10 @@ export default function AttendancePage() {
     selectedEmployeeAttendance,
     setSelectedEmployeeAttendance,
   ] = useState<DailyAttendance | null>(null);
+
+  useEffect(() => {
+    setTitle("Log Attendance");
+  }, [setTitle]);
 
   const handleDateSelect = (date: Date | undefined) => {
     if (!date) return;
@@ -170,20 +175,15 @@ export default function AttendancePage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Log Attendance"
-        description="Select a date and click on an employee to log their attendance."
-      >
+       <div className="flex items-center justify-between">
+         <div/>
         <Button onClick={handleSaveChanges}>Save All Changes</Button>
-      </PageHeader>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-1">
           <Card>
             <CardHeader>
               <CardTitle>Select Date</CardTitle>
-              <CardDescription>
-                Pick a day to log attendance for.
-              </CardDescription>
             </CardHeader>
             <CardContent className="flex justify-center">
               <Calendar
@@ -317,5 +317,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
