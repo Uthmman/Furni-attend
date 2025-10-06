@@ -6,13 +6,11 @@ import { Toaster } from "@/components/ui/toaster";
 import {
   SidebarProvider,
   Sidebar,
-  SidebarInset,
-  SidebarTrigger,
 } from "@/components/ui/sidebar";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
-import { Bell, Search, User } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Bell, User } from "lucide-react";
+import { MobileNav } from "@/components/mobile-nav";
 
 export const metadata: Metadata = {
   title: "FurnishWise",
@@ -40,30 +38,32 @@ export default function RootLayout({
       </head>
       <body className={cn("font-body", "min-h-screen w-full bg-background text-foreground")}>
         <SidebarProvider>
-          <Sidebar className="border-r">
-            <SidebarNav />
-          </Sidebar>
-          <div className="flex flex-col w-full">
-            <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-4 md:px-6">
-                <SidebarTrigger className="md:hidden" />
-                <div className="flex-1">
-                  {/* Can add a page title here if needed */}
-                </div>
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" className="rounded-full">
-                        <Bell className="h-5 w-5" />
-                        <span className="sr-only">Toggle notifications</span>
-                    </Button>
-                    <Button variant="ghost" size="icon" className="rounded-full">
-                        <User className="h-5 w-5" />
-                        <span className="sr-only">User menu</span>
-                    </Button>
-                </div>
-            </header>
-            <main className="flex-1 p-4 md:p-6 lg:p-8">
-                {children}
-            </main>
+          <div className="md:flex">
+            <Sidebar className="hidden md:flex border-r">
+              <SidebarNav />
+            </Sidebar>
+            <div className="flex flex-col w-full">
+              <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-4 md:px-6">
+                  <div className="flex-1">
+                    {/* Can add a page title here if needed */}
+                  </div>
+                  <div className="flex items-center gap-4">
+                      <Button variant="ghost" size="icon" className="rounded-full">
+                          <Bell className="h-5 w-5" />
+                          <span className="sr-only">Toggle notifications</span>
+                      </Button>
+                      <Button variant="ghost" size="icon" className="rounded-full">
+                          <User className="h-5 w-5" />
+                          <span className="sr-only">User menu</span>
+                      </Button>
+                  </div>
+              </header>
+              <main className="flex-1 p-4 md:p-6 lg:p-8 pb-24 md:pb-8">
+                  {children}
+              </main>
+            </div>
           </div>
+          <MobileNav />
         </SidebarProvider>
         <Toaster />
       </body>
