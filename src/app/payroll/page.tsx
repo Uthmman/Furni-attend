@@ -3,21 +3,15 @@
 
 import { PageHeader } from "@/components/page-header";
 import { Button } from "@/components/ui/button";
-import { CircleDollarSign } from "lucide-react";
+import { CircleDollarSign, User, Calendar, Tag } from "lucide-react";
 import {
   Card,
   CardContent,
+  CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { employees, attendanceRecords } from "@/lib/data";
 import {
@@ -31,6 +25,7 @@ import {
 import type { PayrollEntry } from "@/lib/types";
 import Link from 'next/link';
 import { useMemo } from 'react';
+import { Separator } from "@/components/ui/separator";
 
 const calculateHoursWorked = (
   morningEntry?: string,
@@ -73,9 +68,15 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
   const ethiopianDateFormatter = new Intl.DateTimeFormat(
     "en-US-u-ca-ethiopic",
     {
-      year: "numeric",
       month: "long",
       day: "numeric",
+    }
+  );
+  
+  const ethiopianYearFormatter = new Intl.DateTimeFormat(
+    "en-US-u-ca-ethiopic",
+    {
+      year: "numeric"
     }
   );
 
@@ -115,7 +116,7 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
           paymentMethod: "Weekly",
           period: `${ethiopianDateFormatter.format(
             currentWeek.start
-          )} - ${ethiopianDateFormatter.format(currentWeek.end)}`,
+          )} - ${ethiopianDateFormatter.format(currentWeek.end)}, ${ethiopianYearFormatter.format(currentWeek.end)}`,
           amount: totalAmount,
           status: "Unpaid",
         });
@@ -166,37 +167,20 @@ export default function PayrollPage() {
         </Button>
       </PageHeader>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Upcoming Payments</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Employee</TableHead>
-                <TableHead>Payment Period</TableHead>
-                <TableHead>Method</TableHead>
-                <TableHead>Amount</TableHead>
-                <TableHead>Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {payrollData.length > 0 ? (
-                payrollData.map((entry) => (
-                <TableRow key={`${entry.employeeId}-${entry.period}`}>
-                  <TableCell>
-                     <Link href={`/employees/${entry.employeeId}`} className="font-medium hover:underline">
-                        {entry.employeeName}
-                     </Link>
-                  </TableCell>
-                  <TableCell>{entry.period}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{entry.paymentMethod}</Badge>
-                  </TableCell>
-                  <TableCell>ETB {entry.amount.toFixed(2)}</TableCell>
-                  <TableCell>
-                    <Badge
+      {payrollData.length > 0 ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {payrollData.map((entry) => (
+            <Link key={`${entry.employeeId}-${entry.period}`} href={`/employees/${entry.employeeId}`} className="block hover:shadow-lg transition-shadow rounded-xl">
+              <Card className="flex flex-col h-full">
+                <CardHeader>
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <CardTitle>{entry.employeeName}</CardTitle>
+                      <CardDescription>
+                        <Badge variant="outline" className="mt-1">{entry.paymentMethod}</Badge>
+                      </CardDescription>
+                    </div>
+                     <Badge
                       variant={
                         entry.status === "Paid" ? "secondary" : "destructive"
                       }
@@ -204,23 +188,31 @@ export default function PayrollPage() {
                     >
                       {entry.status}
                     </Badge>
-                  </TableCell>
-                </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell
-                    colSpan={5}
-                    className="h-24 text-center text-muted-foreground"
-                  >
-                    No upcoming payroll for the current period.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+                  </div>
+                </CardHeader>
+                <CardContent className="flex-grow">
+                    <div className="text-sm text-muted-foreground space-y-2">
+                        <div className="flex items-center gap-2">
+                           <Calendar className="h-4 w-4" />
+                           <span>{entry.period}</span>
+                        </div>
+                    </div>
+                </CardContent>
+                 <CardFooter className="flex flex-col items-start gap-2 pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">Amount Due</p>
+                  <p className="text-2xl font-bold text-primary">ETB {entry.amount.toFixed(2)}</p>
+                </CardFooter>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <div className="flex justify-center items-center h-64 border-2 border-dashed rounded-lg">
+          <p className="text-muted-foreground">
+            No upcoming payroll for the current period.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
