@@ -169,7 +169,7 @@ export default function PayrollPage() {
       </div>
 
       {payrollData.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           {payrollData.map((entry) => (
             <Link key={`${entry.employeeId}-${entry.period}`} href={`/employees/${entry.employeeId}`} className="block hover:shadow-lg transition-shadow rounded-xl">
               <Card className="flex flex-col h-full">

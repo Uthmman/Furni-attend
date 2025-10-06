@@ -21,7 +21,7 @@ const getInitials = (name: string) => {
 
 export function EmployeeList({ employees }: { employees: Employee[] }) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div className="grid grid-cols-1 gap-6">
       {employees.map((employee) => (
         <Link key={employee.id} href={`/employees/${employee.id}`} className="block hover:shadow-lg transition-shadow rounded-xl">
            <Card className="flex flex-col h-full w-full">
