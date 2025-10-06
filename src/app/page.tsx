@@ -159,10 +159,10 @@ export default function DashboardPage() {
   const recentPayroll = calculateRecentPayroll();
 
   return (
-    <div className="flex flex-col gap-4 md:gap-8">
+    <div className="flex flex-col gap-8">
       <PageHeader title="Dashboard" description="An overview of your business" />
       
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 md:gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
         <Link href="/employees" className="hover:shadow-lg transition-shadow rounded-xl">
             <StatCard
             title="Total Employees"
@@ -173,7 +173,7 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 md:gap-8 lg:grid-cols-3">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {recentPayroll.length > 0 && (
           <Card className="lg:col-span-3">
             <CardHeader>
