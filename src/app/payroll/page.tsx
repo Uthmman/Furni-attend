@@ -7,7 +7,7 @@ import { CircleDollarSign, User, Calendar, Tag } from "lucide-react";
 import {
   Card,
   CardContent,
-  CardDescription,
+  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -175,8 +175,8 @@ export default function PayrollPage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle>{entry.employeeName}</CardTitle>
-                      <div className="text-sm text-muted-foreground">
-                        <Badge variant="outline" className="mt-1">{entry.paymentMethod}</Badge>
+                      <div className="text-sm text-muted-foreground mt-1">
+                        <Badge variant="outline">{entry.paymentMethod}</Badge>
                       </div>
                     </div>
                      <Badge
