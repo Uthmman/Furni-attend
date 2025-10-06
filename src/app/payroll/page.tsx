@@ -8,7 +8,6 @@ import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -176,9 +175,9 @@ export default function PayrollPage() {
                   <div className="flex justify-between items-start">
                     <div>
                       <CardTitle>{entry.employeeName}</CardTitle>
-                      <CardDescription>
+                      <div className="text-sm text-muted-foreground">
                         <Badge variant="outline" className="mt-1">{entry.paymentMethod}</Badge>
-                      </CardDescription>
+                      </div>
                     </div>
                      <Badge
                       variant={
