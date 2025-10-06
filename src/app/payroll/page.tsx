@@ -94,7 +94,7 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
     const hourlyRate =
       employee.hourlyRate ||
       (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
-      (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+      (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
 
     if (!hourlyRate) return;
 
@@ -230,3 +230,5 @@ export default function PayrollPage() {
     </div>
   );
 }
+
+    

@@ -12,18 +12,14 @@ import {
 } from "@/components/ui/sidebar";
 import { Logo } from "./logo";
 import {
-  Archive,
   CalendarCheck,
   LayoutDashboard,
-  Package,
   Users,
   Wallet,
 } from "lucide-react";
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/orders", label: "Orders", icon: Package },
-  { href: "/store", label: "Store", icon: Archive },
   { href: "/employees", label: "Employees", icon: Users },
   { href: "/attendance", label: "Attendance", icon: CalendarCheck },
   { href: "/payroll", label: "Payroll", icon: Wallet },
@@ -67,3 +63,5 @@ export function SidebarNav() {
     </>
   );
 }
+
+    

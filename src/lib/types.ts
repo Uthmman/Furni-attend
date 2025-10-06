@@ -1,28 +1,3 @@
-export type OrderStatus = "Pending" | "In Progress" | "Completed" | "Cancelled";
-
-export interface Order {
-  id: string;
-  customerName: string;
-  orderDate: string;
-  status: OrderStatus;
-  description: string;
-  imageUrl: string;
-  imageHint: string;
-  itemsUsed: {
-    itemId: string;
-    quantity: number;
-  }[];
-}
-
-export type UnitOfMeasurement = "piece" | "meter" | "sq. meter" | "liter";
-
-export interface StoreItem {
-  id: string;
-  name: string;
-  stock: number;
-  unit: UnitOfMeasurement;
-}
-
 export type PaymentMethod = "Weekly" | "Monthly";
 
 export interface Employee {
@@ -48,3 +23,5 @@ export interface AttendanceRecord {
   status: AttendanceStatus;
   overtimeHours?: number;
 }
+
+    

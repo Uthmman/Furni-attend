@@ -150,7 +150,7 @@ export default function AttendancePage() {
     if (!selectedEmployeeDetails) return 0;
     return selectedEmployeeDetails.hourlyRate ||
         (selectedEmployeeDetails.dailyRate ? selectedEmployeeDetails.dailyRate / 8 : 0) ||
-        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 22 / 8 : 0);
+        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 26 / 8 : 0);
   }, [selectedEmployeeDetails]);
   
   const overtimePay: number = useMemo(() => {
@@ -317,3 +317,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    
