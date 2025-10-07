@@ -18,17 +18,17 @@ import { PageTitleProvider, usePageTitle } from "@/components/page-title-provide
 function AppHeader() {
   const { title } = usePageTitle();
   return (
-      <header className="sticky top-0 z-10 flex h-16 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-6">
+      <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-4 md:px-6">
         <div className="flex-1">
-          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+          <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
         </div>
-        <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="rounded-full">
-                <Bell className="h-5 w-5" />
+        <div className="flex items-center gap-2 md:gap-4">
+            <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
+                <Bell className="h-4 w-4" />
                 <span className="sr-only">Toggle notifications</span>
             </Button>
-            <Button variant="ghost" size="icon" className="rounded-full">
-                <User className="h-5 w-5" />
+            <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
+                <User className="h-4 w-4" />
                 <span className="sr-only">User menu</span>
             </Button>
         </div>
@@ -59,13 +59,13 @@ export default function RootLayout({
       <body className={cn("font-body", "min-h-screen w-full bg-background text-foreground")}>
         <PageTitleProvider>
           <SidebarProvider>
-            <div className="md:flex">
+            <div className="flex min-h-screen w-full">
               <Sidebar className="hidden md:flex border-r">
                 <SidebarNav />
               </Sidebar>
               <div className="flex flex-col w-full">
                 <AppHeader />
-                <main className="flex-1 p-6 pb-24 md:pb-8">
+                <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
                     {children}
                 </main>
               </div>
