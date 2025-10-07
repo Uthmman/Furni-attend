@@ -10,6 +10,8 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
+import { useIsMobile } from "@/hooks/use-mobile";
+import React from 'react';
 
 const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
@@ -20,6 +22,17 @@ const links = [
 
 export function MobileNav() {
   const pathname = usePathname();
+  const isMobile = useIsMobile();
+  const [hasMounted, setHasMounted] = React.useState(false);
+
+    React.useEffect(() => {
+        setHasMounted(true);
+    }, []);
+
+    if (!hasMounted || !isMobile) {
+        return null;
+    }
+
 
   return (
     <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">

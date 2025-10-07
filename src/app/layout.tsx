@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Bell, User } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { PageTitleProvider, usePageTitle } from "@/components/page-title-provider";
+import { useIsMobile } from "@/hooks/use-mobile";
+import React from "react";
 
 function AppHeader() {
   const { title } = usePageTitle();
@@ -41,6 +43,12 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+   const [hasMounted, setHasMounted] = React.useState(false);
+    React.useEffect(() => {
+        setHasMounted(true);
+    }, []);
+
+
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -60,9 +68,9 @@ export default function RootLayout({
         <PageTitleProvider>
           <SidebarProvider>
             <div className="flex min-h-screen w-full">
-              <Sidebar className="hidden md:flex border-r">
+              {hasMounted && <Sidebar className="hidden md:flex border-r">
                 <SidebarNav />
-              </Sidebar>
+              </Sidebar>}
               <div className="flex flex-col w-full">
                 <AppHeader />
                 <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
@@ -70,7 +78,7 @@ export default function RootLayout({
                 </main>
               </div>
             </div>
-            <MobileNav />
+            {hasMounted && <MobileNav />}
           </SidebarProvider>
         </PageTitleProvider>
         <Toaster />
