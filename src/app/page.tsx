@@ -165,7 +165,8 @@ export default function DashboardPage() {
   }, [setTitle]);
 
   const today = new Date();
-  const ethiopianDay = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { day: 'numeric' }).format(today);
+  const ethiopianDayOfMonth = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { day: 'numeric' }).format(today);
+  const ethiopianDayOfWeek = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { weekday: 'long' }).format(today);
   const ethiopianMonth = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { month: 'long' }).format(today);
   const ethiopianYear = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { year: 'numeric' }).format(today).replace(' ERA1', '');
 
@@ -177,7 +178,10 @@ export default function DashboardPage() {
         <Card className="lg:col-span-2">
             <CardContent className="flex items-center justify-center p-6 text-center">
                 <div className="flex items-baseline gap-4">
-                    <span className="text-8xl font-bold text-primary">{ethiopianDay}</span>
+                    <div className="flex flex-col items-center">
+                        <span className="text-8xl font-bold text-primary">{ethiopianDayOfMonth}</span>
+                        <span className="text-xl text-muted-foreground">{ethiopianDayOfWeek}</span>
+                    </div>
                     <div className="flex flex-col items-start">
                         <span className="text-4xl font-semibold">{ethiopianMonth}</span>
                         <span className="text-2xl text-muted-foreground">{ethiopianYear}</span>
