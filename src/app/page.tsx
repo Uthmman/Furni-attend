@@ -165,16 +165,26 @@ export default function DashboardPage() {
   }, [setTitle]);
 
   const today = new Date();
-  const ethiopianDateFormatter = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
-  const ethiopianDateString = ethiopianDateFormatter.format(today);
+  const ethiopianDay = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { day: 'numeric' }).format(today);
+  const ethiopianMonth = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { month: 'long' }).format(today);
+  const ethiopianYear = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { year: 'numeric' }).format(today).replace(' ERA1', '');
+
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <Card className="lg:col-span-2">
+            <CardContent className="flex items-center justify-center p-6 text-center">
+                <div className="flex items-baseline gap-4">
+                    <span className="text-8xl font-bold text-primary">{ethiopianDay}</span>
+                    <div className="flex flex-col items-start">
+                        <span className="text-4xl font-semibold">{ethiopianMonth}</span>
+                        <span className="text-2xl text-muted-foreground">{ethiopianYear}</span>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
         <Link href="/employees" className="hover:shadow-lg transition-shadow rounded-xl">
             <StatCard
             title="Total Employees"
@@ -182,11 +192,6 @@ export default function DashboardPage() {
             icon={<Users className="size-5 text-muted-foreground" />}
             />
         </Link>
-        <StatCard
-          title="Today's Date"
-          value={ethiopianDateString}
-          icon={<CalendarIcon className="size-5 text-muted-foreground" />}
-        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
