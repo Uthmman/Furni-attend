@@ -160,8 +160,7 @@ export default function DashboardPage() {
   
   const recentPayroll = calculateRecentPayroll();
   
-  const [ethiopianDate, setEthiopianDate] =
-    useEffect(() => {
+  useEffect(() => {
     setTitle("Dashboard");
   }, [setTitle]);
 
