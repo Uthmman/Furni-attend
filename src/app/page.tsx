@@ -7,7 +7,6 @@ import { StatCard } from "@/components/stat-card";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -21,7 +20,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { employees, attendanceRecords } from "@/lib/data";
-import { Users } from "lucide-react";
+import { Users, Calendar as CalendarIcon } from "lucide-react";
 import Link from 'next/link';
 import {
   isWithinInterval,
@@ -160,11 +159,19 @@ export default function DashboardPage() {
   const totalEmployees = employees.length;
   
   const recentPayroll = calculateRecentPayroll();
-
-  useEffect(() => {
+  
+  const [ethiopianDate, setEthiopianDate] =
+    useEffect(() => {
     setTitle("Dashboard");
   }, [setTitle]);
 
+  const today = new Date();
+  const ethiopianDateFormatter = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const ethiopianDateString = ethiopianDateFormatter.format(today);
 
   return (
     <div className="flex flex-col gap-8">
@@ -176,6 +183,11 @@ export default function DashboardPage() {
             icon={<Users className="size-5 text-muted-foreground" />}
             />
         </Link>
+        <StatCard
+          title="Today's Date"
+          value={ethiopianDateString}
+          icon={<CalendarIcon className="size-5 text-muted-foreground" />}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -183,9 +195,6 @@ export default function DashboardPage() {
           <Card className="lg:col-span-3">
             <CardHeader>
               <CardTitle>Upcoming Payroll</CardTitle>
-              <CardDescription>
-                These payments are due within the next 2 days.
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
