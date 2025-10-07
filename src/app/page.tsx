@@ -73,15 +73,20 @@ const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): n
     return Math.max(0, totalHours);
 };
 
+const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+  if (!date || isNaN(date.getTime())) return "";
+  try {
+      return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+  } catch (e) {
+      console.error("Error formatting Ethiopian date:", e);
+      return "Invalid Date";
+  }
+};
+
+
 const calculateRecentPayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
   const today = new Date();
-  
-  const ethiopianDateFormatter = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
 
   const twoDaysFromNow = addDays(today, 2);
 
@@ -121,7 +126,7 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
               employeeId: employee.id,
               employeeName: employee.name,
               paymentMethod: "Weekly",
-              period: `${ethiopianDateFormatter.format(weekPeriod.start)} - ${ethiopianDateFormatter.format(weekPeriod.end)}`,
+              period: `${ethiopianDateFormatter(weekPeriod.start, {day: 'numeric', month: 'short'})} - ${ethiopianDateFormatter(weekPeriod.end, {day: 'numeric', month: 'short', year: 'numeric'})}`,
               amount: totalAmount,
               status: "Unpaid",
               workingDays: relevantRecords.length,
@@ -155,7 +160,7 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
                     employeeId: employee.id,
                     employeeName: employee.name,
                     paymentMethod: "Monthly",
-                    period: new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(monthPeriod.start),
+                    period: ethiopianDateFormatter(monthPeriod.start, { year: 'numeric', month: 'long' }),
                     amount: totalAmount,
                     status: "Unpaid",
                     workingDays: relevantRecords.length,
@@ -229,16 +234,28 @@ export default function DashboardPage() {
   
   const recentPayroll = useMemo(() => calculateRecentPayroll(), []);
   const monthlyExpense = useMemo(() => calculateMonthlyExpense(), []);
+  
+  const upcomingTotals = useMemo(() => {
+    return recentPayroll.reduce((acc, entry) => {
+        if (entry.paymentMethod === 'Weekly') {
+            acc.weekly += entry.amount;
+        } else {
+            acc.monthly += entry.amount;
+        }
+        return acc;
+    }, { weekly: 0, monthly: 0 });
+  }, [recentPayroll]);
+
 
   useEffect(() => {
     setTitle("Dashboard");
   }, [setTitle]);
 
   const today = new Date();
-  const ethiopianDayOfMonth = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { day: 'numeric' }).format(today);
-  const ethiopianDayOfWeek = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { weekday: 'long' }).format(today);
-  const ethiopianMonth = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { month: 'long' }).format(today);
-  const ethiopianYear = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { year: 'numeric' }).format(today).replace(' ERA1', '');
+  const ethiopianDayOfMonth = ethiopianDateFormatter(today, { day: 'numeric' });
+  const ethiopianDayOfWeek = ethiopianDateFormatter(today, { weekday: 'long' });
+  const ethiopianMonth = ethiopianDateFormatter(today, { month: 'long' });
+  const ethiopianYear = ethiopianDateFormatter(today, { year: 'numeric' }).replace(' ERA1', '');
 
 
   return (
@@ -258,7 +275,7 @@ export default function DashboardPage() {
                 </div>
             </CardContent>
         </Card>
-        <div className="flex flex-col gap-8">
+        <div className="grid grid-cols-2 lg:grid-cols-1 gap-8">
              <Link href="/employees" className="hover:shadow-lg transition-shadow rounded-xl">
                 <StatCard
                 title="Total Employees"
@@ -266,7 +283,7 @@ export default function DashboardPage() {
                 icon={<Users className="size-5 text-muted-foreground" />}
                 />
             </Link>
-             <Card className="hover:shadow-lg transition-shadow rounded-xl">
+             <Card className="hover:shadow-lg transition-shadow rounded-xl col-span-2 lg:col-span-1">
                 <CardHeader>
                     <CardTitle className="text-base font-semibold flex items-center justify-between">
                         Monthly Expense
@@ -286,15 +303,27 @@ export default function DashboardPage() {
             </Card>
         </div>
       </div>
+      
+       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <StatCard
+          title="Upcoming Weekly Payout"
+          value={`ETB ${upcomingTotals.weekly.toFixed(2)}`}
+          icon={<Wallet className="size-5 text-muted-foreground" />}
+          description="Total for current week"
+        />
+        <StatCard
+          title="Upcoming Monthly Payout"
+          value={`ETB ${upcomingTotals.monthly.toFixed(2)}`}
+          icon={<Wallet className="size-5 text-muted-foreground" />}
+          description="Total for current month"
+        />
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {recentPayroll.length > 0 && (
           <Card className="lg:col-span-3">
             <CardHeader>
               <CardTitle>Upcoming Payroll</CardTitle>
-              <CardDescription>
-                Payments due in the current week or month.
-              </CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
