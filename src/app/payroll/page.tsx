@@ -10,7 +10,8 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
-  CardFooter
+  CardFooter,
+  CardDescription
 } from "@/components/ui/card";
 import {
     Table,
@@ -31,7 +32,8 @@ import {
   parse,
   eachMonthOfInterval,
   subMonths,
-  format,
+  eachWeekOfInterval,
+  subWeeks,
 } from "date-fns";
 import type { PayrollEntry } from "@/lib/types";
 import Link from 'next/link';
@@ -73,21 +75,10 @@ const calculateHoursWorked = (
 const calculateUpcomingPayroll = (): PayrollEntry[] => {
   const payroll: PayrollEntry[] = [];
   const today = new Date();
-
-  const ethiopianDateFormatter = new Intl.DateTimeFormat(
-    "en-US-u-ca-ethiopic",
-    {
-      month: "long",
-      day: "numeric",
-    }
-  );
   
-  const ethiopianYearFormatter = new Intl.DateTimeFormat(
-    "en-US-u-ca-ethiopic",
-    {
-      year: "numeric"
-    }
-  );
+  const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+    return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+  };
 
   const currentWeek = {
     start: startOfWeek(today, { weekStartsOn: 1 }),
@@ -102,7 +93,7 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
     const hourlyRate =
       employee.hourlyRate ||
       (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
-      (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+      (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
 
     if (!hourlyRate) return;
 
@@ -123,9 +114,7 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
           employeeId: employee.id,
           employeeName: employee.name,
           paymentMethod: "Weekly",
-          period: `${ethiopianDateFormatter.format(
-            currentWeek.start
-          )} - ${ethiopianDateFormatter.format(currentWeek.end)}, ${ethiopianYearFormatter.format(currentWeek.end)}`,
+          period: `${ethiopianDateFormatter(currentWeek.start, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(currentWeek.end, { day: 'numeric', month: 'short', year: 'numeric' })}`,
           amount: totalAmount,
           status: "Unpaid",
         });
@@ -147,10 +136,7 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
           employeeId: employee.id,
           employeeName: employee.name,
           paymentMethod: "Monthly",
-          period: new Intl.DateTimeFormat("en-US-u-ca-ethiopic", {
-            year: "numeric",
-            month: "long",
-          }).format(currentMonth.start),
+          period: ethiopianDateFormatter(currentMonth.start, { year: "numeric", month: "long" }),
           amount: totalAmount,
           status: "Unpaid",
         });
@@ -162,13 +148,20 @@ const calculateUpcomingPayroll = (): PayrollEntry[] => {
 };
 
 const calculatePayrollHistory = () => {
-    const history: { period: string, totalAmount: number }[] = [];
-    if (attendanceRecords.length === 0) return history;
+    const monthlyHistory: { period: string, totalAmount: number }[] = [];
+    const weeklyHistory: { period: string, totalAmount: number }[] = [];
+
+    if (attendanceRecords.length === 0) return { monthlyHistory, weeklyHistory };
 
     const firstRecordDate = attendanceRecords.reduce((earliest, current) => 
         new Date(current.date) < new Date(earliest.date) ? current : earliest
     ).date;
+    
+    const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+        return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+    };
 
+    // Monthly History
     const months = eachMonthOfInterval({
         start: startOfMonth(new Date(firstRecordDate)),
         end: subMonths(new Date(), 1)
@@ -179,18 +172,14 @@ const calculatePayrollHistory = () => {
         const period = { start: monthStart, end: monthEnd };
         
         let monthTotal = 0;
-        employees.forEach(employee => {
-            const hourlyRate = employee.hourlyRate || 
-              (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
-              (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
-            
+        employees.filter(e => e.paymentMethod === 'Monthly').forEach(employee => {
+            const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
             if(!hourlyRate) return;
 
-            const relevantRecords = attendanceRecords.filter(
-                (record) =>
-                record.employeeId === employee.id &&
-                (record.status === "Present" || record.status === "Late") &&
-                isWithinInterval(new Date(record.date), period)
+            const relevantRecords = attendanceRecords.filter(r =>
+                r.employeeId === employee.id &&
+                (r.status === "Present" || r.status === "Late") &&
+                isWithinInterval(new Date(r.date), period)
             );
             
             const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
@@ -199,20 +188,55 @@ const calculatePayrollHistory = () => {
         });
 
         if (monthTotal > 0) {
-            history.push({
-                period: format(monthStart, "MMMM yyyy"),
+            monthlyHistory.push({
+                period: ethiopianDateFormatter(monthStart, { month: 'long', year: 'numeric' }),
                 totalAmount: monthTotal
             });
         }
     });
 
-    return history;
+    // Weekly History
+    const weeks = eachWeekOfInterval({
+        start: startOfWeek(new Date(firstRecordDate), { weekStartsOn: 1 }),
+        end: subWeeks(new Date(), 1)
+    }, { weekStartsOn: 1 });
+
+    weeks.reverse().forEach(weekStart => {
+        const weekEnd = endOfWeek(weekStart, { weekStartsOn: 1 });
+        const period = { start: weekStart, end: weekEnd };
+
+        let weekTotal = 0;
+        employees.filter(e => e.paymentMethod === 'Weekly').forEach(employee => {
+            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
+             if(!hourlyRate) return;
+
+            const relevantRecords = attendanceRecords.filter(r =>
+                r.employeeId === employee.id &&
+                (r.status === "Present" || r.status === "Late") &&
+                isWithinInterval(new Date(r.date), period)
+            );
+
+            const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+            const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+            weekTotal += (totalHours + totalOvertime) * hourlyRate;
+        });
+
+        if (weekTotal > 0) {
+            weeklyHistory.push({
+                period: `${ethiopianDateFormatter(weekStart, {day: 'numeric', month: 'short'})} - ${ethiopianDateFormatter(weekEnd, {day: 'numeric', month: 'short', year: 'numeric'})}`,
+                totalAmount: weekTotal
+            });
+        }
+    });
+
+
+    return { monthlyHistory, weeklyHistory };
 }
 
 export default function PayrollPage() {
   const { setTitle } = usePageTitle();
   const payrollData = useMemo(() => calculateUpcomingPayroll(), []);
-  const payrollHistory = useMemo(() => calculatePayrollHistory(), []);
+  const { monthlyHistory, weeklyHistory } = useMemo(() => calculatePayrollHistory(), []);
 
   useEffect(() => {
     setTitle("Payroll");
@@ -233,7 +257,7 @@ export default function PayrollPage() {
                 <div className="grid grid-cols-1 gap-6">
                 {payrollData.map((entry) => (
                     <Link key={`${entry.employeeId}-${entry.period}`} href={`/employees/${entry.employeeId}`} className="block hover:shadow-lg transition-shadow rounded-xl">
-                    <Card className="flex flex-col h-full">
+                    <Card className="flex flex-col h-full w-full">
                         <CardHeader>
                         <div className="flex justify-between items-start">
                             <div>
@@ -278,14 +302,14 @@ export default function PayrollPage() {
             )}
         </div>
         
-        <div>
-            <h2 className="text-2xl font-semibold tracking-tight mb-6">Payroll History</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <Card>
                 <CardHeader>
-                    <CardTitle>Monthly Expense Summary</CardTitle>
+                    <CardTitle>Monthly Payroll History</CardTitle>
+                    <CardDescription>Summary of total monthly payments.</CardDescription>
                 </CardHeader>
                 <CardContent>
-                    {payrollHistory.length > 0 ? (
+                    {monthlyHistory.length > 0 ? (
                         <Table>
                             <TableHeader>
                                 <TableRow>
@@ -294,7 +318,7 @@ export default function PayrollPage() {
                                 </TableRow>
                             </TableHeader>
                             <TableBody>
-                                {payrollHistory.map((item) => (
+                                {monthlyHistory.map((item) => (
                                     <TableRow key={item.period}>
                                         <TableCell className="font-medium">{item.period}</TableCell>
                                         <TableCell className="text-right font-mono">ETB {item.totalAmount.toFixed(2)}</TableCell>
@@ -306,7 +330,40 @@ export default function PayrollPage() {
                          <div className="flex justify-center items-center h-48">
                             <div className="text-center text-muted-foreground">
                                 <History className="mx-auto h-12 w-12" />
-                                <p className="mt-4">No payroll history available yet.</p>
+                                <p className="mt-4">No monthly payroll history available.</p>
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Weekly Payroll History</CardTitle>
+                     <CardDescription>Summary of total weekly payments.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {weeklyHistory.length > 0 ? (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Period</TableHead>
+                                    <TableHead className="text-right">Total Amount</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {weeklyHistory.map((item) => (
+                                    <TableRow key={item.period}>
+                                        <TableCell className="font-medium">{item.period}</TableCell>
+                                        <TableCell className="text-right font-mono">ETB {item.totalAmount.toFixed(2)}</TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
+                    ) : (
+                         <div className="flex justify-center items-center h-48">
+                            <div className="text-center text-muted-foreground">
+                                <History className="mx-auto h-12 w-12" />
+                                <p className="mt-4">No weekly payroll history available.</p>
                             </div>
                         </div>
                     )}

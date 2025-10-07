@@ -70,6 +70,16 @@ const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): n
     return Math.max(0, totalHours);
 };
 
+const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+  if (!isValid(date)) return "Invalid Date";
+  try {
+      return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+  } catch (e) {
+      console.error("Error formatting Ethiopian date:", e);
+      return "Invalid Date";
+  }
+};
+
 
 export default function EmployeeProfilePage() {
   const params = useParams();
@@ -81,7 +91,7 @@ export default function EmployeeProfilePage() {
 
   const employee = employees.find((e) => e.id === employeeId);
   const employeeAttendance = useMemo(() => 
-    attendanceRecords.filter((r) => r.employeeId === employeeId),
+    attendanceRecords.filter((r) => r.employeeId === employeeId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
     [employeeId]
   );
   
@@ -100,21 +110,9 @@ export default function EmployeeProfilePage() {
 
   const firstAttendanceDate = useMemo(() => {
     if (employeeAttendance.length === 0) return new Date();
-    const earliestRecord = employeeAttendance.reduce((earliest, current) => {
-      const currentDate = new Date(current.date);
-      return currentDate < new Date(earliest.date) ? current : earliest;
-    });
-    return new Date(earliestRecord.date);
+    // Since it's sorted descending, last element is the earliest
+    return new Date(employeeAttendance[employeeAttendance.length - 1].date);
   }, [employeeAttendance]);
-
-  const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
-    if (!isValid(date)) return "Invalid Date";
-    try {
-        return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
-    } catch (e) {
-        return "Invalid Date";
-    }
-  };
 
   const periodOptions = useMemo(() => {
     if (!employee || !isValid(firstAttendanceDate)) return [];
@@ -126,18 +124,17 @@ export default function EmployeeProfilePage() {
     if (employee.paymentMethod === 'Monthly') {
       const months = eachMonthOfInterval(interval);
       months.reverse().forEach(monthStart => {
-        const period = { start: startOfMonth(monthStart), end: endOfMonth(monthStart) };
         options.push({
-          value: period.start.toISOString(),
-          label: ethiopianDateFormatter(period.start, { month: 'long', year: 'numeric' })
+          value: monthStart.toISOString(),
+          label: ethiopianDateFormatter(monthStart, { month: 'long', year: 'numeric' })
         });
       });
     } else { // Weekly
       const weeks = eachWeekOfInterval(interval, { weekStartsOn: 1 });
       weeks.reverse().forEach(weekStart => {
         const period = { start: startOfWeek(weekStart, { weekStartsOn: 1 }), end: endOfWeek(weekStart, { weekStartsOn: 1 }) };
-        const startDay = ethiopianDateFormatter(period.start, { day: 'numeric', month: 'long' });
-        const endDay = ethiopianDateFormatter(period.end, { day: 'numeric', month: 'long', year: 'numeric' });
+        const startDay = ethiopianDateFormatter(period.start, { day: 'numeric', month: 'short' });
+        const endDay = ethiopianDateFormatter(period.end, { day: 'numeric', month: 'short', year: 'numeric' });
         options.push({
           value: period.start.toISOString(),
           label: `${startDay} - ${endDay}`
@@ -183,30 +180,11 @@ export default function EmployeeProfilePage() {
     return {
       hours: totalHours,
       amount: baseAmount,
-      daysWorked: totalHours / 8,
+      daysWorked: relevantRecords.length,
       overtimePay: overtimePay,
       totalAmount: totalAmount
     };
   }, [employee, filteredAttendance, hourlyRate]);
-  
-  const formatPeriod = (periodValue: string | undefined, employee: Employee) => {
-      if (!periodValue) return "N/A";
-      const startDate = new Date(periodValue);
-       if (employee.paymentMethod === 'Weekly') {
-          const start = startOfWeek(startDate, { weekStartsOn: 1 });
-          const end = endOfWeek(startDate, { weekStartsOn: 1 });
-          return `${ethiopianDateFormatter(start, { day: 'numeric', month: 'long' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'long', year: 'numeric' })}`;
-      }
-      return ethiopianDateFormatter(startDate, { month: 'long', year: 'numeric' });
-  }
-
-  if (!employee) {
-    return (
-      <div className="flex flex-col gap-6">
-        <p>The requested employee could not be found.</p>
-      </div>
-    );
-  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -262,7 +240,7 @@ export default function EmployeeProfilePage() {
                 <CardContent className="grid gap-4">
                      <div>
                         <p className="font-semibold">Total Days Worked</p>
-                        <p className="text-2xl font-bold">{payrollData.daysWorked.toFixed(2)}</p>
+                        <p className="text-2xl font-bold">{payrollData.daysWorked.toFixed(0)}</p>
                     </div>
                     <div>
                         <p className="font-semibold">Total Hours Worked</p>
@@ -314,14 +292,14 @@ export default function EmployeeProfilePage() {
                     {filteredAttendance.length > 0 ? (
                         filteredAttendance.map((record) => (
                         <TableRow key={record.id}>
-                            <TableCell>{ethiopianDateFormatter(new Date(record.date), { weekday: 'short', day: 'numeric' })}</TableCell>
+                            <TableCell>{ethiopianDateFormatter(new Date(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}</TableCell>
                             <TableCell>
                             <Badge variant={record.status === 'Absent' ? 'destructive' : 'secondary'}>
                                 {record.status}
                             </Badge>
                             </TableCell>
                             <TableCell>{record.morningEntry || "N/A"}</TableCell>
-                            <TableCell>{record.afternoonEntry || "NA"}</TableCell>
+                            <TableCell>{record.afternoonEntry || "N/A"}</TableCell>
                             <TableCell>{record.overtimeHours ? `${record.overtimeHours} hr(s)` : "N/A"}</TableCell>
                         </TableRow>
                         ))
@@ -342,5 +320,3 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
-
-    

@@ -33,6 +33,8 @@ import {
   getDaysInMonth,
   isWeekend,
   differenceInDays,
+  startOfWeek,
+  endOfWeek,
 } from "date-fns";
 
 type PayrollEntry = {
@@ -86,16 +88,16 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
   employees.forEach((employee) => {
     const hourlyRate = employee.hourlyRate || 
       (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
-      (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+      (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
 
     if (!hourlyRate) return;
 
     if (employee.paymentMethod === "Weekly") {
-      const isPaymentDayApproaching = isWithinInterval(addDays(today, 2), { start: today, end: addDays(today, 2) }) && getDay(addDays(today,2)) === 6;
+      const isPaymentDayApproaching = getDay(today) >= 4; // Thursday, Friday, Saturday
 
       if (isPaymentDayApproaching) {
-        const weekStart = addDays(today, -getDay(today));
-        const weekEnd = addDays(weekStart, 6);
+        const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
         const weekPeriod = { start: weekStart, end: weekEnd };
 
          const relevantRecords = attendanceRecords.filter(
@@ -109,14 +111,18 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
           relevantRecords.forEach(record => {
               totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
           });
+          
+          const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+          const totalAmount = (totalHours + totalOvertime) * hourlyRate;
 
-          if (totalHours > 0) {
+
+          if (totalAmount > 0) {
             payroll.push({
               employeeId: employee.id,
               employeeName: employee.name,
               paymentMethod: "Weekly",
               period: `${ethiopianDateFormatter.format(weekPeriod.start)} - ${ethiopianDateFormatter.format(weekPeriod.end)}`,
-              amount: totalHours * hourlyRate,
+              amount: totalAmount,
               status: "Unpaid",
               workingDays: relevantRecords.length,
             });
@@ -124,10 +130,10 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
       }
     } else if (employee.paymentMethod === "Monthly") {
         const endOfMonthDate = endOfMonth(today);
-        const isEndOfMonth = isWithinInterval(endOfMonthDate, { start: today, end: twoDaysFromNow });
+        const isEndOfMonth = differenceInDays(endOfMonthDate, today) <= 3;
 
         if(isEndOfMonth) {
-            const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+            const monthStart = startOfMonth(today);
             const monthPeriod = { start: monthStart, end: endOfMonthDate };
             const relevantRecords = attendanceRecords.filter(
                 (record) =>
@@ -140,14 +146,17 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
             relevantRecords.forEach(record => {
                 totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
             });
+            
+            const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+            const totalAmount = (totalHours + totalOvertime) * hourlyRate;
 
-            if(totalHours > 0) {
+            if(totalAmount > 0) {
                  payroll.push({
                     employeeId: employee.id,
                     employeeName: employee.name,
                     paymentMethod: "Monthly",
                     period: new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { year: 'numeric', month: 'long' }).format(monthPeriod.start),
-                    amount: totalHours * hourlyRate,
+                    amount: totalAmount,
                     status: "Unpaid",
                     workingDays: relevantRecords.length,
                 });
@@ -163,7 +172,6 @@ const calculateMonthlyExpense = () => {
     const today = new Date();
     const monthStart = startOfMonth(today);
     const monthEnd = endOfMonth(today);
-    const period = { start: monthStart, end: monthEnd };
 
     let actualAmount = 0;
     
@@ -271,7 +279,7 @@ export default function DashboardPage() {
                         <p className="text-2xl font-bold">ETB {monthlyExpense.estimated.toFixed(2)}</p>
                     </div>
                      <div>
-                        <p className="text-xs text-muted-foreground">Actual Paid so far</p>
+                        <p className="text-xs text-muted-foreground">Actual to Date</p>
                         <p className="text-lg font-semibold text-primary">ETB {monthlyExpense.actual.toFixed(2)}</p>
                     </div>
                 </CardContent>
@@ -284,12 +292,16 @@ export default function DashboardPage() {
           <Card className="lg:col-span-3">
             <CardHeader>
               <CardTitle>Upcoming Payroll</CardTitle>
+              <CardDescription>
+                Payments due in the current week or month.
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <Table>
                 <TableHeader>
                   <TableRow>
                     <TableHead>Employee</TableHead>
+                    <TableHead>Period</TableHead>
                     <TableHead>Days Worked</TableHead>
                     <TableHead>Amount</TableHead>
                     <TableHead>Status</TableHead>
@@ -299,17 +311,18 @@ export default function DashboardPage() {
                   {recentPayroll.map((entry) => (
                     <TableRow key={`${entry.employeeId}-${entry.period}`}>
                       <TableCell>
-                        <div className="font-medium">{entry.employeeName}</div>
+                        <Link href={`/employees/${entry.employeeId}`} className="font-medium hover:underline">{entry.employeeName}</Link>
                         <div className="text-sm text-muted-foreground">
                           {entry.paymentMethod}
                         </div>
                       </TableCell>
+                      <TableCell>{entry.period}</TableCell>
                       <TableCell>{entry.workingDays}</TableCell>
                       <TableCell>ETB {entry.amount.toFixed(2)}</TableCell>
                       <TableCell>
                         <Badge
                           variant={
-                            entry.status === "Paid" ? "default" : "destructive"
+                            entry.status === "Paid" ? "secondary" : "destructive"
                           }
                         >
                           {entry.status}
