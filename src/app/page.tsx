@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
 import {
@@ -9,6 +9,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from "@/components/ui/card";
 import {
   Table,
@@ -20,7 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { employees, attendanceRecords } from "@/lib/data";
-import { Users, Calendar as CalendarIcon } from "lucide-react";
+import { Users, Wallet } from "lucide-react";
 import Link from 'next/link';
 import {
   isWithinInterval,
@@ -28,6 +29,10 @@ import {
   parse,
   endOfMonth,
   getDay,
+  startOfMonth,
+  getDaysInMonth,
+  isWeekend,
+  differenceInDays,
 } from "date-fns";
 
 type PayrollEntry = {
@@ -154,12 +159,69 @@ const calculateRecentPayroll = (): PayrollEntry[] => {
   return payroll.filter((p) => p.amount > 0);
 };
 
+const calculateMonthlyExpense = () => {
+    const today = new Date();
+    const monthStart = startOfMonth(today);
+    const monthEnd = endOfMonth(today);
+    const period = { start: monthStart, end: monthEnd };
+
+    let actualAmount = 0;
+    
+    // Calculate actual expense from records so far
+    employees.forEach(employee => {
+        const hourlyRate = employee.hourlyRate || 
+            (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
+            (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+        if(!hourlyRate) return;
+
+        const relevantRecords = attendanceRecords.filter(
+            (record) =>
+            record.employeeId === employee.id &&
+            isWithinInterval(new Date(record.date), {start: monthStart, end: today}) &&
+            (record.status === "Present" || record.status === "Late")
+        );
+
+        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+        const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+        actualAmount += (totalHours + totalOvertime) * hourlyRate;
+    });
+
+    // Calculate estimated expense for the rest of the month
+    let estimatedFutureAmount = 0;
+    const remainingDays = differenceInDays(monthEnd, today);
+    
+    if(remainingDays > 0) {
+        let remainingWorkdays = 0;
+        for (let i = 1; i <= remainingDays; i++) {
+            const date = addDays(today, i);
+            if (!isWeekend(date)) {
+                remainingWorkdays++;
+            }
+        }
+        
+        employees.forEach(employee => {
+            const dailyRate = employee.dailyRate || 
+                (employee.monthlyRate ? employee.monthlyRate / 22 : 0) ||
+                (employee.hourlyRate ? employee.hourlyRate * 8 : 0);
+            if(dailyRate) {
+                estimatedFutureAmount += dailyRate * remainingWorkdays;
+            }
+        });
+    }
+
+    return {
+        actual: actualAmount,
+        estimated: actualAmount + estimatedFutureAmount
+    };
+};
+
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const totalEmployees = employees.length;
   
-  const recentPayroll = calculateRecentPayroll();
-  
+  const recentPayroll = useMemo(() => calculateRecentPayroll(), []);
+  const monthlyExpense = useMemo(() => calculateMonthlyExpense(), []);
+
   useEffect(() => {
     setTitle("Dashboard");
   }, [setTitle]);
@@ -173,7 +235,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8">
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <Card className="lg:col-span-2">
             <CardContent className="flex items-center justify-center p-6 text-center">
@@ -189,13 +250,33 @@ export default function DashboardPage() {
                 </div>
             </CardContent>
         </Card>
-        <Link href="/employees" className="hover:shadow-lg transition-shadow rounded-xl">
-            <StatCard
-            title="Total Employees"
-            value={totalEmployees}
-            icon={<Users className="size-5 text-muted-foreground" />}
-            />
-        </Link>
+        <div className="flex flex-col gap-8">
+             <Link href="/employees" className="hover:shadow-lg transition-shadow rounded-xl">
+                <StatCard
+                title="Total Employees"
+                value={totalEmployees}
+                icon={<Users className="size-5 text-muted-foreground" />}
+                />
+            </Link>
+             <Card className="hover:shadow-lg transition-shadow rounded-xl">
+                <CardHeader>
+                    <CardTitle className="text-base font-semibold flex items-center justify-between">
+                        Monthly Expense
+                        <Wallet className="size-5 text-muted-foreground" />
+                    </CardTitle>
+                </CardHeader>
+                 <CardContent className="flex flex-col gap-2">
+                    <div>
+                        <p className="text-xs text-muted-foreground">Estimated Total</p>
+                        <p className="text-2xl font-bold">ETB {monthlyExpense.estimated.toFixed(2)}</p>
+                    </div>
+                     <div>
+                        <p className="text-xs text-muted-foreground">Actual Paid so far</p>
+                        <p className="text-lg font-semibold text-primary">ETB {monthlyExpense.actual.toFixed(2)}</p>
+                    </div>
+                </CardContent>
+            </Card>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
