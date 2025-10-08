@@ -33,7 +33,8 @@ import type { Employee } from "@/lib/types";
 import { useFirestore } from "@/firebase";
 import { collection, addDoc, doc, setDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { Loader2 } from "lucide-react";
 
 const employeeSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -58,6 +59,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
   const firestore = useFirestore();
   const { toast } = useToast();
   const isEditMode = !!employee;
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const form = useForm<EmployeeFormValues>({
     resolver: zodResolver(employeeSchema),
@@ -92,6 +94,8 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
 
 
   const onSubmit = async (data: EmployeeFormValues) => {
+    if (!firestore) return;
+    setIsSubmitting(true);
     try {
       if (isEditMode && employee?.id) {
         const employeeRef = doc(firestore, "employees", employee.id);
@@ -116,6 +120,8 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
         title: "Something went wrong",
         description: "Could not save employee data. Please try again.",
       });
+    } finally {
+        setIsSubmitting(false);
     }
   };
 
@@ -251,11 +257,18 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
 
             <DialogFooter className="pt-4">
               <DialogClose asChild>
-                <Button type="button" variant="outline">
+                <Button type="button" variant="outline" disabled={isSubmitting}>
                   Cancel
                 </Button>
               </DialogClose>
-              <Button type="submit">Save Employee</Button>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                    <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Saving...
+                    </>
+                ) : "Save Employee"}
+              </Button>
             </DialogFooter>
           </form>
         </Form>
@@ -263,5 +276,3 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
     </Dialog>
   );
 }
-
-    

@@ -32,7 +32,7 @@ import type { AttendanceRecord, Employee } from "@/lib/types";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore } from "@/firebase";
-import { collection, doc, writeBatch, type CollectionReference } from "firebase/firestore";
+import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 
 type DailyAttendance = {
   employeeId: string;
@@ -59,13 +59,17 @@ const getStatusVariant = (status: "Present" | "Absent" | "Late") => {
 export default function AttendancePage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
-  const { data: employees, loading: employeesLoading } = useCollection(collection(firestore, 'employees') as CollectionReference<Employee>);
+  
+  const employeesCollectionRef = useMemo(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
+  
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
-  const formattedDate = format(selectedDate, "yyyy-MM-dd");
-  const attendanceCollectionRef = useMemo(() => {
+  const formattedDate = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
+  
+  const attendanceCollectionRef: Query<AttendanceRecord> | null = useMemo(() => {
     if (!firestore) return null;
-    return collection(firestore, 'attendance', formattedDate, 'records');
+    return collection(firestore, 'attendance', formattedDate, 'records') as Query<AttendanceRecord>;
   }, [firestore, formattedDate]);
 
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
@@ -337,5 +341,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
