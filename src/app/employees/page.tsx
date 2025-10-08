@@ -6,7 +6,7 @@ import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import { EmployeeList } from "./employee-list";
-import { useCollection } from "@/firebase";
+import { useCollection, useFirestore } from "@/firebase";
 import { collection } from "firebase/firestore";
 
 
