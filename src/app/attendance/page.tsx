@@ -28,22 +28,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { AttendanceRecord, AttendanceStatus, Employee } from "@/lib/types";
+import type { AttendanceRecord, Employee } from "@/lib/types";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore } from "@/firebase";
-import { collection, doc, writeBatch } from "firebase/firestore";
+import { collection, doc, writeBatch, type CollectionReference } from "firebase/firestore";
 
 type DailyAttendance = {
   employeeId: string;
   employeeName: string;
-  status: AttendanceStatus;
+  status: "Present" | "Absent" | "Late";
   morningEntry?: string;
   afternoonEntry?: string;
   overtimeHours?: number;
 };
 
-const getStatusVariant = (status: AttendanceStatus) => {
+const getStatusVariant = (status: "Present" | "Absent" | "Late") => {
   switch (status) {
     case "Present":
     case "Late":
@@ -59,13 +59,16 @@ const getStatusVariant = (status: AttendanceStatus) => {
 export default function AttendancePage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
-  const { data: employees, loading: employeesLoading } = useCollection(collection(firestore, 'employees'));
+  const { data: employees, loading: employeesLoading } = useCollection(collection(firestore, 'employees') as CollectionReference<Employee>);
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
   const formattedDate = format(selectedDate, "yyyy-MM-dd");
-  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(
-      collection(firestore, 'attendance', formattedDate, 'records')
-  );
+  const attendanceCollectionRef = useMemo(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'attendance', formattedDate, 'records');
+  }, [firestore, formattedDate]);
+
+  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
 
   const [attendance, setAttendance] = useState<DailyAttendance[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -93,7 +96,7 @@ export default function AttendancePage() {
       });
       setAttendance(dailyAttendance);
     }
-  }, [employees, attendanceRecords, selectedDate]);
+  }, [employees, attendanceRecords]);
 
 
   const handleDateSelect = (date: Date | undefined) => {
@@ -156,6 +159,7 @@ export default function AttendancePage() {
 
 
   const handleSaveChanges = async () => {
+    if (!firestore) return;
     const batch = writeBatch(firestore);
     const dateStr = format(selectedDate, "yyyy-MM-dd");
 
@@ -163,7 +167,7 @@ export default function AttendancePage() {
         const recordRef = doc(firestore, 'attendance', dateStr, 'records', att.employeeId);
         const employeeAttendanceRef = doc(firestore, 'employees', att.employeeId, 'attendance', dateStr);
 
-        const record: Omit<AttendanceRecord, 'id'> = {
+        const record: Omit<AttendanceRecord, 'id' | 'date'> & { date: string } = {
             employeeId: att.employeeId,
             date: selectedDate.toISOString(),
             status: att.status,
@@ -252,7 +256,7 @@ export default function AttendancePage() {
                 </Label>
                 <Select
                   value={selectedEmployeeAttendance.status}
-                  onValueChange={(value) =>
+                  onValueChange={(value: "Present" | "Absent" | "Late") =>
                     handleDialogInputChange("status", value)
                   }
                 >
@@ -333,3 +337,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    

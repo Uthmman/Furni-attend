@@ -88,12 +88,17 @@ export default function DashboardPage() {
   const { data: employees, loading: employeesLoading } = useCollection(collection(firestore, 'employees'));
   
   const today = new Date();
-  const twoDaysFromNow = addDays(today, 2);
   const monthStart = startOfMonth(today);
 
-  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(
-      query(collection(firestore, 'attendance'), where('date', '>=', monthStart.toISOString()))
-  );
+  const attendanceQuery = useMemo(() => {
+    if (!firestore) return null;
+    return query(
+        collection(firestore, 'attendance'), 
+        where('date', '>=', monthStart.toISOString())
+    );
+  }, [firestore, monthStart]);
+
+  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceQuery);
 
 
   const recentPayroll = useMemo((): PayrollEntry[] => {
@@ -179,7 +184,7 @@ export default function DashboardPage() {
     });
   
     return payroll.filter((p) => p.amount > 0);
-  }, [employees, attendanceRecords]);
+  }, [employees, attendanceRecords, today, monthStart]);
 
   const monthlyExpense = useMemo(() => {
     if(!employees || !attendanceRecords) return { actual: 0, estimated: 0 };
@@ -231,7 +236,7 @@ export default function DashboardPage() {
         actual: actualAmount,
         estimated: actualAmount + estimatedFutureAmount
     };
-  }, [employees, attendanceRecords]);
+  }, [employees, attendanceRecords, today, monthStart]);
 
   const totalEmployees = employees?.length || 0;
 
@@ -370,3 +375,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    

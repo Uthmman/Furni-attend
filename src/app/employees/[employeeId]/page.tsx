@@ -118,10 +118,19 @@ export default function EmployeeProfilePage() {
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
-  const { data: employee, loading: employeeLoading } = useDoc(doc(firestore, 'employees', employeeId as string));
-  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(
-    collection(firestore, 'employees', employeeId as string, 'attendance')
-  );
+  const employeeDocRef = useMemo(() => {
+    if (!firestore || !employeeId) return null;
+    return doc(firestore, 'employees', employeeId as string);
+  }, [firestore, employeeId]);
+  
+  const { data: employee, loading: employeeLoading } = useDoc(employeeDocRef);
+
+  const attendanceCollectionRef = useMemo(() => {
+    if (!firestore || !employeeId) return null;
+    return collection(firestore, 'employees', employeeId as string, 'attendance');
+  }, [firestore, employeeId]);
+
+  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
 
 
   const employeeAttendance = useMemo(() => 
@@ -221,7 +230,7 @@ export default function EmployeeProfilePage() {
   }, [employee, filteredAttendance, hourlyRate]);
 
   const handleDelete = async () => {
-    if (!employeeId) return;
+    if (!employeeId || !firestore) return;
     try {
       await deleteDoc(doc(firestore, "employees", employeeId as string));
       toast({
@@ -385,7 +394,7 @@ export default function EmployeeProfilePage() {
                     </TableHeader>
                     <TableBody>
                     {filteredAttendance.length > 0 ? (
-                        filteredAttendance.map((record: AttendanceRecord) => (
+                        filteredAttendance.map((record) => (
                         <TableRow key={record.id}>
                             <TableCell>{ethiopianDateFormatter(getDateFromRecord(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}</TableCell>
                             <TableCell>

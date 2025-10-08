@@ -90,7 +90,13 @@ export default function PayrollPage() {
   const firestore = useFirestore();
 
   const { data: employees, loading: employeesLoading } = useCollection(collection(firestore, 'employees'));
-  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(collection(firestore, 'attendance'));
+  
+  const attendanceCollectionRef = useMemo(() => {
+    if (!firestore) return null;
+    return collection(firestore, 'attendance');
+  }, [firestore]);
+  
+  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
 
 
   const payrollData = useMemo((): PayrollEntry[] => {
@@ -385,3 +391,5 @@ export default function PayrollPage() {
     </div>
   );
 }
+
+    
