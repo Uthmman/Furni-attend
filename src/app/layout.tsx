@@ -14,8 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Bell, User } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { PageTitleProvider, usePageTitle } from "@/components/page-title-provider";
-import { useIsMobile } from "@/hooks/use-mobile";
 import React from "react";
+import { FirebaseClientProvider } from "@/firebase/client-provider";
 
 function AppHeader() {
   const { title } = usePageTitle();
@@ -65,22 +65,24 @@ export default function RootLayout({
         />
       </head>
       <body className={cn("font-body", "min-h-screen w-full bg-background text-foreground")}>
-        <PageTitleProvider>
-          <SidebarProvider>
-            <div className="flex min-h-screen w-full">
-              {hasMounted && <Sidebar className="hidden md:flex border-r">
-                <SidebarNav />
-              </Sidebar>}
-              <div className="flex flex-col w-full">
-                <AppHeader />
-                <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
-                    {children}
-                </main>
+        <FirebaseClientProvider>
+          <PageTitleProvider>
+            <SidebarProvider>
+              <div className="flex min-h-screen w-full">
+                {hasMounted && <Sidebar className="hidden md:flex border-r">
+                  <SidebarNav />
+                </Sidebar>}
+                <div className="flex flex-col w-full">
+                  <AppHeader />
+                  <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
+                      {children}
+                  </main>
+                </div>
               </div>
-            </div>
-            {hasMounted && <MobileNav />}
-          </SidebarProvider>
-        </PageTitleProvider>
+              {hasMounted && <MobileNav />}
+            </SidebarProvider>
+          </PageTitleProvider>
+        </FirebaseClientProvider>
         <Toaster />
       </body>
     </html>

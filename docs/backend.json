@@ -1,0 +1,102 @@
+{
+  "entities": {
+    "Employee": {
+      "title": "Employee",
+      "description": "Represents a person employed by the company.",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "The full name of the employee."
+        },
+        "phone": {
+          "type": "string",
+          "description": "The employee's phone number."
+        },
+        "position": {
+          "type": "string",
+          "description": "The employee's job title or position."
+        },
+        "paymentMethod": {
+          "type": "string",
+          "enum": ["Weekly", "Monthly"]
+        },
+        "accountNumber": {
+          "type": "string",
+          "description": "The employee's bank account number for payroll."
+        },
+        "dailyRate": {
+          "type": "number",
+          "description": "The employee's daily pay rate."
+        },
+        "monthlyRate": {
+          "type": "number",
+          "description": "The employee's monthly salary."
+        },
+        "hourlyRate": {
+          "type": "number",
+          "description": "The employee's hourly pay rate."
+        }
+      },
+      "required": ["name", "phone", "paymentMethod", "accountNumber"]
+    },
+    "AttendanceRecord": {
+      "title": "Attendance Record",
+      "description": "Represents an employee's attendance record for a specific day.",
+      "type": "object",
+      "properties": {
+        "employeeId": {
+          "type": "string",
+          "description": "The ID of the employee."
+        },
+        "date": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The date of the attendance record."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Present", "Absent", "Late"]
+        },
+        "morningEntry": {
+          "type": "string",
+          "format": "time",
+          "description": "The time the employee clocked in in the morning."
+        },
+        "afternoonEntry": {
+          "type": "string",
+          "format": "time",
+          "description": "The time the employee clocked in in the afternoon."
+        },
+        "overtimeHours": {
+          "type": "number",
+          "description": "The number of overtime hours worked."
+        }
+      },
+      "required": ["employeeId", "date", "status"]
+    }
+  },
+  "auth": {
+    "providers": []
+  },
+  "firestore": {
+    "/employees/{employeeId}": {
+      "schema": {
+        "$ref": "#/entities/Employee"
+      },
+      "description": "Stores information about individual employees."
+    },
+    "/employees/{employeeId}/attendance/{attendanceId}": {
+        "schema": {
+            "$ref": "#/entities/AttendanceRecord"
+        },
+        "description": "Stores attendance records for a specific employee."
+    },
+    "/attendance/{date}/records/{employeeId}": {
+      "schema": {
+        "$ref": "#/entities/AttendanceRecord"
+      },
+      "description": "Stores attendance records for a specific day, grouped by employee."
+    }
+  }
+}

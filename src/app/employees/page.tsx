@@ -1,21 +1,26 @@
+
 "use client";
 
 import { useEffect } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
-import {
-  employees as initialEmployees,
-} from "@/lib/data";
 import { EmployeeList } from "./employee-list";
+import { useCollection } from "@/firebase";
+import { collection } from "firebase/firestore";
 
 
 export default function EmployeesPage() {
   const { setTitle } = usePageTitle();
+  const { data: employees, loading } = useCollection(collection(useFirestore(), 'employees'));
 
   useEffect(() => {
     setTitle("Employees");
   }, [setTitle]);
+
+  if (loading) {
+    return <div>Loading...</div>
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -27,7 +32,7 @@ export default function EmployeesPage() {
         </Button>
       </div>
 
-      <EmployeeList employees={initialEmployees} />
+      <EmployeeList employees={employees || []} />
     </div>
   );
 }

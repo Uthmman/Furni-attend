@@ -42,5 +42,3 @@ export const attendanceRecords: AttendanceRecord[] = [
   { id: 'ATT008', employeeId: "EMP002", date: subDays(new Date(), 3).toISOString(), morningEntry: "09:05", afternoonEntry: "13:10", status: "Present" },
   { id: 'ATT009', employeeId: "EMP003", date: subDays(new Date(), 3).toISOString(), morningEntry: "09:20", afternoonEntry: "13:05", status: "Late" },
 ];
-
-    

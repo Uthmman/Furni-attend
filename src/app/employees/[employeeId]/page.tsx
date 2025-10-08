@@ -4,7 +4,6 @@
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
-import { employees, attendanceRecords } from "@/lib/data";
 import {
   Card,
   CardContent,
@@ -33,11 +32,15 @@ import {
   eachMonthOfInterval,
   isValid,
 } from "date-fns";
+import { type Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Copy, Phone } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
+import { useCollection, useDoc, useFirestore } from "@/firebase";
+import { collection, doc } from "firebase/firestore";
+import type { AttendanceRecord } from "@/lib/types";
 
 const getInitials = (name: string) => {
   const names = name.split(" ");
@@ -80,19 +83,32 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
   }
 };
 
+const getDateFromRecord = (date: string | Timestamp): Date => {
+  if (date instanceof Timestamp) {
+    return date.toDate();
+  }
+  return new Date(date);
+}
+
 
 export default function EmployeeProfilePage() {
   const params = useParams();
   const { employeeId } = params;
   const { setTitle } = usePageTitle();
   const [_copiedValue, copy] = useCopyToClipboard();
+  const firestore = useFirestore();
 
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
 
-  const employee = employees.find((e) => e.id === employeeId);
+  const { data: employee, loading: employeeLoading } = useDoc(doc(firestore, 'employees', employeeId as string));
+  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(
+    collection(firestore, 'employees', employeeId as string, 'attendance')
+  );
+
+
   const employeeAttendance = useMemo(() => 
-    attendanceRecords.filter((r) => r.employeeId === employeeId).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-    [employeeId]
+    (attendanceRecords || []).map(r => ({...r, date: getDateFromRecord(r.date)})).sort((a, b) => b.date.getTime() - a.date.getTime()),
+    [attendanceRecords]
   );
   
   useEffect(() => {
@@ -185,6 +201,14 @@ export default function EmployeeProfilePage() {
       totalAmount: totalAmount
     };
   }, [employee, filteredAttendance, hourlyRate]);
+
+  if (employeeLoading || attendanceLoading) {
+    return <div>Loading...</div>
+  }
+
+  if (!employee) {
+    return <div>Employee not found</div>;
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -290,9 +314,9 @@ export default function EmployeeProfilePage() {
                     </TableHeader>
                     <TableBody>
                     {filteredAttendance.length > 0 ? (
-                        filteredAttendance.map((record) => (
+                        filteredAttendance.map((record: AttendanceRecord) => (
                         <TableRow key={record.id}>
-                            <TableCell>{ethiopianDateFormatter(new Date(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}</TableCell>
+                            <TableCell>{ethiopianDateFormatter(getDateFromRecord(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}</TableCell>
                             <TableCell>
                             <Badge variant={record.status === 'Absent' ? 'destructive' : 'secondary'}>
                                 {record.status}

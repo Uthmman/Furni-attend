@@ -22,7 +22,6 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { employees, attendanceRecords } from "@/lib/data";
 import {
   isWithinInterval,
   startOfWeek,
@@ -35,8 +34,11 @@ import {
   eachWeekOfInterval,
   subWeeks,
 } from "date-fns";
-import type { PayrollEntry } from "@/lib/types";
+import type { Timestamp } from "firebase/firestore";
+import type { PayrollEntry, Employee, AttendanceRecord } from "@/lib/types";
 import Link from 'next/link';
+import { useCollection, useFirestore } from '@/firebase';
+import { collection, query } from 'firebase/firestore';
 
 const calculateHoursWorked = (
   morningEntry?: string,
@@ -72,98 +74,110 @@ const calculateHoursWorked = (
 };
 
 
-const calculateUpcomingPayroll = (): PayrollEntry[] => {
-  const payroll: PayrollEntry[] = [];
-  const today = new Date();
-  
-  const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
     return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
-  };
-
-  const currentWeek = {
-    start: startOfWeek(today, { weekStartsOn: 1 }),
-    end: endOfWeek(today, { weekStartsOn: 1 }),
-  };
-  const currentMonth = {
-    start: startOfMonth(today),
-    end: endOfMonth(today),
-  };
-
-  employees.forEach((employee) => {
-    const hourlyRate =
-      employee.hourlyRate ||
-      (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
-      (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
-
-    if (!hourlyRate) return;
-
-    if (employee.paymentMethod === "Weekly") {
-      const relevantRecords = attendanceRecords.filter(
-        (record) =>
-          record.employeeId === employee.id &&
-          (record.status === "Present" || record.status === "Late") &&
-          isWithinInterval(new Date(record.date), currentWeek)
-      );
-
-      const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-      const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
-      const totalAmount = (totalHours + totalOvertime) * hourlyRate;
-
-      if (totalAmount > 0) {
-        payroll.push({
-          employeeId: employee.id,
-          employeeName: employee.name,
-          paymentMethod: "Weekly",
-          period: `${ethiopianDateFormatter(currentWeek.start, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(currentWeek.end, { day: 'numeric', month: 'short', year: 'numeric' })}`,
-          amount: totalAmount,
-          status: "Unpaid",
-        });
-      }
-    } else if (employee.paymentMethod === "Monthly") {
-      const relevantRecords = attendanceRecords.filter(
-        (record) =>
-          record.employeeId === employee.id &&
-          (record.status === "Present" || record.status === "Late") &&
-          isWithinInterval(new Date(record.date), currentMonth)
-      );
-
-      const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-      const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
-      const totalAmount = (totalHours + totalOvertime) * hourlyRate;
-
-      if (totalAmount > 0) {
-        payroll.push({
-          employeeId: employee.id,
-          employeeName: employee.name,
-          paymentMethod: "Monthly",
-          period: ethiopianDateFormatter(currentMonth.start, { year: "numeric", month: "long" }),
-          amount: totalAmount,
-          status: "Unpaid",
-        });
-      }
-    }
-  });
-
-  return payroll.filter((p) => p.amount > 0);
 };
 
-const calculatePayrollHistory = () => {
+const getDateFromRecord = (date: string | Timestamp): Date => {
+  if (date instanceof Timestamp) {
+    return date.toDate();
+  }
+  return new Date(date);
+}
+
+export default function PayrollPage() {
+  const { setTitle } = usePageTitle();
+  const firestore = useFirestore();
+
+  const { data: employees, loading: employeesLoading } = useCollection(collection(firestore, 'employees'));
+  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(collection(firestore, 'attendance'));
+
+
+  const payrollData = useMemo((): PayrollEntry[] => {
+    if (!employees || !attendanceRecords) return [];
+    const payroll: PayrollEntry[] = [];
+    const today = new Date();
+
+    const currentWeek = {
+      start: startOfWeek(today, { weekStartsOn: 1 }),
+      end: endOfWeek(today, { weekStartsOn: 1 }),
+    };
+    const currentMonth = {
+      start: startOfMonth(today),
+      end: endOfMonth(today),
+    };
+
+    employees.forEach((employee) => {
+      const hourlyRate =
+        employee.hourlyRate ||
+        (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
+        (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+
+      if (!hourlyRate) return;
+
+      if (employee.paymentMethod === "Weekly") {
+        const relevantRecords = attendanceRecords.filter(
+          (record) =>
+            record.employeeId === employee.id &&
+            (record.status === "Present" || record.status === "Late") &&
+            isWithinInterval(getDateFromRecord(record.date), currentWeek)
+        );
+
+        const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+        const totalAmount = (totalHours + totalOvertime) * hourlyRate;
+
+        if (totalAmount > 0) {
+          payroll.push({
+            employeeId: employee.id,
+            employeeName: employee.name,
+            paymentMethod: "Weekly",
+            period: `${ethiopianDateFormatter(currentWeek.start, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(currentWeek.end, { day: 'numeric', month: 'short', year: 'numeric' })}`,
+            amount: totalAmount,
+            status: "Unpaid",
+          });
+        }
+      } else if (employee.paymentMethod === "Monthly") {
+        const relevantRecords = attendanceRecords.filter(
+          (record) =>
+            record.employeeId === employee.id &&
+            (record.status === "Present" || record.status === "Late") &&
+            isWithinInterval(getDateFromRecord(record.date), currentMonth)
+        );
+
+        const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+        const totalAmount = (totalHours + totalOvertime) * hourlyRate;
+
+        if (totalAmount > 0) {
+          payroll.push({
+            employeeId: employee.id,
+            employeeName: employee.name,
+            paymentMethod: "Monthly",
+            period: ethiopianDateFormatter(currentMonth.start, { year: "numeric", month: "long" }),
+            amount: totalAmount,
+            status: "Unpaid",
+          });
+        }
+      }
+    });
+
+    return payroll.filter((p) => p.amount > 0);
+  }, [employees, attendanceRecords]);
+
+  const { monthlyHistory, weeklyHistory } = useMemo(() => {
     const monthlyHistory: { period: string, totalAmount: number }[] = [];
     const weeklyHistory: { period: string, totalAmount: number }[] = [];
 
-    if (attendanceRecords.length === 0) return { monthlyHistory, weeklyHistory };
+    if (!employees || !attendanceRecords || attendanceRecords.length === 0) return { monthlyHistory, weeklyHistory };
 
     const firstRecordDate = attendanceRecords.reduce((earliest, current) => 
-        new Date(current.date) < new Date(earliest.date) ? current : earliest
+        getDateFromRecord(current.date) < getDateFromRecord(earliest.date) ? current : earliest
     ).date;
     
-    const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
-        return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
-    };
-
     // Monthly History
     const months = eachMonthOfInterval({
-        start: startOfMonth(new Date(firstRecordDate)),
+        start: startOfMonth(getDateFromRecord(firstRecordDate)),
         end: subMonths(new Date(), 1)
     });
 
@@ -179,7 +193,7 @@ const calculatePayrollHistory = () => {
             const relevantRecords = attendanceRecords.filter(r =>
                 r.employeeId === employee.id &&
                 (r.status === "Present" || r.status === "Late") &&
-                isWithinInterval(new Date(r.date), period)
+                isWithinInterval(getDateFromRecord(r.date), period)
             );
             
             const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
@@ -197,7 +211,7 @@ const calculatePayrollHistory = () => {
 
     // Weekly History
     const weeks = eachWeekOfInterval({
-        start: startOfWeek(new Date(firstRecordDate), { weekStartsOn: 1 }),
+        start: startOfWeek(getDateFromRecord(firstRecordDate), { weekStartsOn: 1 }),
         end: subWeeks(new Date(), 1)
     }, { weekStartsOn: 1 });
 
@@ -213,7 +227,7 @@ const calculatePayrollHistory = () => {
             const relevantRecords = attendanceRecords.filter(r =>
                 r.employeeId === employee.id &&
                 (r.status === "Present" || r.status === "Late") &&
-                isWithinInterval(new Date(r.date), period)
+                isWithinInterval(getDateFromRecord(r.date), period)
             );
 
             const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
@@ -229,18 +243,16 @@ const calculatePayrollHistory = () => {
         }
     });
 
-
     return { monthlyHistory, weeklyHistory };
-}
-
-export default function PayrollPage() {
-  const { setTitle } = usePageTitle();
-  const payrollData = useMemo(() => calculateUpcomingPayroll(), []);
-  const { monthlyHistory, weeklyHistory } = useMemo(() => calculatePayrollHistory(), []);
+  }, [employees, attendanceRecords]);
 
   useEffect(() => {
     setTitle("Payroll");
   }, [setTitle]);
+  
+  if (employeesLoading || attendanceLoading) {
+    return <div>Loading...</div>;
+  }
 
   return (
     <div className="flex flex-col gap-8">

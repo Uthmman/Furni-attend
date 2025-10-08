@@ -28,11 +28,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { employees, attendanceRecords as initialRecords } from "@/lib/data";
 import type { AttendanceRecord, AttendanceStatus, Employee } from "@/lib/types";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-import { cn } from "@/lib/utils";
+import { useCollection, useFirestore } from "@/firebase";
+import { collection, doc, writeBatch } from "firebase/firestore";
 
 type DailyAttendance = {
   employeeId: string;
@@ -58,25 +58,16 @@ const getStatusVariant = (status: AttendanceStatus) => {
 
 export default function AttendancePage() {
   const { setTitle } = usePageTitle();
+  const firestore = useFirestore();
+  const { data: employees, loading: employeesLoading } = useCollection(collection(firestore, 'employees'));
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [attendance, setAttendance] = useState<DailyAttendance[]>(() => {
-    return employees.map((emp) => {
-      const record = initialRecords.find(
-        (r) =>
-          r.employeeId === emp.id &&
-          new Date(r.date).toDateString() === selectedDate.toDateString()
-      );
-      return {
-        employeeId: emp.id,
-        employeeName: emp.name,
-        status: record?.status || "Present",
-        morningEntry: record?.morningEntry || "",
-        afternoonEntry: record?.afternoonEntry || "",
-        overtimeHours: record?.overtimeHours || 0,
-      };
-    });
-  });
+  
+  const formattedDate = format(selectedDate, "yyyy-MM-dd");
+  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(
+      collection(firestore, 'attendance', formattedDate, 'records')
+  );
 
+  const [attendance, setAttendance] = useState<DailyAttendance[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [
     selectedEmployeeAttendance,
@@ -87,16 +78,10 @@ export default function AttendancePage() {
     setTitle("Log Attendance");
   }, [setTitle]);
 
-  const handleDateSelect = (date: Date | undefined) => {
-    if (!date) return;
-    setSelectedDate(date);
-    setAttendance(
-      employees.map((emp) => {
-        const record = initialRecords.find(
-          (r) =>
-            r.employeeId === emp.id &&
-            new Date(r.date).toDateString() === date.toDateString()
-        );
+  useEffect(() => {
+    if (employees) {
+       const dailyAttendance: DailyAttendance[] = employees.map((emp) => {
+        const record = attendanceRecords?.find((r) => r.employeeId === emp.id);
         return {
           employeeId: emp.id,
           employeeName: emp.name,
@@ -105,8 +90,15 @@ export default function AttendancePage() {
           afternoonEntry: record?.afternoonEntry || "",
           overtimeHours: record?.overtimeHours || 0,
         };
-      })
-    );
+      });
+      setAttendance(dailyAttendance);
+    }
+  }, [employees, attendanceRecords, selectedDate]);
+
+
+  const handleDateSelect = (date: Date | undefined) => {
+    if (!date) return;
+    setSelectedDate(date);
   };
 
   const openDialogForEmployee = (employeeId: string) => {
@@ -147,8 +139,8 @@ export default function AttendancePage() {
   };
   
   const selectedEmployeeDetails: Employee | undefined = useMemo(() => {
-      return employees.find(e => e.id === selectedEmployeeAttendance?.employeeId);
-  }, [selectedEmployeeAttendance]);
+      return employees?.find(e => e.id === selectedEmployeeAttendance?.employeeId);
+  }, [selectedEmployeeAttendance, employees]);
 
   const hourlyRate: number = useMemo(() => {
     if (!selectedEmployeeDetails) return 0;
@@ -163,14 +155,38 @@ export default function AttendancePage() {
   }, [selectedEmployeeAttendance, hourlyRate]);
 
 
-  const handleSaveChanges = () => {
-    console.log(
-      "Saving attendance for",
-      format(selectedDate, "yyyy-MM-dd"),
-      attendance
-    );
-    alert("Attendance saved! (Check the console for data)");
+  const handleSaveChanges = async () => {
+    const batch = writeBatch(firestore);
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+
+    attendance.forEach((att) => {
+        const recordRef = doc(firestore, 'attendance', dateStr, 'records', att.employeeId);
+        const employeeAttendanceRef = doc(firestore, 'employees', att.employeeId, 'attendance', dateStr);
+
+        const record: Omit<AttendanceRecord, 'id'> = {
+            employeeId: att.employeeId,
+            date: selectedDate.toISOString(),
+            status: att.status,
+            morningEntry: att.morningEntry || "",
+            afternoonEntry: att.afternoonEntry || "",
+            overtimeHours: att.overtimeHours || 0,
+        };
+        batch.set(recordRef, record);
+        batch.set(employeeAttendanceRef, record);
+    });
+
+    try {
+        await batch.commit();
+        alert("Attendance saved!");
+    } catch (e) {
+        console.error("Error saving attendance: ", e);
+        alert("Failed to save attendance.");
+    }
   };
+  
+  if (employeesLoading) {
+      return <div>Loading...</div>
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -201,7 +217,8 @@ export default function AttendancePage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {attendanceLoading && <p>Loading attendance...</p>}
+                {!attendanceLoading && <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
                     {attendance.map((att) => (
                         <button key={att.employeeId} onClick={() => openDialogForEmployee(att.employeeId)} className="text-left">
                             <Card className="hover:bg-accent transition-colors">
@@ -214,7 +231,7 @@ export default function AttendancePage() {
                             </Card>
                         </button>
                     ))}
-                </div>
+                </div>}
             </CardContent>
           </Card>
         </div>
@@ -316,5 +333,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    

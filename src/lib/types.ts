@@ -1,7 +1,8 @@
+import { type DocumentData, type Timestamp } from 'firebase/firestore';
 
 export type PaymentMethod = "Weekly" | "Monthly";
 
-export interface Employee {
+export interface Employee extends DocumentData {
   id:string;
   name: string;
   phone: string;
@@ -15,10 +16,10 @@ export interface Employee {
 
 export type AttendanceStatus = "Present" | "Absent" | "Late";
 
-export interface AttendanceRecord {
+export interface AttendanceRecord extends DocumentData {
   id: string;
   employeeId: string;
-  date: string;
+  date: string | Timestamp;
   morningEntry?: string;
   afternoonEntry?: string;
   status: AttendanceStatus;
@@ -32,5 +33,5 @@ export interface PayrollEntry {
   period: string;
   amount: number;
   status: "Paid" | "Unpaid";
+  workingDays?: number;
 };
-    
