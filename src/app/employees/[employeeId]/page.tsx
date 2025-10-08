@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import {
@@ -36,13 +36,28 @@ import { type Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone } from "lucide-react";
+import { Copy, Phone, Trash2, Edit } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore } from "@/firebase";
-import { collection, doc } from "firebase/firestore";
+import { collection, doc, deleteDoc } from "firebase/firestore";
 import type { AttendanceRecord } from "@/lib/types";
+import { EmployeeForm } from "../employee-form";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { useToast } from "@/hooks/use-toast";
+
 
 const getInitials = (name: string) => {
+  if (!name) return "";
   const names = name.split(" ");
   return names.map((n) => n[0]).join("").toUpperCase();
 };
@@ -93,12 +108,15 @@ const getDateFromRecord = (date: string | Timestamp): Date => {
 
 export default function EmployeeProfilePage() {
   const params = useParams();
+  const router = useRouter();
   const { employeeId } = params;
   const { setTitle } = usePageTitle();
   const [_copiedValue, copy] = useCopyToClipboard();
   const firestore = useFirestore();
+  const { toast } = useToast();
 
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
+  const [isFormOpen, setIsFormOpen] = useState(false);
 
   const { data: employee, loading: employeeLoading } = useDoc(doc(firestore, 'employees', employeeId as string));
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(
@@ -202,6 +220,25 @@ export default function EmployeeProfilePage() {
     };
   }, [employee, filteredAttendance, hourlyRate]);
 
+  const handleDelete = async () => {
+    if (!employeeId) return;
+    try {
+      await deleteDoc(doc(firestore, "employees", employeeId as string));
+      toast({
+        title: "Employee Deleted",
+        description: `${employee?.name} has been removed from the list.`,
+      });
+      router.push("/employees");
+    } catch (error) {
+      console.error("Error deleting employee: ", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Failed to delete employee. Please try again.",
+      });
+    }
+  };
+
   if (employeeLoading || attendanceLoading) {
     return <div>Loading...</div>
   }
@@ -212,6 +249,39 @@ export default function EmployeeProfilePage() {
 
   return (
     <div className="flex flex-col gap-6">
+       <EmployeeForm
+        isOpen={isFormOpen}
+        setIsOpen={setIsFormOpen}
+        employee={employee}
+      />
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" onClick={() => setIsFormOpen(true)}>
+            <Edit className="mr-2 h-4 w-4" /> Edit
+        </Button>
+        <AlertDialog>
+          <AlertDialogTrigger asChild>
+            <Button variant="destructive">
+                <Trash2 className="mr-2 h-4 w-4" /> Delete
+            </Button>
+          </AlertDialogTrigger>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This action cannot be undone. This will permanently delete the
+                employee and all associated data.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={handleDelete}>
+                Continue
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 flex flex-col gap-6">
           <Card>
@@ -220,6 +290,7 @@ export default function EmployeeProfilePage() {
                 <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
               </Avatar>
               <CardTitle className="pt-4">{employee.name}</CardTitle>
+              <Badge variant="secondary">{employee.position}</Badge>
             </CardHeader>
             <CardContent className="text-sm">
                 <div className="grid gap-4">
@@ -344,3 +415,5 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
+
+    
