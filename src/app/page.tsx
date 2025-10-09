@@ -100,9 +100,7 @@ export default function DashboardPage() {
 
   const attendanceQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    // We fetch all attendance for all employees and filter client-side.
-    // For a larger app, this should be optimized.
-    return collectionGroup(firestore, 'attendance');
+    return query(collectionGroup(firestore, 'attendance'));
   }, [firestore, user]);
   
   const { data: allAttendance, loading: attendanceLoading } = useCollection(attendanceQuery);
