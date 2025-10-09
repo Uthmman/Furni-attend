@@ -33,7 +33,7 @@ import type { AttendanceRecord, Employee } from "@/lib/types";
 import { format, isValid } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
-import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
+import { collection, doc, setDoc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 
 type DailyAttendance = {
@@ -158,15 +158,47 @@ export default function AttendancePage() {
   };
 
   const handleSaveDialog = () => {
-    if (selectedEmployeeAttendance) {
-      setAttendance((prev) =>
-        prev.map((att) =>
-          att.employeeId === selectedEmployeeAttendance.employeeId
-            ? selectedEmployeeAttendance
-            : att
-        )
-      );
-    }
+    if (!selectedEmployeeAttendance || !firestore) return;
+
+    const att = selectedEmployeeAttendance;
+    const dateStr = format(selectedDate, "yyyy-MM-dd");
+
+    const recordRef = doc(firestore, 'attendance', dateStr, 'records', att.employeeId);
+    const employeeAttendanceRef = doc(firestore, 'employees', att.employeeId, 'attendance', dateStr);
+    
+    const record: Omit<AttendanceRecord, 'id' | 'date'> & { date: string } = {
+        employeeId: att.employeeId,
+        date: selectedDate.toISOString(),
+        status: att.status,
+        morningEntry: att.morningEntry || "",
+        afternoonEntry: att.afternoonEntry || "",
+        overtimeHours: att.overtimeHours || 0,
+    };
+    
+    // Using a batch to ensure both documents are updated atomically
+    const batch = writeBatch(firestore);
+    batch.set(recordRef, record);
+    batch.set(employeeAttendanceRef, record);
+
+    batch.commit()
+      .then(() => {
+        toast({ title: "Attendance saved!" });
+        // Update local state after successful save
+        setAttendance((prev) =>
+          prev.map((a) =>
+            a.employeeId === att.employeeId ? att : a
+          )
+        );
+      })
+      .catch((e) => {
+        const permissionError = new FirestorePermissionError({
+            path: recordRef.path,
+            operation: 'write',
+            requestResourceData: record,
+        });
+        errorEmitter.emit('permission-error', permissionError);
+      });
+    
     setIsDialogOpen(false);
     setSelectedEmployeeAttendance(null);
   };
@@ -182,7 +214,7 @@ export default function AttendancePage() {
     if (!selectedEmployeeDetails) return 0;
     return selectedEmployeeDetails.hourlyRate ||
         (selectedEmployeeDetails.dailyRate ? selectedEmployeeDetails.dailyRate / 8 : 0) ||
-        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 22 / 8 : 0);
+        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 26 / 8 : 0);
   }, [selectedEmployeeDetails]);
   
   const overtimePay: number = useMemo(() => {
@@ -214,7 +246,7 @@ export default function AttendancePage() {
 
     batch.commit()
         .then(() => {
-            toast({ title: "Attendance saved!" });
+            toast({ title: "All attendance changes saved!" });
         })
         .catch((e) => {
              const permissionError = new FirestorePermissionError({
