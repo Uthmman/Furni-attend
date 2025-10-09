@@ -148,7 +148,7 @@ export default function PayrollPage() {
       const hourlyRate =
         employee.hourlyRate ||
         (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
-        (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+        (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
 
       if (!hourlyRate) return;
 
@@ -226,7 +226,7 @@ export default function PayrollPage() {
         
         let monthTotal = 0;
         employees.filter(e => e.paymentMethod === 'Monthly').forEach(employee => {
-            const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+            const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
             if(!hourlyRate) return;
 
             const relevantRecords = attendanceRecords.filter(r =>
@@ -432,5 +432,7 @@ export default function PayrollPage() {
     </div>
   );
 }
+
+    
 
     

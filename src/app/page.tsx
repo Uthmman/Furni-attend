@@ -147,77 +147,69 @@ export default function DashboardPage() {
     employees.forEach((employee) => {
       const hourlyRate = employee.hourlyRate || 
         (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
-        (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+        (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
   
       if (!hourlyRate) return;
   
       if (employee.paymentMethod === "Weekly") {
-        const isPaymentDayApproaching = getDay(today) >= 4; // Thursday, Friday, Saturday
-  
-        if (isPaymentDayApproaching) {
-          const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-          const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
-          const weekPeriod = { start: weekStart, end: weekEnd };
-  
-           const relevantRecords = attendanceRecords.filter(
-              (record) =>
-                record.employeeId === employee.id &&
-                (record.status === "Present" || record.status === "Late") &&
-                isWithinInterval(getDateFromRecord(record.date), weekPeriod)
-            );
-            
-            let totalHours = 0;
-            relevantRecords.forEach(record => {
-                totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
+        const weekStart = startOfWeek(today, { weekStartsOn: 1 });
+        const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+        const weekPeriod = { start: weekStart, end: weekEnd };
+
+        const relevantRecords = attendanceRecords.filter(
+            (record) =>
+            record.employeeId === employee.id &&
+            (record.status === "Present" || record.status === "Late") &&
+            isWithinInterval(getDateFromRecord(record.date), weekPeriod)
+        );
+        
+        let totalHours = 0;
+        relevantRecords.forEach(record => {
+            totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
+        });
+        
+        const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+        const totalAmount = (totalHours + totalOvertime) * hourlyRate;
+
+        if (totalAmount > 0) {
+            payroll.push({
+            employeeId: employee.id,
+            employeeName: employee.name,
+            paymentMethod: "Weekly",
+            period: `${ethiopianDateFormatter(weekPeriod.start, {day: 'numeric', month: 'short'})} - ${ethiopianDateFormatter(weekPeriod.end, {day: 'numeric', month: 'short', year: 'numeric'})}`,
+            amount: totalAmount,
+            status: "Unpaid",
+            workingDays: relevantRecords.length,
             });
-            
-            const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-            const totalAmount = (totalHours + totalOvertime) * hourlyRate;
-  
-            if (totalAmount > 0) {
-              payroll.push({
-                employeeId: employee.id,
-                employeeName: employee.name,
-                paymentMethod: "Weekly",
-                period: `${ethiopianDateFormatter(weekPeriod.start, {day: 'numeric', month: 'short'})} - ${ethiopianDateFormatter(weekPeriod.end, {day: 'numeric', month: 'short', year: 'numeric'})}`,
-                amount: totalAmount,
-                status: "Unpaid",
-                workingDays: relevantRecords.length,
-              });
-            }
         }
       } else if (employee.paymentMethod === "Monthly") {
           const endOfMonthDate = endOfMonth(today);
-          const isEndOfMonth = differenceInDays(endOfMonthDate, today) <= 3;
-  
-          if(isEndOfMonth) {
-              const monthPeriod = { start: monthStart, end: endOfMonthDate };
-              const relevantRecords = attendanceRecords.filter(
-                  (record) =>
-                  record.employeeId === employee.id &&
-                  (record.status === "Present" || record.status === "Late") &&
-                  isWithinInterval(getDateFromRecord(record.date), monthPeriod)
-              );
-  
-              let totalHours = 0;
-              relevantRecords.forEach(record => {
-                  totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
+          const monthPeriod = { start: monthStart, end: endOfMonthDate };
+          const relevantRecords = attendanceRecords.filter(
+              (record) =>
+              record.employeeId === employee.id &&
+              (record.status === "Present" || record.status === "Late") &&
+              isWithinInterval(getDateFromRecord(record.date), monthPeriod)
+          );
+
+          let totalHours = 0;
+          relevantRecords.forEach(record => {
+              totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
+          });
+          
+          const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+          const totalAmount = (totalHours + totalOvertime) * hourlyRate;
+
+          if(totalAmount > 0) {
+                payroll.push({
+                  employeeId: employee.id,
+                  employeeName: employee.name,
+                  paymentMethod: "Monthly",
+                  period: ethiopianDateFormatter(monthPeriod.start, { year: 'numeric', month: 'long' }),
+                  amount: totalAmount,
+                  status: "Unpaid",
+                  workingDays: relevantRecords.length,
               });
-              
-              const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-              const totalAmount = (totalHours + totalOvertime) * hourlyRate;
-  
-              if(totalAmount > 0) {
-                   payroll.push({
-                      employeeId: employee.id,
-                      employeeName: employee.name,
-                      paymentMethod: "Monthly",
-                      period: ethiopianDateFormatter(monthPeriod.start, { year: 'numeric', month: 'long' }),
-                      amount: totalAmount,
-                      status: "Unpaid",
-                      workingDays: relevantRecords.length,
-                  });
-              }
           }
       }
     });
@@ -234,7 +226,7 @@ export default function DashboardPage() {
     employees.forEach(employee => {
         const hourlyRate = employee.hourlyRate || 
             (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
-            (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+            (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
         if(!hourlyRate) return;
 
         const relevantRecords = attendanceRecords.filter(
@@ -263,7 +255,7 @@ export default function DashboardPage() {
         
         employees.forEach(employee => {
             const dailyRate = employee.dailyRate || 
-                (employee.monthlyRate ? employee.monthlyRate / 22 : 0) ||
+                (employee.monthlyRate ? employee.monthlyRate / 26 : 0) ||
                 (employee.hourlyRate ? employee.hourlyRate * 8 : 0);
             if(dailyRate) {
                 estimatedFutureAmount += dailyRate * remainingWorkdays;
@@ -401,5 +393,7 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     

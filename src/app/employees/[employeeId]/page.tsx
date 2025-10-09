@@ -149,7 +149,7 @@ export default function EmployeeProfilePage() {
     if (!employee) return 0;
     return employee.hourlyRate ||
         (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
-        (employee.monthlyRate ? employee.monthlyRate / 22 / 8 : 0);
+        (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
   }, [employee]);
 
   const firstAttendanceDate = useMemo(() => {
@@ -445,5 +445,7 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
+
+    
 
     
