@@ -31,7 +31,7 @@ import {
 import type { AttendanceRecord, Employee } from "@/lib/types";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-import { useCollection, useFirestore } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 
@@ -62,14 +62,14 @@ export default function AttendancePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
   
-  const employeesCollectionRef = useMemo(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const employeesCollectionRef = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
   
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
   const formattedDate = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   
-  const attendanceCollectionRef: Query<AttendanceRecord> | null = useMemo(() => {
+  const attendanceCollectionRef: Query<AttendanceRecord> | null = useMemoFirebase(() => {
     if (!firestore) return null;
     return collection(firestore, 'attendance', formattedDate, 'records') as Query<AttendanceRecord>;
   }, [firestore, formattedDate]);
@@ -190,12 +190,12 @@ export default function AttendancePage() {
             toast({ title: "Attendance saved!" });
         })
         .catch((e) => {
-            console.error("Error saving attendance: ", e);
-            toast({
-                variant: "destructive",
-                title: "Failed to save attendance",
-                description: e.message || "An unknown error occurred.",
+             const permissionError = new FirestorePermissionError({
+                path: `/attendance/${dateStr}/records`,
+                operation: 'write',
+                requestResourceData: attendance,
             });
+            errorEmitter.emit('permission-error', permissionError);
         });
   };
   

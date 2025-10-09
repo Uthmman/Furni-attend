@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
-import { useFirestore } from "@/firebase";
+import { useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, addDoc, doc, setDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
@@ -107,13 +107,13 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
         form.reset();
     };
 
-    const handleError = (error: any) => {
-      console.error("Error saving employee:", error);
-      toast({
-        variant: "destructive",
-        title: "Something went wrong",
-        description: "Could not save employee data. Please try again.",
+    const handleError = (error: any, path: string, operation: 'create' | 'update') => {
+      const permissionError = new FirestorePermissionError({
+        path,
+        operation,
+        requestResourceData: data,
       });
+      errorEmitter.emit('permission-error', permissionError);
       setIsSubmitting(false);
     };
 
@@ -121,11 +121,12 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
       const employeeRef = doc(firestore, "employees", employee.id);
       setDoc(employeeRef, data, { merge: true })
         .then(() => handleSuccess("Updated"))
-        .catch(handleError);
+        .catch(error => handleError(error, employeeRef.path, 'update'));
     } else {
-      addDoc(collection(firestore, "employees"), data)
+      const collectionRef = collection(firestore, "employees");
+      addDoc(collectionRef, data)
         .then(() => handleSuccess("Added"))
-        .catch(handleError);
+        .catch(error => handleError(error, collectionRef.path, 'create'));
     }
   };
 
