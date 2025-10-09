@@ -1,22 +1,21 @@
+
 "use client";
 
-import { useEffect, useState } from 'react';
-import type { User } from 'firebase/auth';
-import { useAuth } from '../provider';
+import { useFirebase } from '../provider';
 
+/**
+ * DEPRECATED: Please use `useUser` from `@/firebase/provider` instead.
+ * This hook is kept for backward compatibility but will be removed in a future version.
+ * 
+ * The new `useUser` hook is part of a more robust authentication flow that
+ * correctly handles loading states and redirects. Using this old hook may result
+ * in unexpected behavior, especially with protected routes.
+ * 
+ * Example of new usage:
+ * import { useUser } from '@/firebase'; // or from '@/firebase/provider'
+ * const { user, isUserLoading } = useUser();
+ */
 export function useUser() {
-  const auth = useAuth();
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged((user) => {
-      setUser(user);
-      setLoading(false);
-    });
-
-    return () => unsubscribe();
-  }, [auth]);
-
+  const { user, isUserLoading: loading } = useFirebase();
   return { user, loading };
 }

@@ -1,7 +1,7 @@
 
 "use client";
 
-import type { Metadata, Viewport } from "next";
+import { usePathname, useRouter } from "next/navigation";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
@@ -11,14 +11,23 @@ import {
 } from "@/components/ui/sidebar";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
-import { Bell, User } from "lucide-react";
+import { Bell, User, LogOut } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { PageTitleProvider, usePageTitle } from "@/components/page-title-provider";
 import React from "react";
-import { FirebaseClientProvider } from "@/firebase/client-provider";
+import { FirebaseClientProvider, useUser, useAuth } from "@/firebase";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 function AppHeader() {
   const { title } = usePageTitle();
+  const auth = useAuth();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await auth.signOut();
+    router.push('/login');
+  }
+
   return (
       <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-4 md:px-6">
         <div className="flex-1">
@@ -29,26 +38,88 @@ function AppHeader() {
                 <Bell className="h-4 w-4" />
                 <span className="sr-only">Toggle notifications</span>
             </Button>
-            <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
-                <User className="h-4 w-4" />
-                <span className="sr-only">User menu</span>
-            </Button>
+             <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
+                    <User className="h-4 w-4" />
+                    <span className="sr-only">User menu</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>Log out</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
         </div>
     </header>
   )
 }
+
+function AppLayout({ children }: { children: React.ReactNode }) {
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
+  const pathname = usePathname();
+  const [hasMounted, setHasMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setHasMounted(true);
+  }, []);
+
+  React.useEffect(() => {
+    // If loading has finished and there's no user, redirect to login.
+    if (!isUserLoading && !user && pathname !== '/login') {
+      router.replace('/login');
+    }
+  }, [user, isUserLoading, router, pathname]);
+
+  // If we are on the login page, render it without the main app layout.
+  if (pathname === '/login') {
+    return <>{children}</>;
+  }
+
+  // While checking for user, or if no user, show a loading screen or nothing.
+  if (isUserLoading || !user) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div
+            className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent"
+            role="status"
+        >
+            <span className="sr-only">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  // If user is authenticated, render the main app layout.
+  return (
+    <PageTitleProvider>
+      <SidebarProvider>
+        <div className="flex min-h-screen w-full">
+          {hasMounted && <Sidebar className="hidden md:flex border-r">
+            <SidebarNav />
+          </Sidebar>}
+          <div className="flex flex-col w-full">
+            <AppHeader />
+            <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
+                {children}
+            </main>
+          </div>
+        </div>
+        {hasMounted && <MobileNav />}
+      </SidebarProvider>
+    </PageTitleProvider>
+  );
+}
+
 
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-   const [hasMounted, setHasMounted] = React.useState(false);
-    React.useEffect(() => {
-        setHasMounted(true);
-    }, []);
-
-
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
@@ -66,22 +137,7 @@ export default function RootLayout({
       </head>
       <body className={cn("font-body", "min-h-screen w-full bg-background text-foreground")}>
         <FirebaseClientProvider>
-          <PageTitleProvider>
-            <SidebarProvider>
-              <div className="flex min-h-screen w-full">
-                {hasMounted && <Sidebar className="hidden md:flex border-r">
-                  <SidebarNav />
-                </Sidebar>}
-                <div className="flex flex-col w-full">
-                  <AppHeader />
-                  <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
-                      {children}
-                  </main>
-                </div>
-              </div>
-              {hasMounted && <MobileNav />}
-            </SidebarProvider>
-          </PageTitleProvider>
+          <AppLayout>{children}</AppLayout>
         </FirebaseClientProvider>
         <Toaster />
       </body>
