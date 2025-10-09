@@ -256,7 +256,7 @@ export default function DashboardPage() {
         let remainingWorkdays = 0;
         for (let i = 1; i <= remainingDays; i++) {
             const date = addDays(today, i);
-            if (!isSunday(date)) { // Monday to Saturday are working days
+            if (getDay(date) !== 0) { // Monday to Saturday are working days (0 is Sunday)
                 remainingWorkdays++;
             }
         }
@@ -401,3 +401,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    

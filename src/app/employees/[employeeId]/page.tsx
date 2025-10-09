@@ -176,7 +176,7 @@ export default function EmployeeProfilePage() {
           label: `${format(monthStart, 'MMMM yyyy')} / ${ethiopianDateFormatter(monthStart, { month: 'long', year: 'numeric' })}`
         });
       });
-    } else { // Weekly
+    } else { // Weekly, Monday to Saturday
       const weeks = eachWeekOfInterval(interval, { weekStartsOn: 1 });
       weeks.reverse().forEach(weekStart => {
         const period = { start: startOfWeek(weekStart, { weekStartsOn: 1 }), end: endOfWeek(weekStart, { weekStartsOn: 1 }) };
@@ -445,3 +445,5 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
+
+    
