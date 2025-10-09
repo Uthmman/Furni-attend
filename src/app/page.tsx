@@ -34,9 +34,9 @@ import {
   startOfWeek,
   endOfWeek,
 } from "date-fns";
-import type { Timestamp } from "firebase/firestore";
-import { useCollection, useFirestore } from "@/firebase";
-import { collection, query, where } from "firebase/firestore";
+import { type Timestamp } from "firebase/firestore";
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { collection, query, where, type Query } from "firebase/firestore";
 import { type Employee, type AttendanceRecord, type PayrollEntry } from "@/lib/types";
 
 const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): number => {
@@ -85,17 +85,19 @@ const getDateFromRecord = (date: string | Timestamp): Date => {
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
-  const { data: employees, loading: employeesLoading } = useCollection(collection(firestore, 'employees'));
+
+  const employeesCollectionRef = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
   
   const today = new Date();
   const monthStart = startOfMonth(today);
 
-  const attendanceQuery = useMemo(() => {
+  const attendanceQuery = useMemoFirebase(() => {
     if (!firestore) return null;
     return query(
         collection(firestore, 'attendance'), 
         where('date', '>=', monthStart.toISOString())
-    );
+    ) as Query<AttendanceRecord>;
   }, [firestore, monthStart]);
 
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceQuery);
@@ -375,5 +377,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    

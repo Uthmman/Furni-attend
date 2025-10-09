@@ -1,19 +1,20 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import { EmployeeList } from "./employee-list";
-import { useCollection, useFirestore } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { EmployeeForm } from "./employee-form";
 
 export default function EmployeesPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
-  const { data: employees, loading } = useCollection(collection(firestore, 'employees'));
+  const employeesCollectionRef = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const { data: employees, loading } = useCollection(employeesCollectionRef);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   useEffect(() => {
@@ -39,5 +40,3 @@ export default function EmployeesPage() {
     </div>
   );
 }
-
-    
