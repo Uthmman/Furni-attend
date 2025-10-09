@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
 import {
@@ -37,7 +37,7 @@ import {
 } from "date-fns";
 import { type Timestamp } from "firebase/firestore";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, collectionGroup, query, where, getDocs } from "firebase/firestore";
+import { collection, collectionGroup, query, where, getDocs, type CollectionReference } from "firebase/firestore";
 import { type Employee, type AttendanceRecord, type PayrollEntry } from "@/lib/types";
 
 const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): number => {
@@ -88,22 +88,49 @@ export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
 
   const employeesCollectionRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return collection(firestore, 'employees');
   }, [firestore, user]);
-  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
+  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
   
   const today = new Date();
   const monthStart = startOfMonth(today);
 
-  const attendanceQuery = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return query(collectionGroup(firestore, 'attendance'));
-  }, [firestore, user]);
-  
-  const { data: allAttendance, loading: attendanceLoading } = useCollection(attendanceQuery);
+  useEffect(() => {
+    setTitle("Dashboard");
+  }, [setTitle]);
+
+  useEffect(() => {
+    const fetchAllAttendance = async () => {
+        if (!firestore || !employees || employees.length === 0) {
+            setAttendanceLoading(false);
+            return;
+        };
+
+        setAttendanceLoading(true);
+        const attendancePromises = employees.map(employee => {
+            const attColRef = collection(firestore, 'employees', employee.id, 'attendance');
+            return getDocs(attColRef);
+        });
+
+        const allSnapshots = await Promise.all(attendancePromises);
+        const records = allSnapshots.flatMap(snapshot => 
+            snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord))
+        );
+
+        setAllAttendance(records);
+        setAttendanceLoading(false);
+    };
+
+    if (!employeesLoading) {
+      fetchAllAttendance();
+    }
+  }, [firestore, employees, employeesLoading]);
+
 
   const attendanceRecords = useMemo(() => {
       if (!allAttendance) return [];
@@ -262,11 +289,6 @@ export default function DashboardPage() {
     }, { weekly: 0, monthly: 0 });
   }, [recentPayroll]);
 
-
-  useEffect(() => {
-    setTitle("Dashboard");
-  }, [setTitle]);
-
   const ethiopianDayOfMonth = ethiopianDateFormatter(today, { day: 'numeric' });
   const ethiopianDayOfWeek = ethiopianDateFormatter(today, { weekday: 'long' });
   const ethiopianMonth = ethiopianDateFormatter(today, { month: 'long' });
@@ -385,5 +407,6 @@ export default function DashboardPage() {
       </div>
     </div>
   );
+}
 
     

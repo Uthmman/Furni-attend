@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useMemo, useEffect } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import { CircleDollarSign, Calendar, History } from "lucide-react";
@@ -39,7 +39,7 @@ import type { Timestamp } from "firebase/firestore";
 import type { PayrollEntry, Employee, AttendanceRecord } from "@/lib/types";
 import Link from 'next/link';
 import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, collectionGroup, query, type Query } from 'firebase/firestore';
+import { collection, collectionGroup, query, type Query, type CollectionReference, getDocs } from 'firebase/firestore';
 
 const calculateHoursWorked = (
   morningEntry?: string,
@@ -92,20 +92,41 @@ export default function PayrollPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
+  const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
 
   const employeesCollectionRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return collection(firestore, 'employees');
   }, [firestore, user]);
-  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
+  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
   
-  const attendanceCollectionRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    // Querying the collection group of all 'attendance' subcollections
-    return collectionGroup(firestore, 'attendance') as Query<AttendanceRecord>;
-  }, [firestore, user]);
-  
-  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
+  useEffect(() => {
+    const fetchAllAttendance = async () => {
+        if (!firestore || !employees || employees.length === 0) {
+          setAttendanceLoading(false);
+          return;
+        }
+
+        setAttendanceLoading(true);
+        const attendancePromises = employees.map(employee => {
+            const attColRef = collection(firestore, 'employees', employee.id, 'attendance');
+            return getDocs(attColRef);
+        });
+
+        const allSnapshots = await Promise.all(attendancePromises);
+        const records = allSnapshots.flatMap(snapshot => 
+            snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), employeeId: snapshot.query.parent?.parent?.id } as AttendanceRecord))
+        );
+
+        setAttendanceRecords(records);
+        setAttendanceLoading(false);
+    };
+
+    if (!employeesLoading) {
+      fetchAllAttendance();
+    }
+  }, [firestore, employees, employeesLoading]);
 
 
   const payrollData = useMemo((): PayrollEntry[] => {
@@ -401,5 +422,6 @@ export default function PayrollPage() {
         </div>
     </div>
   );
+}
 
     
