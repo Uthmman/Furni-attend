@@ -36,7 +36,7 @@ import {
   format,
   isValid
 } from "date-fns";
-import { type Timestamp } from "firebase/firestore";
+import { Timestamp } from "firebase/firestore";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, collectionGroup, query, where, getDocs, type CollectionReference } from "firebase/firestore";
 import { type Employee, type AttendanceRecord, type PayrollEntry } from "@/lib/types";
@@ -135,8 +135,7 @@ export default function DashboardPage() {
 
   const attendanceRecords = useMemo(() => {
       if (!allAttendance) return [];
-      const monthStart = startOfMonth(new Date());
-      return allAttendance.filter(record => getDateFromRecord(record.date) >= monthStart);
+      return allAttendance;
   }, [allAttendance]);
 
 
@@ -144,6 +143,11 @@ export default function DashboardPage() {
     if (!employees || !attendanceRecords) return [];
     const payroll: PayrollEntry[] = [];
   
+    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+    const currentWeekEnd = endOfWeek(today, { weekStartsOn: 1 });
+    const currentMonthStart = startOfMonth(today);
+    const currentMonthEnd = endOfMonth(today);
+
     employees.forEach((employee) => {
       const hourlyRate = employee.hourlyRate || 
         (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
@@ -152,9 +156,7 @@ export default function DashboardPage() {
       if (!hourlyRate) return;
   
       if (employee.paymentMethod === "Weekly") {
-        const weekStart = startOfWeek(today, { weekStartsOn: 1 });
-        const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
-        const weekPeriod = { start: weekStart, end: weekEnd };
+        const weekPeriod = { start: currentWeekStart, end: currentWeekEnd };
 
         const relevantRecords = attendanceRecords.filter(
             (record) =>
@@ -183,8 +185,7 @@ export default function DashboardPage() {
             });
         }
       } else if (employee.paymentMethod === "Monthly") {
-          const endOfMonthDate = endOfMonth(today);
-          const monthPeriod = { start: monthStart, end: endOfMonthDate };
+          const monthPeriod = { start: currentMonthStart, end: currentMonthEnd };
           const relevantRecords = attendanceRecords.filter(
               (record) =>
               record.employeeId === employee.id &&
@@ -215,7 +216,7 @@ export default function DashboardPage() {
     });
   
     return payroll.filter((p) => p.amount > 0);
-  }, [employees, attendanceRecords, today, monthStart]);
+  }, [employees, attendanceRecords, today]);
 
   const monthlyExpense = useMemo(() => {
     if(!employees || !attendanceRecords) return { actual: 0, estimated: 0 };
@@ -393,6 +394,8 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     
 

@@ -31,8 +31,10 @@ import {
   eachWeekOfInterval,
   eachMonthOfInterval,
   isValid,
+  subMonths,
+  subWeeks,
 } from "date-fns";
-import { type Timestamp } from "firebase/firestore";
+import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
@@ -170,6 +172,10 @@ export default function EmployeeProfilePage() {
 
     if (employee.paymentMethod === 'Monthly') {
       const months = eachMonthOfInterval(interval);
+      // Also include current month if not already there
+      if (!months.find(m => m.getMonth() === today.getMonth() && m.getFullYear() === today.getFullYear())) {
+        months.push(startOfMonth(today));
+      }
       months.reverse().forEach(monthStart => {
         options.push({
           value: monthStart.toISOString(),
@@ -177,7 +183,12 @@ export default function EmployeeProfilePage() {
         });
       });
     } else { // Weekly, Monday to Saturday
-      const weeks = eachWeekOfInterval(interval, { weekStartsOn: 1 });
+       const weeks = eachWeekOfInterval(interval, { weekStartsOn: 1 });
+        // Also include current week if not already there
+        const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+        if (!weeks.find(w => w.getTime() === currentWeekStart.getTime())) {
+            weeks.push(currentWeekStart);
+        }
       weeks.reverse().forEach(weekStart => {
         const period = { start: startOfWeek(weekStart, { weekStartsOn: 1 }), end: endOfWeek(weekStart, { weekStartsOn: 1 }) };
         const startDay = format(period.start, 'MMM d');
@@ -254,6 +265,12 @@ export default function EmployeeProfilePage() {
       });
     }
   };
+  
+  useEffect(() => {
+    if (periodOptions.length > 0 && !selectedPeriod) {
+        setSelectedPeriod(periodOptions[0].value);
+    }
+  }, [periodOptions, selectedPeriod]);
 
   if (employeeLoading || attendanceLoading || isUserLoading) {
     return <div>Loading...</div>
@@ -445,6 +462,8 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
+
+    
 
     
 

@@ -36,7 +36,7 @@ import {
   isValid,
   format,
 } from "date-fns";
-import type { Timestamp } from "firebase/firestore";
+import { Timestamp } from "firebase/firestore";
 import type { PayrollEntry, Employee, AttendanceRecord } from "@/lib/types";
 import Link from 'next/link';
 import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
@@ -432,6 +432,8 @@ export default function PayrollPage() {
     </div>
   );
 }
+
+    
 
     
 
