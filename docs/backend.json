@@ -110,7 +110,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Employee",
       "type": "object",
-      "description": "Represents an employee.",
+      "description": "Represents an employee of the company.",
       "properties": {
         "id": {
           "type": "string",
