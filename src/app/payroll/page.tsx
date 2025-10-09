@@ -38,7 +38,7 @@ import type { Timestamp } from "firebase/firestore";
 import type { PayrollEntry, Employee, AttendanceRecord } from "@/lib/types";
 import Link from 'next/link';
 import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection, collectionGroup, query } from 'firebase/firestore';
+import { collection, collectionGroup, query, type Query } from 'firebase/firestore';
 
 const calculateHoursWorked = (
   morningEntry?: string,
@@ -97,9 +97,9 @@ export default function PayrollPage() {
   }, [firestore, user]);
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
   
-  const attendanceCollectionRef = useMemoFirebase(() => {
+  const attendanceCollectionRef: Query<AttendanceRecord> | null = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    return query(collectionGroup(firestore, 'records'));
+    return query(collectionGroup(firestore, 'records')) as Query<AttendanceRecord>;
   }, [firestore, user]);
   
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
