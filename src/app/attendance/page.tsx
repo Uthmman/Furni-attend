@@ -109,7 +109,7 @@ export default function AttendancePage() {
         return {
           employeeId: emp.id,
           employeeName: emp.name,
-          status: record?.status || "Present",
+          status: record?.status || "Absent",
           morningEntry: record?.morningEntry || "",
           afternoonEntry: record?.afternoonEntry || "",
           overtimeHours: record?.overtimeHours || 0,
