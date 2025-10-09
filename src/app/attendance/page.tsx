@@ -33,6 +33,7 @@ import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore } from "@/firebase";
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
+import { useToast } from "@/hooks/use-toast";
 
 type DailyAttendance = {
   employeeId: string;
@@ -59,6 +60,7 @@ const getStatusVariant = (status: "Present" | "Absent" | "Late") => {
 export default function AttendancePage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
+  const { toast } = useToast();
   
   const employeesCollectionRef = useMemo(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
@@ -183,13 +185,18 @@ export default function AttendancePage() {
         batch.set(employeeAttendanceRef, record);
     });
 
-    try {
-        await batch.commit();
-        alert("Attendance saved!");
-    } catch (e) {
-        console.error("Error saving attendance: ", e);
-        alert("Failed to save attendance.");
-    }
+    batch.commit()
+        .then(() => {
+            toast({ title: "Attendance saved!" });
+        })
+        .catch((e) => {
+            console.error("Error saving attendance: ", e);
+            toast({
+                variant: "destructive",
+                title: "Failed to save attendance",
+                description: e.message || "An unknown error occurred.",
+            });
+        });
   };
   
   if (employeesLoading) {

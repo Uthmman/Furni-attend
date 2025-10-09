@@ -96,32 +96,36 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
   const onSubmit = async (data: EmployeeFormValues) => {
     if (!firestore) return;
     setIsSubmitting(true);
-    try {
-      if (isEditMode && employee?.id) {
-        const employeeRef = doc(firestore, "employees", employee.id);
-        await setDoc(employeeRef, data, { merge: true });
-        toast({
-          title: "Employee Updated",
-          description: `${data.name}'s information has been successfully updated.`,
+    
+    const handleSuccess = (action: "Added" | "Updated") => {
+       toast({
+          title: `Employee ${action}`,
+          description: `${data.name}'s information has been successfully ${action.toLowerCase()}.`,
         });
-      } else {
-        await addDoc(collection(firestore, "employees"), data);
-        toast({
-          title: "Employee Added",
-          description: `${data.name} has been successfully added to the employee list.`,
-        });
-      }
-      setIsOpen(false);
-      form.reset();
-    } catch (error) {
+        setIsSubmitting(false);
+        setIsOpen(false);
+        form.reset();
+    };
+
+    const handleError = (error: any) => {
       console.error("Error saving employee:", error);
       toast({
         variant: "destructive",
         title: "Something went wrong",
         description: "Could not save employee data. Please try again.",
       });
-    } finally {
-        setIsSubmitting(false);
+      setIsSubmitting(false);
+    };
+
+    if (isEditMode && employee?.id) {
+      const employeeRef = doc(firestore, "employees", employee.id);
+      setDoc(employeeRef, data, { merge: true })
+        .then(() => handleSuccess("Updated"))
+        .catch(handleError);
+    } else {
+      addDoc(collection(firestore, "employees"), data)
+        .then(() => handleSuccess("Added"))
+        .catch(handleError);
     }
   };
 
