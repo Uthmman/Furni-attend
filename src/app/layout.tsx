@@ -24,7 +24,9 @@ function AppHeader() {
   const router = useRouter();
 
   const handleSignOut = async () => {
-    await auth.signOut();
+    if (auth) {
+      await auth.signOut();
+    }
     router.push('/login');
   }
 
@@ -61,11 +63,6 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const pathname = usePathname();
-  const [hasMounted, setHasMounted] = React.useState(false);
-
-  React.useEffect(() => {
-    setHasMounted(true);
-  }, []);
 
   React.useEffect(() => {
     // If loading has finished and there's no user, redirect to login.
@@ -75,13 +72,13 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   }, [user, isUserLoading, router, pathname]);
 
   // If we are on the login page, render it without the main app layout.
-  if (pathname === '/login') {
+  // Or if we are still loading the user state.
+  if (pathname === '/login' || isUserLoading) {
     return <>{children}</>;
   }
-
-  // While checking for user, or if no user, show a loading screen or nothing.
-  if (isUserLoading || !user) {
-    return (
+  
+  if (!user) {
+     return (
       <div className="flex h-screen w-full items-center justify-center">
         <div
             className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent"
@@ -93,14 +90,15 @@ function AppLayout({ children }: { children: React.ReactNode }) {
     );
   }
 
+
   // If user is authenticated, render the main app layout.
   return (
     <PageTitleProvider>
       <SidebarProvider>
         <div className="flex min-h-screen w-full">
-          {hasMounted && <Sidebar className="hidden md:flex border-r">
+          <Sidebar className="hidden md:flex border-r">
             <SidebarNav />
-          </Sidebar>}
+          </Sidebar>
           <div className="flex flex-col w-full">
             <AppHeader />
             <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
@@ -108,7 +106,7 @@ function AppLayout({ children }: { children: React.ReactNode }) {
             </main>
           </div>
         </div>
-        {hasMounted && <MobileNav />}
+        <MobileNav />
       </SidebarProvider>
     </PageTitleProvider>
   );
