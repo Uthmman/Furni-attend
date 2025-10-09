@@ -1,23 +1,147 @@
+/**
+ * @fileOverview Firestore Security Rules for FurnishWise.
+ *
+ * Core Philosophy:
+ * This ruleset enforces a strict user-ownership model for employee-related data (employees and attendance),
+ * while allowing open access to item and order data.
+ *
+ * Data Structure:
+ * - /orders/{orderId}: Stores furniture order information. Public read, but owner-only writes are intended.
+ * - /items/{itemId}: Stores furniture item details. Public read, but owner-only writes are intended.
+ * - /items/{itemId}/stockAdjustments/{stockAdjustmentId}: Stock adjustments related to items. Public read, but owner-only writes are intended.
+ * - /employees/{employeeId}: Stores employee information. Owner-only access.
+ * - /employees/{employeeId}/attendance/{attendanceId}: Stores attendance records for each employee. Owner-only access.
+ *
+ * Key Security Decisions:
+ * - Listing employees is disallowed to prevent unauthorized data exposure.
+ * - Public read access is granted to items and orders for ease of access. However, writes are expected to be restricted
+ *   to authorized users (e.g., admins or the system itself). The data model needs to include an `ownerId` field to
+ *   properly enforce this in the future.
+ *
+ * Denormalization for Authorization:
+ * - The ruleset avoids `get()` calls by relying on path-based ownership for employee data.
+ *   The `employeeId` is present in the path for both `/employees/{employeeId}` and
+ *   `/employees/{employeeId}/attendance/{attendanceId}`, allowing for direct ownership checks.
+ */
 rules_version = '2';
- 
 service cloud.firestore {
   match /databases/{database}/documents {
-  
-    // Deny all reads and writes by default
-    match /{document=**} {
-      allow read, write: if false;
+
+    /**
+     * @description Controls access to furniture orders.
+     * @path /orders/{orderId}
+     * @allow get, list: Anyone can read order details.
+     * @allow create: if request.auth.uid == request.resource.data.authorId
+     * @allow update: if isExistingOwner(resource.data.authorId)
+     * @allow delete: if isExistingOwner(resource.data.authorId)
+     * @deny create: if request.auth.uid != request.resource.data.authorId
+     * @deny update: if !isExistingOwner(resource.data.authorId)
+     * @deny delete: if !isExistingOwner(resource.data.authorId)
+     * @principle Public read, owner-only writes (requires 'authorId' field in the document).
+     */
+    match /orders/{orderId} {
+      allow get, list: if true;
+      allow create: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow update: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow delete: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+      // CRITICAL: Cannot implement owner-only writes. The 'Order' entity is missing an 'ownerId' or 'authorId' field.
     }
+
+    /**
+     * @description Controls access to furniture items.
+     * @path /items/{itemId}
+     * @allow get, list: Anyone can read item details.
+     * @allow create: if request.auth.uid == request.resource.data.authorId
+     * @allow update: if isExistingOwner(resource.data.authorId)
+     * @allow delete: if isExistingOwner(resource.data.authorId)
+     * @deny create: if request.auth.uid != request.resource.data.authorId
+     * @deny update: if !isExistingOwner(resource.data.authorId)
+     * @deny delete: if !isExistingOwner(resource.data.authorId)
+     * @principle Public read, owner-only writes (requires 'authorId' field in the document).
+     */
+    match /items/{itemId} {
+      allow get, list: if true;
+      allow create: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow update: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+      allow delete: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+       // CRITICAL: Cannot implement owner-only writes. The 'Item' entity is missing an 'ownerId' or 'authorId' field.
+
+      /**
+       * @description Controls access to stock adjustments for a specific item.
+       * @path /items/{itemId}/stockAdjustments/{stockAdjustmentId}
+       * @allow get, list: Anyone can read stock adjustment details.
+       * @allow create: if request.auth.uid == request.resource.data.authorId
+       * @allow update: if isExistingOwner(resource.data.authorId)
+       * @allow delete: if isExistingOwner(resource.data.authorId)
+       * @deny create: if request.auth.uid != request.resource.data.authorId
+       * @deny update: if !isExistingOwner(resource.data.authorId)
+       * @deny delete: if !isExistingOwner(resource.data.authorId)
+       * @principle Public read, owner-only writes (requires 'authorId' field in the document).
+       */
+      match /stockAdjustments/{stockAdjustmentId} {
+        allow get, list: if true;
+        allow create: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+        allow update: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+        allow delete: if false; // TODO: Add owner validation once the schema is updated with an ownership field.
+         // CRITICAL: Cannot implement owner-only writes. The 'StockAdjustment' entity is missing an 'ownerId' or 'authorId' field.
+      }
+    }
+
+    /**
+     * @description Controls access to employee information.
+     * @path /employees/{employeeId}
+     * @allow get: if isSignedIn() && isOwner(employeeId);
+     * @allow create: if isSignedIn() && isOwner(employeeId);
+     * @allow update: if isSignedIn() && isExistingOwner(employeeId);
+     * @allow delete: if isSignedIn() && isExistingOwner(employeeId);
+     * @allow list: if false;
+     * @deny get: if !isSignedIn() || !isOwner(employeeId);
+     * @deny create: if !isSignedIn() || !isOwner(employeeId);
+     * @deny update: if !isSignedIn() || !isExistingOwner(employeeId);
+     * @deny delete: if !isSignedIn() || !isExistingOwner(employeeId);
+     * @principle Enforces document ownership for all operations.
+     */
     match /employees/{employeeId} {
-      allow read, write: if true;
+      allow get: if isSignedIn() && isOwner(employeeId);
+      allow create: if isSignedIn() && isOwner(employeeId);
+      allow update: if isSignedIn() && isExistingOwner(employeeId);
+      allow delete: if isSignedIn() && isExistingOwner(employeeId);
+      allow list: if false;
     }
+
+    /**
+     * @description Controls access to attendance records for a specific employee.
+     * @path /employees/{employeeId}/attendance/{attendanceId}
+     * @allow get: if isSignedIn() && isOwner(employeeId);
+     * @allow create: if isSignedIn() && request.resource.data.employeeId == employeeId;
+     * @allow update: if isSignedIn() && isExistingOwner(employeeId) && resource.data.employeeId == employeeId;
+     * @allow delete: if isSignedIn() && isExistingOwner(employeeId);
+     * @allow list: if isSignedIn() && isOwner(employeeId);
+     * @deny get: if !isSignedIn() || !isOwner(employeeId);
+     * @deny create: if !isSignedIn() || request.resource.data.employeeId != employeeId;
+     * @deny update: if !isSignedIn() || !isExistingOwner(employeeId) || resource.data.employeeId != employeeId;
+     * @deny delete: if !isSignedIn() || !isExistingOwner(employeeId);
+     * @principle Enforces document ownership and validates relational integrity.
+     */
     match /employees/{employeeId}/attendance/{attendanceId} {
-      allow read, write: if true;
+      allow get: if isSignedIn() && isOwner(employeeId);
+      allow create: if isSignedIn() && request.resource.data.employeeId == employeeId;
+      allow update: if isSignedIn() && isExistingOwner(employeeId) && resource.data.employeeId == employeeId;
+      allow delete: if isSignedIn() && isExistingOwner(employeeId);
+      allow list: if isSignedIn() && isOwner(employeeId);
     }
-    match /attendance/{date}/records/{employeeId} {
-        allow read, write: if true;
-    }
-     match /attendance/{date} {
-        allow read, write: if true;
-    }
+  }
+
+  // Helper functions
+  function isSignedIn() {
+    return request.auth != null;
+  }
+
+  function isOwner(userId) {
+    return request.auth.uid == userId;
+  }
+
+  function isExistingOwner(userId) {
+    return isSignedIn() && isOwner(userId) && resource != null;
   }
 }

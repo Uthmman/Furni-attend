@@ -1,102 +1,280 @@
 {
   "entities": {
-    "Employee": {
-      "title": "Employee",
-      "description": "Represents a person employed by the company.",
+    "Order": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Order",
       "type": "object",
+      "description": "Represents a furniture order.",
       "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the order."
+        },
+        "customerName": {
+          "type": "string",
+          "description": "Name of the customer who placed the order."
+        },
+        "orderDate": {
+          "type": "string",
+          "description": "Date the order was placed.",
+          "format": "date-time"
+        },
+        "orderDescription": {
+          "type": "string",
+          "description": "Description of the order."
+        },
+        "orderStatus": {
+          "type": "string",
+          "description": "Status of the order (e.g., pending, processing, completed)."
+        },
+        "productPictureUrl": {
+          "type": "string",
+          "description": "URL of the product picture associated with the order.",
+          "format": "uri"
+        }
+      },
+      "required": [
+        "id",
+        "customerName",
+        "orderDate",
+        "orderStatus"
+      ]
+    },
+    "Item": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Item",
+      "type": "object",
+      "description": "Represents a furniture item in the store.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the item."
+        },
         "name": {
           "type": "string",
-          "description": "The full name of the employee."
+          "description": "Name of the item."
         },
-        "phone": {
+        "unitOfMeasurement": {
           "type": "string",
-          "description": "The employee's phone number."
+          "description": "Unit of measurement for the item (e.g., piece, set)."
         },
-        "position": {
+        "stockLevel": {
+          "type": "number",
+          "description": "Number of items currently in stock."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "unitOfMeasurement",
+        "stockLevel"
+      ]
+    },
+    "StockAdjustment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "StockAdjustment",
+      "type": "object",
+      "description": "Represents an adjustment to the stock level of an item.",
+      "properties": {
+        "id": {
           "type": "string",
-          "description": "The employee's job title or position."
+          "description": "Unique identifier for the stock adjustment."
+        },
+        "itemId": {
+          "type": "string",
+          "description": "Reference to Item. (Relationship: Item 1:N StockAdjustment)"
+        },
+        "adjustmentDate": {
+          "type": "string",
+          "description": "Date the stock adjustment was made.",
+          "format": "date-time"
+        },
+        "adjustmentQuantity": {
+          "type": "number",
+          "description": "Quantity of items added or removed from stock (can be positive or negative)."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Reason for the stock adjustment."
+        }
+      },
+      "required": [
+        "id",
+        "itemId",
+        "adjustmentDate",
+        "adjustmentQuantity",
+        "reason"
+      ]
+    },
+    "Employee": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Employee",
+      "type": "object",
+      "description": "Represents an employee.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the employee."
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "Employee's phone number."
         },
         "paymentMethod": {
           "type": "string",
-          "enum": ["Weekly", "Monthly"]
+          "description": "Payment method (e.g., weekly, monthly)."
         },
         "accountNumber": {
           "type": "string",
-          "description": "The employee's bank account number for payroll."
-        },
-        "dailyRate": {
-          "type": "number",
-          "description": "The employee's daily pay rate."
-        },
-        "monthlyRate": {
-          "type": "number",
-          "description": "The employee's monthly salary."
-        },
-        "hourlyRate": {
-          "type": "number",
-          "description": "The employee's hourly pay rate."
+          "description": "Employee's bank account number."
         }
       },
-      "required": ["name", "phone", "paymentMethod", "accountNumber"]
+      "required": [
+        "id",
+        "phoneNumber",
+        "paymentMethod",
+        "accountNumber"
+      ]
     },
-    "AttendanceRecord": {
-      "title": "Attendance Record",
-      "description": "Represents an employee's attendance record for a specific day.",
+    "Attendance": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Attendance",
       "type": "object",
+      "description": "Represents an employee's attendance record for a specific date.",
       "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the attendance record."
+        },
         "employeeId": {
           "type": "string",
-          "description": "The ID of the employee."
+          "description": "Reference to Employee. (Relationship: Employee 1:N Attendance)"
         },
-        "date": {
+        "attendanceDate": {
           "type": "string",
-          "format": "date-time",
-          "description": "The date of the attendance record."
+          "description": "Date of the attendance record.",
+          "format": "date-time"
+        },
+        "morningEntryTime": {
+          "type": "string",
+          "description": "Time the employee entered in the morning.",
+          "format": "date-time"
+        },
+        "afternoonEntryTime": {
+          "type": "string",
+          "description": "Time the employee entered in the afternoon.",
+          "format": "date-time"
         },
         "status": {
           "type": "string",
-          "enum": ["Present", "Absent", "Late"]
-        },
-        "morningEntry": {
-          "type": "string",
-          "format": "time",
-          "description": "The time the employee clocked in in the morning."
-        },
-        "afternoonEntry": {
-          "type": "string",
-          "format": "time",
-          "description": "The time the employee clocked in in the afternoon."
-        },
-        "overtimeHours": {
-          "type": "number",
-          "description": "The number of overtime hours worked."
+          "description": "Attendance status (e.g., present, absent, late)."
         }
       },
-      "required": ["employeeId", "date", "status"]
+      "required": [
+        "id",
+        "employeeId",
+        "attendanceDate",
+        "status"
+      ]
     }
   },
   "auth": {
-    "providers": []
+    "providers": [
+      "password",
+      "anonymous"
+    ]
   },
   "firestore": {
-    "/employees/{employeeId}": {
-      "schema": {
-        "$ref": "#/entities/Employee"
+    "structure": [
+      {
+        "path": "/orders/{orderId}",
+        "definition": {
+          "entityName": "Order",
+          "schema": {
+            "$ref": "#/backend/entities/Order"
+          },
+          "description": "Stores furniture order information.",
+          "params": [
+            {
+              "name": "orderId",
+              "description": "Unique identifier for the order."
+            }
+          ]
+        }
       },
-      "description": "Stores information about individual employees."
-    },
-    "/employees/{employeeId}/attendance/{attendanceId}": {
-        "schema": {
-            "$ref": "#/entities/AttendanceRecord"
-        },
-        "description": "Stores attendance records for a specific employee."
-    },
-    "/attendance/{date}/records/{employeeId}": {
-      "schema": {
-        "$ref": "#/entities/AttendanceRecord"
+      {
+        "path": "/items/{itemId}",
+        "definition": {
+          "entityName": "Item",
+          "schema": {
+            "$ref": "#/backend/entities/Item"
+          },
+          "description": "Stores furniture item details.",
+          "params": [
+            {
+              "name": "itemId",
+              "description": "Unique identifier for the item."
+            }
+          ]
+        }
       },
-      "description": "Stores attendance records for a specific day, grouped by employee."
-    }
+      {
+        "path": "/items/{itemId}/stockAdjustments/{stockAdjustmentId}",
+        "definition": {
+          "entityName": "StockAdjustment",
+          "schema": {
+            "$ref": "#/backend/entities/StockAdjustment"
+          },
+          "description": "Stores stock adjustment records for each item.",
+          "params": [
+            {
+              "name": "itemId",
+              "description": "Unique identifier for the item."
+            },
+            {
+              "name": "stockAdjustmentId",
+              "description": "Unique identifier for the stock adjustment."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/employees/{employeeId}",
+        "definition": {
+          "entityName": "Employee",
+          "schema": {
+            "$ref": "#/backend/entities/Employee"
+          },
+          "description": "Stores employee information.",
+          "params": [
+            {
+              "name": "employeeId",
+              "description": "Unique identifier for the employee."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/employees/{employeeId}/attendance/{attendanceId}",
+        "definition": {
+          "entityName": "Attendance",
+          "schema": {
+            "$ref": "#/backend/entities/Attendance"
+          },
+          "description": "Stores attendance records for each employee.",
+          "params": [
+            {
+              "name": "employeeId",
+              "description": "Unique identifier for the employee."
+            },
+            {
+              "name": "attendanceId",
+              "description": "Unique identifier for the attendance record."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to support FurnishWise's core features, focusing on order management, store management, employee attendance, and payroll calculation. It prioritizes authorization independence by avoiding hierarchical dependencies and denormalizing relevant data. Path-based ownership is used where appropriate, and structural segregation ensures each collection has a homogeneous security posture.\n\nSpecifically, authorization independence is achieved by not relying on `get()` calls in security rules.  The structure uses path-based ownership for user-related data (employees and their attendance records), making security rules straightforward. No membership maps are required as the user base is employees and we use the user's `uid` from `request.auth`.\n\nThe structure supports required QAPs by segregating data based on access requirements. For instance, employee-specific data is stored under the `/employees/{employeeId}` path, ensuring that listing employees doesn't expose sensitive data to unauthorized users. Stock adjustments are nested under items to easily see stock adjustment history and manage each item separately"
   }
 }
