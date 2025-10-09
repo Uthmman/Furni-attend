@@ -139,10 +139,19 @@ export default function AttendancePage() {
   ) => {
     if (selectedEmployeeAttendance) {
       const updated = { ...selectedEmployeeAttendance, [field]: value };
-       if (field === 'status' && value === 'Absent') {
-            updated.morningEntry = "";
-            updated.afternoonEntry = "";
-            updated.overtimeHours = 0;
+       if (field === 'status') {
+            if (value === 'Absent') {
+                updated.morningEntry = "";
+                updated.afternoonEntry = "";
+                updated.overtimeHours = 0;
+            } else if (value === 'Present' || value === 'Late') {
+                if (!updated.morningEntry) {
+                    updated.morningEntry = "08:00";
+                }
+                if (!updated.afternoonEntry) {
+                    updated.afternoonEntry = "13:30";
+                }
+            }
         }
       setSelectedEmployeeAttendance(updated);
     }
