@@ -29,7 +29,7 @@ import {
   getDay,
   startOfMonth,
   getDaysInMonth,
-  isWeekend,
+  isSunday,
   differenceInDays,
   startOfWeek,
   endOfWeek,
@@ -126,10 +126,10 @@ export default function DashboardPage() {
         setAttendanceLoading(false);
     };
 
-    if (!employeesLoading) {
+    if (!employeesLoading && !isUserLoading) {
       fetchAllAttendance();
     }
-  }, [firestore, employees, employeesLoading]);
+  }, [firestore, employees, employeesLoading, isUserLoading]);
 
 
   const attendanceRecords = useMemo(() => {
@@ -255,7 +255,7 @@ export default function DashboardPage() {
         let remainingWorkdays = 0;
         for (let i = 1; i <= remainingDays; i++) {
             const date = addDays(today, i);
-            if (!isWeekend(date)) {
+            if (!isSunday(date)) { // Monday to Saturday are working days
                 remainingWorkdays++;
             }
         }
@@ -408,5 +408,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    

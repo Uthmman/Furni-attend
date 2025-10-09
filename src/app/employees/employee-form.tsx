@@ -35,6 +35,7 @@ import { collection, addDoc, doc, setDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { format } from "date-fns";
 
 const employeeSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
@@ -45,6 +46,7 @@ const employeeSchema = z.object({
   dailyRate: z.coerce.number().optional(),
   monthlyRate: z.coerce.number().optional(),
   hourlyRate: z.coerce.number().optional(),
+  attendanceStartDate: z.string().min(1, { message: "Attendance start date is required." }),
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
@@ -72,6 +74,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
       dailyRate: 0,
       monthlyRate: 0,
       hourlyRate: 0,
+      attendanceStartDate: format(new Date(), 'yyyy-MM-dd'),
     },
   });
 
@@ -86,6 +89,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
         dailyRate: employee.dailyRate || 0,
         monthlyRate: employee.monthlyRate || 0,
         hourlyRate: employee.hourlyRate || 0,
+        attendanceStartDate: employee.attendanceStartDate ? format(new Date(employee.attendanceStartDate), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
       });
     } else {
         form.reset(form.formState.defaultValues);
@@ -187,6 +191,19 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
                   <FormLabel>Bank Account Number</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g. 1000123456789" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+            <FormField
+              control={form.control}
+              name="attendanceStartDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Attendance Start Date</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

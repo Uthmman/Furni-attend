@@ -36,7 +36,7 @@ import { type Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone, Trash2, Edit } from "lucide-react";
+import { Copy, Phone, Trash2, Edit, Calendar } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
@@ -153,10 +153,13 @@ export default function EmployeeProfilePage() {
   }, [employee]);
 
   const firstAttendanceDate = useMemo(() => {
+    if (employee?.attendanceStartDate) {
+      return new Date(employee.attendanceStartDate);
+    }
     if (employeeAttendance.length === 0) return new Date();
     // Since it's sorted descending, last element is the earliest
     return new Date(employeeAttendance[employeeAttendance.length - 1].date);
-  }, [employeeAttendance]);
+  }, [employee, employeeAttendance]);
 
   const periodOptions = useMemo(() => {
     if (!employee || !isValid(firstAttendanceDate)) return [];
@@ -304,6 +307,15 @@ export default function EmployeeProfilePage() {
             </CardHeader>
             <CardContent className="text-sm">
                 <div className="grid gap-4">
+                     {employee.attendanceStartDate && (
+                       <div className="flex items-center justify-between">
+                            <p className="font-semibold">Start Date</p>
+                             <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-muted-foreground" />
+                                <p className="text-muted-foreground">{format(new Date(employee.attendanceStartDate), "MMM d, yyyy")}</p>
+                             </div>
+                        </div>
+                    )}
                     <div className="flex items-center justify-between">
                         <p className="font-semibold">Phone Number</p>
                         <Button variant="ghost" size="sm" asChild>

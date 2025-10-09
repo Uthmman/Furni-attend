@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Order": {
@@ -127,13 +128,19 @@
         "accountNumber": {
           "type": "string",
           "description": "Employee's bank account number."
+        },
+        "attendanceStartDate": {
+          "type": "string",
+          "description": "The date the employee's attendance tracking should start.",
+          "format": "date"
         }
       },
       "required": [
         "id",
         "phoneNumber",
         "paymentMethod",
-        "accountNumber"
+        "accountNumber",
+        "attendanceStartDate"
       ]
     },
     "Attendance": {
@@ -193,8 +200,8 @@
           "schema": {
             "$ref": "#/backend/entities/Employee"
           },
-          "description": "Stores all employee information for the application.",
-          "allow": "read, write: if true;",
+          "description": "Stores all employee information for the application. This collection should be readable and writable by any authenticated user for the purpose of this internal tool.",
+          "allow": "read, write: if request.auth != null;",
           "params": [
             {
               "name": "employeeId",
@@ -210,8 +217,8 @@
           "schema": {
             "$ref": "#/backend/entities/Attendance"
           },
-          "description": "Stores all attendance records for each employee.",
-          "allow": "read, write: if true;",
+          "description": "Stores all attendance records for each employee. Access should be granted to authenticated users who need to manage or view attendance data.",
+          "allow": "read, write: if request.auth != null;",
           "params": [
             {
               "name": "employeeId",
@@ -231,8 +238,8 @@
           "schema": {
             "$ref": "#/backend/entities/Attendance"
           },
-          "description": "Stores attendance records for a specific date, used for daily logging.",
-          "allow": "read, write: if true;",
+          "description": "Stores attendance records for a specific date, used for daily logging. Authenticated users should have full access.",
+          "allow": "read, write: if request.auth != null;",
           "params": [
             {
               "name": "date",
@@ -246,6 +253,6 @@
         }
       }
     ],
-    "reasoning": "This Firestore structure is designed to be completely open for development purposes. The primary goal is to remove all permission errors by allowing all reads and writes. Authorization independence is achieved by applying a blanket 'allow read, write: if true;' rule. This is a deliberate choice to unblock development and fix the persistent permission errors by deploying open, public rules."
+    "reasoning": "To resolve persistent permission issues and facilitate rapid development, the security rules are being simplified. This new structure allows any authenticated user to read and write to the specified collections. This is a deliberate choice to unblock development and ensure the application is functional for internal use, where all authenticated users are considered trusted. This approach grants full access to logged-in users, effectively making the database public to them while keeping it private from unauthenticated access."
   }
 }
