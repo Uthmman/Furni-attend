@@ -14,7 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Bell, User, LogOut } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { PageTitleProvider, usePageTitle } from "@/components/page-title-provider";
-import React from "react";
+import React, { useEffect } from "react";
 import { FirebaseClientProvider, useUser, useAuth } from "@/firebase";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -60,55 +60,21 @@ function AppHeader() {
 }
 
 function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, isUserLoading } = useUser();
-  const router = useRouter();
-  const pathname = usePathname();
-
-  React.useEffect(() => {
-    // If loading has finished and there's no user, redirect to login.
-    if (!isUserLoading && !user && pathname !== '/login') {
-      router.replace('/login');
-    }
-  }, [user, isUserLoading, router, pathname]);
-
-  // If we are on the login page, render it without the main app layout.
-  // Or if we are still loading the user state.
-  if (pathname === '/login' || isUserLoading) {
-    return <>{children}</>;
-  }
-  
-  if (!user) {
-     return (
-      <div className="flex h-screen w-full items-center justify-center">
-        <div
-            className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent"
-            role="status"
-        >
-            <span className="sr-only">Loading...</span>
+  return (
+    <SidebarProvider>
+      <div className="flex min-h-screen w-full">
+        <Sidebar className="hidden md:flex border-r">
+          <SidebarNav />
+        </Sidebar>
+        <div className="flex flex-col w-full">
+          <AppHeader />
+          <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
+              {children}
+          </main>
         </div>
       </div>
-    );
-  }
-
-
-  // If user is authenticated, render the main app layout.
-  return (
-    <PageTitleProvider>
-      <SidebarProvider>
-        <div className="flex min-h-screen w-full">
-          <Sidebar className="hidden md:flex border-r">
-            <SidebarNav />
-          </Sidebar>
-          <div className="flex flex-col w-full">
-            <AppHeader />
-            <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
-                {children}
-            </main>
-          </div>
-        </div>
-        <MobileNav />
-      </SidebarProvider>
-    </PageTitleProvider>
+      <MobileNav />
+    </SidebarProvider>
   );
 }
 
@@ -135,10 +101,50 @@ export default function RootLayout({
       </head>
       <body className={cn("font-body", "min-h-screen w-full bg-background text-foreground")}>
         <FirebaseClientProvider>
-          <AppLayout>{children}</AppLayout>
+          <PageTitleProvider>
+            <AuthGuard>
+              {children}
+            </AuthGuard>
+          </PageTitleProvider>
         </FirebaseClientProvider>
         <Toaster />
       </body>
     </html>
   );
+}
+
+
+function AuthGuard({ children }: { children: React.ReactNode }) {
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
+  const pathname = usePathname();
+
+  useEffect(() => {
+    if (!isUserLoading && !user && pathname !== '/login') {
+      router.replace('/login');
+    }
+  }, [user, isUserLoading, router, pathname]);
+
+  if (isUserLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div
+            className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent"
+            role="status"
+        >
+            <span className="sr-only">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (pathname === '/login') {
+    return <>{children}</>;
+  }
+
+  if (!user) {
+    return null;
+  }
+
+  return <AppLayout>{children}</AppLayout>;
 }
