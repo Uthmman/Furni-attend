@@ -35,9 +35,9 @@ import {
   endOfWeek,
   format,
 } from "date-fns";
-import { collectionGroup, query, where, type Query, type Timestamp } from "firebase/firestore";
+import { type Timestamp } from "firebase/firestore";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection } from "firebase/firestore";
+import { collection, collectionGroup, query, where, getDocs } from "firebase/firestore";
 import { type Employee, type AttendanceRecord, type PayrollEntry } from "@/lib/types";
 
 const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): number => {
@@ -98,15 +98,20 @@ export default function DashboardPage() {
   const today = new Date();
   const monthStart = startOfMonth(today);
 
-  const attendanceQuery: Query<AttendanceRecord> | null = useMemoFirebase(() => {
+  const attendanceQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    return query(
-        collectionGroup(firestore, 'records'), 
-        where('date', '>=', monthStart.toISOString())
-    ) as Query<AttendanceRecord>;
-  }, [firestore, user, monthStart]);
+    // We fetch all attendance for all employees and filter client-side.
+    // For a larger app, this should be optimized.
+    return collectionGroup(firestore, 'attendance');
+  }, [firestore, user]);
+  
+  const { data: allAttendance, loading: attendanceLoading } = useCollection(attendanceQuery);
 
-  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceQuery);
+  const attendanceRecords = useMemo(() => {
+      if (!allAttendance) return [];
+      const monthStart = startOfMonth(new Date());
+      return allAttendance.filter(record => getDateFromRecord(record.date) >= monthStart);
+  }, [allAttendance]);
 
 
   const recentPayroll = useMemo((): PayrollEntry[] => {
@@ -382,4 +387,5 @@ export default function DashboardPage() {
       </div>
     </div>
   );
-}
+
+    

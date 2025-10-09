@@ -33,6 +33,7 @@ import {
   subMonths,
   eachWeekOfInterval,
   subWeeks,
+  isValid,
 } from "date-fns";
 import type { Timestamp } from "firebase/firestore";
 import type { PayrollEntry, Employee, AttendanceRecord } from "@/lib/types";
@@ -75,6 +76,7 @@ const calculateHoursWorked = (
 
 
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+    if (!isValid(date)) return "Invalid Date";
     return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
 };
 
@@ -97,9 +99,10 @@ export default function PayrollPage() {
   }, [firestore, user]);
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
   
-  const attendanceCollectionRef: Query<AttendanceRecord> | null = useMemoFirebase(() => {
+  const attendanceCollectionRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    return query(collectionGroup(firestore, 'records')) as Query<AttendanceRecord>;
+    // Querying the collection group of all 'attendance' subcollections
+    return collectionGroup(firestore, 'attendance') as Query<AttendanceRecord>;
   }, [firestore, user]);
   
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
@@ -186,9 +189,9 @@ export default function PayrollPage() {
     const firstRecordDoc = attendanceRecords.reduce((earliest, current) => 
         getDateFromRecord(current.date) < getDateFromRecord(earliest.date) ? current : earliest
     );
-
-    const firstRecordDate = getDateFromRecord(firstRecordDoc.date);
     
+    const firstRecordDate = getDateFromRecord(firstRecordDoc.date);
+
     // Monthly History
     const months = eachMonthOfInterval({
         start: startOfMonth(firstRecordDate),
@@ -398,4 +401,5 @@ export default function PayrollPage() {
         </div>
     </div>
   );
-}
+
+    
