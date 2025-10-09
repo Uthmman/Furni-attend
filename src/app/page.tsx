@@ -34,6 +34,7 @@ import {
   startOfWeek,
   endOfWeek,
   format,
+  isValid
 } from "date-fns";
 import { type Timestamp } from "firebase/firestore";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
@@ -67,7 +68,7 @@ const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): n
 };
 
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
-  if (!date || isNaN(date.getTime())) return "";
+  if (!isValid(date)) return "Invalid Date";
   try {
       return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
   } catch (e) {
@@ -289,10 +290,8 @@ export default function DashboardPage() {
     }, { weekly: 0, monthly: 0 });
   }, [recentPayroll]);
 
-  const ethiopianDayOfMonth = ethiopianDateFormatter(today, { day: 'numeric' });
-  const ethiopianDayOfWeek = ethiopianDateFormatter(today, { weekday: 'long' });
-  const ethiopianMonth = ethiopianDateFormatter(today, { month: 'long' });
-  const ethiopianYear = ethiopianDateFormatter(today, { year: 'numeric' }).replace(' ERA1', '');
+  const gregorianDate = format(today, 'EEEE, MMMM d, yyyy');
+  const ethiopianFullDate = ethiopianDateFormatter(today, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   if (isUserLoading || employeesLoading || attendanceLoading) {
     return <div>Loading...</div>;
@@ -302,17 +301,11 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <Card className="lg:col-span-2">
+            <CardHeader>
+                 <CardTitle>{gregorianDate}</CardTitle>
+                 <p className="text-muted-foreground">{ethiopianFullDate}</p>
+            </CardHeader>
             <CardContent className="flex items-center justify-center p-6 text-center">
-                <div className="flex items-baseline gap-4">
-                    <div className="flex flex-col items-center">
-                        <span className="text-8xl font-bold text-primary">{ethiopianDayOfMonth}</span>
-                        <span className="text-xl text-muted-foreground">{ethiopianDayOfWeek}</span>
-                    </div>
-                    <div className="flex flex-col items-start">
-                        <span className="text-4xl font-semibold">{ethiopianMonth}</span>
-                        <span className="text-2xl text-muted-foreground">{ethiopianYear}</span>
-                    </div>
-                </div>
             </CardContent>
         </Card>
         <div className="grid grid-cols-2 lg:grid-cols-1 gap-8">

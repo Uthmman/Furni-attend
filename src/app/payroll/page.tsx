@@ -34,6 +34,7 @@ import {
   eachWeekOfInterval,
   subWeeks,
   isValid,
+  format,
 } from "date-fns";
 import type { Timestamp } from "firebase/firestore";
 import type { PayrollEntry, Employee, AttendanceRecord } from "@/lib/types";
@@ -168,7 +169,7 @@ export default function PayrollPage() {
             employeeId: employee.id,
             employeeName: employee.name,
             paymentMethod: "Weekly",
-            period: `${ethiopianDateFormatter(currentWeek.start, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(currentWeek.end, { day: 'numeric', month: 'short', year: 'numeric' })}`,
+            period: `${format(currentWeek.start, 'MMM d')} - ${format(currentWeek.end, 'MMM d, yyyy')}`,
             amount: totalAmount,
             status: "Unpaid",
           });
@@ -190,7 +191,7 @@ export default function PayrollPage() {
             employeeId: employee.id,
             employeeName: employee.name,
             paymentMethod: "Monthly",
-            period: ethiopianDateFormatter(currentMonth.start, { year: "numeric", month: "long" }),
+            period: format(currentMonth.start, 'MMMM yyyy'),
             amount: totalAmount,
             status: "Unpaid",
           });
@@ -202,8 +203,8 @@ export default function PayrollPage() {
   }, [employees, attendanceRecords]);
 
   const { monthlyHistory, weeklyHistory } = useMemo(() => {
-    const monthlyHistory: { period: string, totalAmount: number }[] = [];
-    const weeklyHistory: { period: string, totalAmount: number }[] = [];
+    const monthlyHistory: { period: string, ethiopianPeriod: string, totalAmount: number }[] = [];
+    const weeklyHistory: { period: string, ethiopianPeriod: string, totalAmount: number }[] = [];
 
     if (!employees || !attendanceRecords || attendanceRecords.length === 0) return { monthlyHistory, weeklyHistory };
     
@@ -241,7 +242,8 @@ export default function PayrollPage() {
 
         if (monthTotal > 0) {
             monthlyHistory.push({
-                period: ethiopianDateFormatter(monthStart, { month: 'long', year: 'numeric' }),
+                period: format(monthStart, 'MMMM yyyy'),
+                ethiopianPeriod: ethiopianDateFormatter(monthStart, { month: 'long', year: 'numeric' }),
                 totalAmount: monthTotal
             });
         }
@@ -275,7 +277,8 @@ export default function PayrollPage() {
 
         if (weekTotal > 0) {
             weeklyHistory.push({
-                period: `${ethiopianDateFormatter(weekStart, {day: 'numeric', month: 'short'})} - ${ethiopianDateFormatter(weekEnd, {day: 'numeric', month: 'short', year: 'numeric'})}`,
+                period: `${format(weekStart, 'MMM d')} - ${format(weekEnd, 'MMM d, yyyy')}`,
+                ethiopianPeriod: `${ethiopianDateFormatter(weekStart, {day: 'numeric', month: 'short'})} - ${ethiopianDateFormatter(weekEnd, {day: 'numeric', month: 'short', year: 'numeric'})}`,
                 totalAmount: weekTotal
             });
         }
@@ -370,7 +373,10 @@ export default function PayrollPage() {
                             <TableBody>
                                 {monthlyHistory.map((item) => (
                                     <TableRow key={item.period}>
-                                        <TableCell className="font-medium">{item.period}</TableCell>
+                                        <TableCell className="font-medium">
+                                            <div>{item.period}</div>
+                                            <div className="text-xs text-muted-foreground">{item.ethiopianPeriod}</div>
+                                        </TableCell>
                                         <TableCell className="text-right font-mono">ETB {item.totalAmount.toFixed(2)}</TableCell>
                                     </TableRow>
                                 ))}
@@ -403,7 +409,10 @@ export default function PayrollPage() {
                             <TableBody>
                                 {weeklyHistory.map((item) => (
                                     <TableRow key={item.period}>
-                                        <TableCell className="font-medium">{item.period}</TableCell>
+                                        <TableCell className="font-medium">
+                                            <div>{item.period}</div>
+                                            <div className="text-xs text-muted-foreground">{item.ethiopianPeriod}</div>
+                                        </TableCell>
                                         <TableCell className="text-right font-mono">ETB {item.totalAmount.toFixed(2)}</TableCell>
                                     </TableRow>
                                 ))}
@@ -423,5 +432,3 @@ export default function PayrollPage() {
     </div>
   );
 }
-
-    

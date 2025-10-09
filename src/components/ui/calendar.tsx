@@ -31,7 +31,7 @@ const EthiopicDay = (props: DayProps) => {
 
     return (
         <div className="relative flex flex-col items-center justify-center h-full w-full">
-            <span className="absolute top-0.5 right-0.5 text-[9px] text-muted-foreground/70">{gregorianDay}</span>
+            <span className="absolute top-0.5 left-0.5 text-[9px] text-muted-foreground/70">{gregorianDay}</span>
             <span className="text-base font-medium">{ethiopianDay}</span>
         </div>
     );

@@ -173,18 +173,21 @@ export default function EmployeeProfilePage() {
       months.reverse().forEach(monthStart => {
         options.push({
           value: monthStart.toISOString(),
-          label: ethiopianDateFormatter(monthStart, { month: 'long', year: 'numeric' })
+          label: `${format(monthStart, 'MMMM yyyy')} / ${ethiopianDateFormatter(monthStart, { month: 'long', year: 'numeric' })}`
         });
       });
     } else { // Weekly
       const weeks = eachWeekOfInterval(interval, { weekStartsOn: 1 });
       weeks.reverse().forEach(weekStart => {
         const period = { start: startOfWeek(weekStart, { weekStartsOn: 1 }), end: endOfWeek(weekStart, { weekStartsOn: 1 }) };
-        const startDay = ethiopianDateFormatter(period.start, { day: 'numeric', month: 'short' });
-        const endDay = ethiopianDateFormatter(period.end, { day: 'numeric', month: 'short', year: 'numeric' });
+        const startDay = format(period.start, 'MMM d');
+        const endDay = format(period.end, 'MMM d, yyyy');
+        const startDayEth = ethiopianDateFormatter(period.start, { day: 'numeric', month: 'short' });
+        const endDayEth = ethiopianDateFormatter(period.end, { day: 'numeric', month: 'short', year: 'numeric' });
+
         options.push({
           value: period.start.toISOString(),
-          label: `${startDay} - ${endDay}`
+          label: `${startDay} - ${endDay} / ${startDayEth} - ${endDayEth}`
         });
       });
     }
@@ -312,7 +315,7 @@ export default function EmployeeProfilePage() {
                             <p className="font-semibold">Start Date</p>
                              <div className="flex items-center gap-2">
                                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                                <p className="text-muted-foreground">{format(new Date(employee.attendanceStartDate), "MMM d, yyyy")}</p>
+                                <p className="text-muted-foreground">{format(new Date(employee.attendanceStartDate), "MMM d, yyyy")} / {ethiopianDateFormatter(new Date(employee.attendanceStartDate), { day: 'numeric', month: 'short', year: 'numeric'})}</p>
                              </div>
                         </div>
                     )}
@@ -409,7 +412,12 @@ export default function EmployeeProfilePage() {
                     {filteredAttendance.length > 0 ? (
                         filteredAttendance.map((record) => (
                         <TableRow key={record.id}>
-                            <TableCell>{ethiopianDateFormatter(getDateFromRecord(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}</TableCell>
+                            <TableCell>
+                                <div className="flex flex-col">
+                                    <span>{format(getDateFromRecord(record.date), 'EEE, MMM d')}</span>
+                                    <span className="text-xs text-muted-foreground">{ethiopianDateFormatter(getDateFromRecord(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                                </div>
+                            </TableCell>
                             <TableCell>
                             <Badge variant={record.status === 'Absent' ? 'destructive' : 'secondary'}>
                                 {record.status}

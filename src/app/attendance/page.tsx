@@ -263,7 +263,7 @@ export default function AttendancePage() {
           <Card>
             <CardHeader>
               <CardTitle>
-                Employee Attendance for {format(selectedDate, "MMM d, yyyy")}
+                Employee Attendance for {format(selectedDate, "PPP")}
               </CardTitle>
               <CardDescription>
                 {ethiopianDateFormatter(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
