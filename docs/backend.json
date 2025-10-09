@@ -245,7 +245,7 @@
           "schema": {
             "$ref": "#/backend/entities/Employee"
           },
-          "description": "Stores employee information.",
+          "description": "Stores employee information for the application.",
           "params": [
             {
               "name": "employeeId",
