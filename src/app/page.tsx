@@ -100,6 +100,7 @@ export default function DashboardPage() {
   
   const today = new Date();
   const monthStart = startOfMonth(today);
+  const weekStart = startOfWeek(today, { weekStartsOn: 1 });
 
   useEffect(() => {
     setTitle("Dashboard");
@@ -283,6 +284,48 @@ export default function DashboardPage() {
     }, { weekly: 0, monthly: 0 });
   }, [recentPayroll]);
 
+  const estimatedUpcomingTotals = useMemo(() => {
+    if (!employees) return { weekly: 0, monthly: 0 };
+    
+    const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
+    const monthEnd = endOfMonth(today);
+    
+    let estimatedWeekly = upcomingTotals.weekly;
+    let estimatedMonthly = upcomingTotals.monthly;
+
+    const remainingDaysInWeek = differenceInDays(weekEnd, today);
+    if(remainingDaysInWeek > 0) {
+        let remainingWorkdays = 0;
+        for (let i = 1; i <= remainingDaysInWeek; i++) {
+            const date = addDays(today, i);
+            if (getDay(date) !== 0) { // Not Sunday
+                remainingWorkdays++;
+            }
+        }
+        employees.filter(e => e.paymentMethod === 'Weekly').forEach(emp => {
+            const dailyRate = emp.dailyRate || (emp.hourlyRate ? emp.hourlyRate * 8 : 0);
+            if (dailyRate) estimatedWeekly += dailyRate * remainingWorkdays;
+        });
+    }
+
+    const remainingDaysInMonth = differenceInDays(monthEnd, today);
+    if(remainingDaysInMonth > 0) {
+        let remainingWorkdays = 0;
+        for (let i = 1; i <= remainingDaysInMonth; i++) {
+            const date = addDays(today, i);
+            if (getDay(date) !== 0) { // Not Sunday
+                remainingWorkdays++;
+            }
+        }
+        employees.filter(e => e.paymentMethod === 'Monthly').forEach(emp => {
+             const dailyRate = emp.monthlyRate ? emp.monthlyRate / 26 : (emp.hourlyRate ? emp.hourlyRate * 8 : 0);
+            if (dailyRate) estimatedMonthly += dailyRate * remainingWorkdays;
+        });
+    }
+
+    return { weekly: estimatedWeekly, monthly: estimatedMonthly };
+  }, [employees, today, upcomingTotals]);
+
   const gregorianDate = format(today, 'EEEE, MMMM d, yyyy');
   const ethiopianFullDate = ethiopianDateFormatter(today, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
@@ -331,18 +374,38 @@ export default function DashboardPage() {
       </div>
       
        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <StatCard
-          title="Upcoming Weekly Payout"
-          value={`ETB ${upcomingTotals.weekly.toFixed(2)}`}
-          icon={<Wallet className="size-5 text-muted-foreground" />}
-          description="Total for current week"
-        />
-        <StatCard
-          title="Upcoming Monthly Payout"
-          value={`ETB ${upcomingTotals.monthly.toFixed(2)}`}
-          icon={<Wallet className="size-5 text-muted-foreground" />}
-          description="Total for current month"
-        />
+        <Card className="hover:shadow-lg transition-shadow rounded-xl">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-base font-semibold">Upcoming Weekly Payout</CardTitle>
+                <Wallet className="size-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+                <div>
+                    <p className="text-xs text-muted-foreground">Estimated Total</p>
+                    <p className="text-2xl font-bold">ETB {estimatedUpcomingTotals.weekly.toFixed(2)}</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground">Actual to Date</p>
+                    <p className="text-lg font-semibold text-primary">ETB {upcomingTotals.weekly.toFixed(2)}</p>
+                </div>
+            </CardContent>
+        </Card>
+        <Card className="hover:shadow-lg transition-shadow rounded-xl">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-base font-semibold">Upcoming Monthly Payout</CardTitle>
+                <Wallet className="size-5 text-muted-foreground" />
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+                <div>
+                    <p className="text-xs text-muted-foreground">Estimated Total</p>
+                    <p className="text-2xl font-bold">ETB {estimatedUpcomingTotals.monthly.toFixed(2)}</p>
+                </div>
+                <div>
+                    <p className="text-xs text-muted-foreground">Actual to Date</p>
+                    <p className="text-lg font-semibold text-primary">ETB {upcomingTotals.monthly.toFixed(2)}</p>
+                </div>
+            </CardContent>
+        </Card>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -394,9 +457,5 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
-
-    
 
     
