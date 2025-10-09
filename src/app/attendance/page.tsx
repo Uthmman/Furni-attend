@@ -152,8 +152,11 @@ export default function AttendancePage() {
   };
   
   const selectedEmployeeDetails: Employee | undefined = useMemo(() => {
-      return employees?.find(e => e.id === selectedEmployeeAttendance?.employeeId);
-  }, [selectedEmployeeAttendance, employees]);
+      if (!isUserLoading && employees) {
+        return employees.find(e => e.id === selectedEmployeeAttendance?.employeeId);
+      }
+      return undefined;
+  }, [selectedEmployeeAttendance, employees, isUserLoading]);
 
   const hourlyRate: number = useMemo(() => {
     if (!selectedEmployeeDetails) return 0;

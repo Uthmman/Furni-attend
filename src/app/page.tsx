@@ -35,7 +35,7 @@ import {
   endOfWeek,
   format,
 } from "date-fns";
-import { type Timestamp, collectionGroup, query, where, type Query } from "firebase/firestore";
+import { collectionGroup, query, where, type Query, type Timestamp } from "firebase/firestore";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { type Employee, type AttendanceRecord, type PayrollEntry } from "@/lib/types";
@@ -100,7 +100,6 @@ export default function DashboardPage() {
 
   const attendanceQuery: Query<AttendanceRecord> | null = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    // Query the 'records' subcollection across all 'attendance' documents
     return query(
         collectionGroup(firestore, 'records'), 
         where('date', '>=', monthStart.toISOString())
@@ -384,5 +383,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    
