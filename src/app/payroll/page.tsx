@@ -38,7 +38,7 @@ import type { Timestamp } from "firebase/firestore";
 import type { PayrollEntry, Employee, AttendanceRecord } from "@/lib/types";
 import Link from 'next/link';
 import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
-import { collection } from 'firebase/firestore';
+import { collection, collectionGroup, query } from 'firebase/firestore';
 
 const calculateHoursWorked = (
   morningEntry?: string,
@@ -79,6 +79,7 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
 };
 
 const getDateFromRecord = (date: string | Timestamp): Date => {
+  if (!date) return new Date();
   if (date instanceof Timestamp) {
     return date.toDate();
   }
@@ -98,7 +99,7 @@ export default function PayrollPage() {
   
   const attendanceCollectionRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
-    return collection(firestore, 'attendance');
+    return query(collectionGroup(firestore, 'records'));
   }, [firestore, user]);
   
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
@@ -181,14 +182,16 @@ export default function PayrollPage() {
     const weeklyHistory: { period: string, totalAmount: number }[] = [];
 
     if (!employees || !attendanceRecords || attendanceRecords.length === 0) return { monthlyHistory, weeklyHistory };
-
-    const firstRecordDate = attendanceRecords.reduce((earliest, current) => 
+    
+    const firstRecordDoc = attendanceRecords.reduce((earliest, current) => 
         getDateFromRecord(current.date) < getDateFromRecord(earliest.date) ? current : earliest
-    ).date;
+    );
+
+    const firstRecordDate = getDateFromRecord(firstRecordDoc.date);
     
     // Monthly History
     const months = eachMonthOfInterval({
-        start: startOfMonth(getDateFromRecord(firstRecordDate)),
+        start: startOfMonth(firstRecordDate),
         end: subMonths(new Date(), 1)
     });
 
@@ -222,7 +225,7 @@ export default function PayrollPage() {
 
     // Weekly History
     const weeks = eachWeekOfInterval({
-        start: startOfWeek(getDateFromRecord(firstRecordDate), { weekStartsOn: 1 }),
+        start: startOfWeek(firstRecordDate, { weekStartsOn: 1 }),
         end: subWeeks(new Date(), 1)
     }, { weekStartsOn: 1 });
 
@@ -396,3 +399,5 @@ export default function PayrollPage() {
     </div>
   );
 }
+
+    

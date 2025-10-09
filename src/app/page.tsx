@@ -33,10 +33,11 @@ import {
   differenceInDays,
   startOfWeek,
   endOfWeek,
+  format,
 } from "date-fns";
-import { type Timestamp } from "firebase/firestore";
+import { type Timestamp, collectionGroup, query, where, type Query } from "firebase/firestore";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, where, type Query } from "firebase/firestore";
+import { collection } from "firebase/firestore";
 import { type Employee, type AttendanceRecord, type PayrollEntry } from "@/lib/types";
 
 const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): number => {
@@ -76,6 +77,7 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
 };
 
 const getDateFromRecord = (date: string | Timestamp): Date => {
+  if (!date) return new Date();
   if (date instanceof Timestamp) {
     return date.toDate();
   }
@@ -96,10 +98,11 @@ export default function DashboardPage() {
   const today = new Date();
   const monthStart = startOfMonth(today);
 
-  const attendanceQuery = useMemoFirebase(() => {
+  const attendanceQuery: Query<AttendanceRecord> | null = useMemoFirebase(() => {
     if (!firestore || !user) return null;
+    // Query the 'records' subcollection across all 'attendance' documents
     return query(
-        collection(firestore, 'attendance'), 
+        collectionGroup(firestore, 'records'), 
         where('date', '>=', monthStart.toISOString())
     ) as Query<AttendanceRecord>;
   }, [firestore, user, monthStart]);
@@ -381,3 +384,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
