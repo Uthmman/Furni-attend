@@ -10,6 +10,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from "@/components/ui/card";
 import {
   Dialog,
@@ -29,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { AttendanceRecord, Employee } from "@/lib/types";
-import { format } from "date-fns";
+import { format, isValid } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
@@ -53,6 +54,16 @@ const getStatusVariant = (status: "Present" | "Absent" | "Late") => {
       return "destructive";
     default:
       return "outline";
+  }
+};
+
+const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+  if (!isValid(date)) return "Invalid Date";
+  try {
+      return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+  } catch (e) {
+      console.error("Error formatting Ethiopian date:", e);
+      return "Invalid Date";
   }
 };
 
@@ -210,6 +221,17 @@ export default function AttendancePage() {
       return <div>Loading...</div>
   }
 
+  const calendarCaption = useMemo(() => {
+    return (
+      <div className="flex flex-col items-center">
+        <p>{format(selectedDate, 'MMMM yyyy')}</p>
+        <p className="text-sm text-muted-foreground">
+          {ethiopianDateFormatter(selectedDate, { month: 'long', year: 'numeric' })}
+        </p>
+      </div>
+    );
+  }, [selectedDate]);
+
   return (
     <div className="flex flex-col gap-6">
        <div className="flex items-center justify-between">
@@ -227,6 +249,12 @@ export default function AttendancePage() {
                 mode="single"
                 selected={selectedDate}
                 onSelect={handleDateSelect}
+                captionLayout="dropdown-buttons"
+                fromYear={2015}
+                toYear={2035}
+                components={{
+                    Caption: () => calendarCaption,
+                }}
               />
             </CardContent>
           </Card>
@@ -235,8 +263,11 @@ export default function AttendancePage() {
           <Card>
             <CardHeader>
               <CardTitle>
-                Employee Attendance
+                Employee Attendance for {format(selectedDate, "MMM d, yyyy")}
               </CardTitle>
+              <CardDescription>
+                {ethiopianDateFormatter(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+              </CardDescription>
             </CardHeader>
             <CardContent>
                 {attendanceLoading && <p>Loading attendance...</p>}

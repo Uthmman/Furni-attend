@@ -1,20 +1,60 @@
+
 "use client"
 
 import * as React from "react"
 import { ChevronLeft, ChevronRight } from "lucide-react"
-import { DayPicker } from "react-day-picker"
+import { DayPicker, type DayProps } from "react-day-picker"
+import { isValid } from "date-fns"
 
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 
-export type CalendarProps = React.ComponentProps<typeof DayPicker>
+export type CalendarProps = React.ComponentProps<typeof DayPicker> & {
+  renderDay?: (day: Date) => React.ReactNode;
+}
+
+
+const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+  if (!isValid(date)) return "";
+  try {
+      return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+  } catch (e) {
+      console.error("Error formatting Ethiopian date:", e);
+      return "";
+  }
+};
+
+const EthiopicDay = (props: DayProps) => {
+    const { date } = props;
+    const gregorianDay = date.getDate();
+    const ethiopianDay = ethiopianDateFormatter(date, { day: 'numeric' });
+
+    return (
+        <div className="relative flex flex-col items-center justify-center h-full w-full">
+            <span className="absolute top-0.5 right-0.5 text-[9px] text-muted-foreground/70">{gregorianDay}</span>
+            <span className="text-base font-medium">{ethiopianDay}</span>
+        </div>
+    );
+};
+
 
 function Calendar({
   className,
   classNames,
   showOutsideDays = true,
+  renderDay,
   ...props
 }: CalendarProps) {
+  const components = {
+    IconLeft: ({ className, ...props }: React.ComponentProps<"svg">) => (
+      <ChevronLeft className={cn("h-4 w-4", className)} {...props} />
+    ),
+    IconRight: ({ className, ...props }: React.ComponentProps<"svg">) => (
+      <ChevronRight className={cn("h-4 w-4", className)} {...props} />
+    ),
+    Day: renderDay ? (dayProps: DayProps) => renderDay(dayProps.date) : EthiopicDay,
+  };
+  
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -46,21 +86,14 @@ function Calendar({
           "bg-primary text-primary-foreground hover:bg-primary hover:text-primary-foreground focus:bg-primary focus:text-primary-foreground",
         day_today: "bg-accent text-accent-foreground",
         day_outside:
-          "day-outside text-muted-foreground aria-selected:bg-accent/50 aria-selected:text-muted-foreground",
+          "day-outside text-muted-foreground opacity-50 aria-selected:bg-accent/50 aria-selected:text-muted-foreground",
         day_disabled: "text-muted-foreground opacity-50",
         day_range_middle:
           "aria-selected:bg-accent aria-selected:text-accent-foreground",
         day_hidden: "invisible",
         ...classNames,
       }}
-      components={{
-        IconLeft: ({ className, ...props }) => (
-          <ChevronLeft className={cn("h-4 w-4", className)} {...props} />
-        ),
-        IconRight: ({ className, ...props }) => (
-          <ChevronRight className={cn("h-4 w-4", className)} {...props} />
-        ),
-      }}
+      components={components}
       {...props}
     />
   )
