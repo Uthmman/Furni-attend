@@ -38,7 +38,7 @@ import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Copy, Phone, Trash2, Edit } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
-import { useCollection, useDoc, useFirestore } from "@/firebase";
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
 import type { AttendanceRecord } from "@/lib/types";
 import { EmployeeForm } from "../employee-form";
@@ -114,21 +114,22 @@ export default function EmployeeProfilePage() {
   const [_copiedValue, copy] = useCopyToClipboard();
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { user, isUserLoading } = useUser();
 
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
-  const employeeDocRef = useMemo(() => {
-    if (!firestore || !employeeId) return null;
+  const employeeDocRef = useMemoFirebase(() => {
+    if (!firestore || !employeeId || !user) return null;
     return doc(firestore, 'employees', employeeId as string);
-  }, [firestore, employeeId]);
+  }, [firestore, employeeId, user]);
   
   const { data: employee, loading: employeeLoading } = useDoc(employeeDocRef);
 
-  const attendanceCollectionRef = useMemo(() => {
-    if (!firestore || !employeeId) return null;
+  const attendanceCollectionRef = useMemoFirebase(() => {
+    if (!firestore || !employeeId || !user) return null;
     return collection(firestore, 'employees', employeeId as string, 'attendance');
-  }, [firestore, employeeId]);
+  }, [firestore, employeeId, user]);
 
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
 
@@ -248,7 +249,7 @@ export default function EmployeeProfilePage() {
     }
   };
 
-  if (employeeLoading || attendanceLoading) {
+  if (employeeLoading || attendanceLoading || isUserLoading) {
     return <div>Loading...</div>
   }
 

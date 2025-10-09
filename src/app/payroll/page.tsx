@@ -37,7 +37,7 @@ import {
 import type { Timestamp } from "firebase/firestore";
 import type { PayrollEntry, Employee, AttendanceRecord } from "@/lib/types";
 import Link from 'next/link';
-import { useCollection, useFirestore, useMemoFirebase } from '@/firebase';
+import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
 import { collection } from 'firebase/firestore';
 
 const calculateHoursWorked = (
@@ -88,14 +88,18 @@ const getDateFromRecord = (date: string | Timestamp): Date => {
 export default function PayrollPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
+  const { user, isUserLoading } = useUser();
 
-  const employeesCollectionRef = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const employeesCollectionRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return collection(firestore, 'employees');
+  }, [firestore, user]);
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
   
   const attendanceCollectionRef = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !user) return null;
     return collection(firestore, 'attendance');
-  }, [firestore]);
+  }, [firestore, user]);
   
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
 
@@ -257,7 +261,7 @@ export default function PayrollPage() {
     setTitle("Payroll");
   }, [setTitle]);
   
-  if (employeesLoading || attendanceLoading) {
+  if (employeesLoading || attendanceLoading || isUserLoading) {
     return <div>Loading...</div>;
   }
 

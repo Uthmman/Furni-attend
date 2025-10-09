@@ -6,14 +6,20 @@ import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import { PlusCircle } from "lucide-react";
 import { EmployeeList } from "./employee-list";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection } from "firebase/firestore";
 import { EmployeeForm } from "./employee-form";
 
 export default function EmployeesPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
-  const employeesCollectionRef = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const { user, isUserLoading } = useUser();
+
+  const employeesCollectionRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return collection(firestore, 'employees');
+  }, [firestore, user]);
+
   const { data: employees, loading } = useCollection(employeesCollectionRef);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
@@ -21,7 +27,7 @@ export default function EmployeesPage() {
     setTitle("Employees");
   }, [setTitle]);
 
-  if (loading) {
+  if (loading || isUserLoading) {
     return <div>Loading...</div>
   }
 

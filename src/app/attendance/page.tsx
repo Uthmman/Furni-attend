@@ -31,7 +31,7 @@ import {
 import type { AttendanceRecord, Employee } from "@/lib/types";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 
@@ -61,8 +61,12 @@ export default function AttendancePage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
   const { toast } = useToast();
+  const { user, isUserLoading } = useUser();
   
-  const employeesCollectionRef = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const employeesCollectionRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return collection(firestore, 'employees');
+  }, [firestore, user]);
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
   
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
@@ -70,9 +74,9 @@ export default function AttendancePage() {
   const formattedDate = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   
   const attendanceCollectionRef: Query<AttendanceRecord> | null = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !user) return null;
     return collection(firestore, 'attendance', formattedDate, 'records') as Query<AttendanceRecord>;
-  }, [firestore, formattedDate]);
+  }, [firestore, user, formattedDate]);
 
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
 
@@ -199,7 +203,7 @@ export default function AttendancePage() {
         });
   };
   
-  if (employeesLoading) {
+  if (employeesLoading || isUserLoading) {
       return <div>Loading...</div>
   }
 

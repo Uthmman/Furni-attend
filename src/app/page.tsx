@@ -35,7 +35,7 @@ import {
   endOfWeek,
 } from "date-fns";
 import { type Timestamp } from "firebase/firestore";
-import { useCollection, useFirestore, useMemoFirebase } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, where, type Query } from "firebase/firestore";
 import { type Employee, type AttendanceRecord, type PayrollEntry } from "@/lib/types";
 
@@ -85,20 +85,24 @@ const getDateFromRecord = (date: string | Timestamp): Date => {
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
+  const { user, isUserLoading } = useUser();
 
-  const employeesCollectionRef = useMemoFirebase(() => firestore ? collection(firestore, 'employees') : null, [firestore]);
+  const employeesCollectionRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return collection(firestore, 'employees');
+  }, [firestore, user]);
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
   
   const today = new Date();
   const monthStart = startOfMonth(today);
 
   const attendanceQuery = useMemoFirebase(() => {
-    if (!firestore) return null;
+    if (!firestore || !user) return null;
     return query(
         collection(firestore, 'attendance'), 
         where('date', '>=', monthStart.toISOString())
     ) as Query<AttendanceRecord>;
-  }, [firestore, monthStart]);
+  }, [firestore, user, monthStart]);
 
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceQuery);
 
@@ -263,7 +267,7 @@ export default function DashboardPage() {
   const ethiopianMonth = ethiopianDateFormatter(today, { month: 'long' });
   const ethiopianYear = ethiopianDateFormatter(today, { year: 'numeric' }).replace(' ERA1', '');
 
-  if (employeesLoading || attendanceLoading) {
+  if (isUserLoading || employeesLoading || attendanceLoading) {
     return <div>Loading...</div>;
   }
 
