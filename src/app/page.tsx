@@ -381,7 +381,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <Card>
           <CardHeader>
-            <CardTitle>Current Month Expense Breakdown</CardTitle>
+            <CardTitle>Current Gregorian Month Expense</CardTitle>
           </CardHeader>
           <CardContent>
             <ExpenseChart

@@ -141,8 +141,8 @@ export default function PayrollPage() {
     <div className="flex flex-col gap-8">
         <Card>
           <CardHeader>
-              <CardTitle>Expense History</CardTitle>
-              <CardDescription>Select a month to view the detailed expense breakdown.</CardDescription>
+              <CardTitle>Monthly Expense History</CardTitle>
+              <CardDescription>Select a Gregorian month to view the detailed expense breakdown. The corresponding Ethiopian month is shown for reference.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-1">

@@ -100,10 +100,10 @@ export function ExpenseChart({ employees, attendanceRecords, selectedMonth }: Ex
     <Card>
         <CardHeader>
             <CardTitle>
-                {format(selectedMonth, 'MMMM yyyy')} Expense Breakdown
+                Expense Breakdown for {format(selectedMonth, 'MMMM yyyy')}
             </CardTitle>
             <CardDescription>
-                {ethiopianDateFormatter(selectedMonth, { month: 'long', year: 'numeric' })}
+                Ethiopian equivalent: {ethiopianDateFormatter(selectedMonth, { month: 'long', year: 'numeric' })}
             </CardDescription>
         </CardHeader>
         <CardContent>
