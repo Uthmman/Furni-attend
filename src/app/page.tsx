@@ -10,15 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { Badge } from "@/components/ui/badge";
 import { Users, Wallet } from "lucide-react";
 import Link from 'next/link';
 import {
@@ -28,18 +19,19 @@ import {
   endOfMonth,
   getDay,
   startOfMonth,
-  getDaysInMonth,
-  isSunday,
   differenceInDays,
   startOfWeek,
   endOfWeek,
   format,
-  isValid
+  isValid,
+  subMonths,
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, collectionGroup, query, where, getDocs, type CollectionReference } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { type Employee, type AttendanceRecord, type PayrollEntry } from "@/lib/types";
+import { ExpenseChart } from "./payroll/expense-chart";
+import { PayrollHistoryChart } from "./payroll/payroll-history-chart";
 
 const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): number => {
     if (!morningEntry || !afternoonEntry) return 0;
@@ -96,11 +88,10 @@ export default function DashboardPage() {
     if (!firestore || !user) return null;
     return collection(firestore, 'employees');
   }, [firestore, user]);
-  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
+  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
   
   const today = new Date();
   const monthStart = startOfMonth(today);
-  const weekStart = startOfWeek(today, { weekStartsOn: 1 });
 
   useEffect(() => {
     setTitle("Dashboard");
@@ -138,86 +129,6 @@ export default function DashboardPage() {
       if (!allAttendance) return [];
       return allAttendance;
   }, [allAttendance]);
-
-
-  const recentPayroll = useMemo((): PayrollEntry[] => {
-    if (!employees || !attendanceRecords) return [];
-    const payroll: PayrollEntry[] = [];
-  
-    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
-    const currentWeekEnd = endOfWeek(today, { weekStartsOn: 1 });
-    const currentMonthStart = startOfMonth(today);
-    const currentMonthEnd = endOfMonth(today);
-
-    employees.forEach((employee) => {
-      const hourlyRate = employee.hourlyRate || 
-        (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
-        (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
-  
-      if (!hourlyRate) return;
-  
-      if (employee.paymentMethod === "Weekly") {
-        const weekPeriod = { start: currentWeekStart, end: currentWeekEnd };
-
-        const relevantRecords = attendanceRecords.filter(
-            (record) =>
-            record.employeeId === employee.id &&
-            (record.status === "Present" || record.status === "Late") &&
-            isWithinInterval(getDateFromRecord(record.date), weekPeriod)
-        );
-        
-        let totalHours = 0;
-        relevantRecords.forEach(record => {
-            totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
-        });
-        
-        const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-        const totalAmount = (totalHours + totalOvertime) * hourlyRate;
-
-        if (totalAmount > 0) {
-            payroll.push({
-            employeeId: employee.id,
-            employeeName: employee.name,
-            paymentMethod: "Weekly",
-            period: `${ethiopianDateFormatter(weekPeriod.start, {day: 'numeric', month: 'short'})} - ${ethiopianDateFormatter(weekPeriod.end, {day: 'numeric', month: 'short', year: 'numeric'})}`,
-            amount: totalAmount,
-            status: "Unpaid",
-            workingDays: relevantRecords.length,
-            });
-        }
-      } else if (employee.paymentMethod === "Monthly") {
-          const monthPeriod = { start: currentMonthStart, end: currentMonthEnd };
-          const relevantRecords = attendanceRecords.filter(
-              (record) =>
-              record.employeeId === employee.id &&
-              (record.status === "Present" || record.status === "Late") &&
-              isWithinInterval(getDateFromRecord(record.date), monthPeriod)
-          );
-
-          let totalHours = 0;
-          relevantRecords.forEach(record => {
-              totalHours += calculateHoursWorked(record.morningEntry, record.afternoonEntry);
-          });
-          
-          const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-          const totalAmount = (totalHours + totalOvertime) * hourlyRate;
-
-          if(totalAmount > 0) {
-                payroll.push({
-                  employeeId: employee.id,
-                  employeeName: employee.name,
-                  paymentMethod: "Monthly",
-                  period: ethiopianDateFormatter(monthPeriod.start, { year: 'numeric', month: 'long' }),
-                  amount: totalAmount,
-                  status: "Unpaid",
-                  workingDays: relevantRecords.length,
-              });
-          }
-      }
-    });
-  
-    return payroll.filter((p) => p.amount > 0);
-  }, [employees, attendanceRecords, today]);
 
   const monthlyExpense = useMemo(() => {
     if(!employees || !attendanceRecords) return { actual: 0, estimated: 0 };
@@ -274,15 +185,37 @@ export default function DashboardPage() {
   const totalEmployees = employees?.length || 0;
 
   const upcomingTotals = useMemo(() => {
-    return recentPayroll.reduce((acc, entry) => {
-        if (entry.paymentMethod === 'Weekly') {
-            acc.weekly += entry.amount;
+    if (!employees || !attendanceRecords) return { weekly: 0, monthly: 0 };
+    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+    
+    return employees.reduce((acc, employee) => {
+        const hourlyRate = employee.hourlyRate || 
+            (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
+            (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+        if (!hourlyRate) return acc;
+
+        const period = employee.paymentMethod === 'Weekly' 
+            ? { start: currentWeekStart, end: today }
+            : { start: monthStart, end: today };
+        
+        const relevantRecords = attendanceRecords.filter(r =>
+            r.employeeId === employee.id &&
+            (r.status === "Present" || r.status === "Late") &&
+            isWithinInterval(getDateFromRecord(r.date), period)
+        );
+
+        const totalHours = relevantRecords.reduce((total, r) => total + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+        const totalOvertime = relevantRecords.reduce((total, r) => total + (r.overtimeHours || 0), 0);
+        const amount = (totalHours + totalOvertime) * hourlyRate;
+
+        if (employee.paymentMethod === 'Weekly') {
+            acc.weekly += amount;
         } else {
-            acc.monthly += entry.amount;
+            acc.monthly += amount;
         }
         return acc;
     }, { weekly: 0, monthly: 0 });
-  }, [recentPayroll]);
+  }, [employees, attendanceRecords, today, monthStart]);
 
   const estimatedUpcomingTotals = useMemo(() => {
     if (!employees) return { weekly: 0, monthly: 0 };
@@ -328,6 +261,43 @@ export default function DashboardPage() {
 
   const gregorianDate = format(today, 'EEEE, MMMM d, yyyy');
   const ethiopianFullDate = ethiopianDateFormatter(today, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  
+  const payrollHistory = useMemo(() => {
+    if (!employees || !attendanceRecords || employees.length === 0 || attendanceRecords.length === 0) return [];
+    
+    const history: { month: string, total: number }[] = [];
+    const sixMonthsAgo = startOfMonth(subMonths(today, 5));
+    
+    for (let i = 0; i < 6; i++) {
+        const monthDate = startOfMonth(subMonths(today, i));
+        const monthKey = format(monthDate, 'yyyy-MM');
+        
+        const monthStart = startOfMonth(monthDate);
+        const monthEnd = endOfMonth(monthDate);
+        
+        let monthTotal = 0;
+        employees.forEach(employee => {
+            const hourlyRate = employee.hourlyRate || 
+                (employee.dailyRate ? employee.dailyRate / 8 : 0) || 
+                (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+            if (!hourlyRate) return;
+
+            const relevantRecords = attendanceRecords.filter(r =>
+                r.employeeId === employee.id &&
+                (r.status === "Present" || r.status === "Late") &&
+                isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })
+            );
+
+            const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+            const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+            monthTotal += (totalHours + totalOvertime) * hourlyRate;
+        });
+        
+        history.push({ month: format(monthDate, 'MMM yyyy'), total: monthTotal });
+    }
+    
+    return history.reverse();
+  }, [employees, attendanceRecords]);
 
   if (isUserLoading || employeesLoading || attendanceLoading) {
     return <div>Loading...</div>;
@@ -408,51 +378,27 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {recentPayroll.length > 0 && (
-          <Card className="lg:col-span-3">
-            <CardHeader>
-              <CardTitle>Upcoming Payroll</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Period</TableHead>
-                    <TableHead>Days Worked</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {recentPayroll.map((entry) => (
-                    <TableRow key={`${entry.employeeId}-${entry.period}`}>
-                      <TableCell>
-                        <Link href={`/employees/${entry.employeeId}`} className="font-medium hover:underline">{entry.employeeName}</Link>
-                        <div className="text-sm text-muted-foreground">
-                          {entry.paymentMethod}
-                        </div>
-                      </TableCell>
-                      <TableCell>{entry.period}</TableCell>
-                      <TableCell>{entry.workingDays}</TableCell>
-                      <TableCell>ETB {entry.amount.toFixed(2)}</TableCell>
-                      <TableCell>
-                        <Badge
-                          variant={
-                            entry.status === "Paid" ? "secondary" : "destructive"
-                          }
-                        >
-                          {entry.status}
-                        </Badge>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-        )}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <Card>
+          <CardHeader>
+            <CardTitle>Current Month Expense Breakdown</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ExpenseChart
+              employees={employees || []}
+              attendanceRecords={attendanceRecords}
+              selectedMonth={today}
+            />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Payroll History (Last 6 Months)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <PayrollHistoryChart data={payrollHistory} />
+          </CardContent>
+        </Card>
       </div>
     </div>
   );
