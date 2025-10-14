@@ -11,59 +11,20 @@ import {
   CardDescription
 } from "@/components/ui/card";
 import {
-  parse,
-  isValid,
   format,
+  isValid,
+  addDays,
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import type { Employee, AttendanceRecord } from "@/lib/types";
-import { useCollection, useFirestore, useMemoFirebase, useUser } from '@/firebase';
+import { useFirestore, useUser, errorEmitter, FirestorePermissionError, useMemoFirebase } from '@/firebase';
 import { collection, getDocs } from 'firebase/firestore';
-import { Calendar } from '@/components/ui/calendar';
 import { ExpenseChart } from './expense-chart';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
-
-const calculateHoursWorked = (
-  morningEntry?: string,
-  afternoonEntry?: string
-): number => {
-  if (!morningEntry || !afternoonEntry) return 0;
-
-  const morningStartTime = parse("08:00", "HH:mm", new Date());
-  const morningEndTime = parse("12:30", "HH:mm", new Date());
-  const afternoonStartTime = parse("13:30", "HH:mm", new Date());
-  const afternoonEndTime = parse("17:00", "HH:mm", new Date());
-
-  const morningEntryTime = parse(morningEntry, "HH:mm", new Date());
-  const afternoonEntryTime = parse(afternoonEntry, "HH:mm", new Date());
-
-  let totalHours = 0;
-
-  if (morningEntryTime < morningEndTime) {
-    const morningWorkMs =
-      morningEndTime.getTime() -
-      Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
-    totalHours += morningWorkMs / (1000 * 60 * 60);
-  }
-
-  if (afternoonEntryTime < afternoonEndTime) {
-    const afternoonWorkMs =
-      afternoonEndTime.getTime() -
-      Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
-    totalHours += afternoonWorkMs / (1000 * 60 * 60);
-  }
-
-  return Math.max(0, totalHours);
-};
-
-
-const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
-    if (!isValid(date)) return "Invalid Date";
-    return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
-};
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const getDateFromRecord = (date: string | Timestamp): Date => {
   if (!date) return new Date();
@@ -73,6 +34,30 @@ const getDateFromRecord = (date: string | Timestamp): Date => {
   return new Date(date);
 }
 
+const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+    if (!isValid(date)) return "Invalid Date";
+    return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+};
+
+const toEthiopian = (date: Date) => {
+    const parts = ethiopianDateFormatter(date, { year: 'numeric', month: 'numeric', day: 'numeric' }).split('/');
+    return {
+        month: parseInt(parts[0], 10),
+        day: parseInt(parts[1], 10),
+        year: parseInt(parts[2], 10)
+    };
+};
+
+const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
+    const today = new Date();
+    const ethToday = toEthiopian(today);
+    // This is a simplified conversion and might have inaccuracies.
+    // For a production app, a robust library for calendar conversions would be better.
+    const dayDiff = ((ethYear - ethToday.year) * 365.25) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
+    return addDays(today, Math.round(dayDiff));
+};
+
+
 export default function PayrollPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
@@ -80,6 +65,7 @@ export default function PayrollPage() {
   const [attendanceRecords, setAttendanceRecords] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+  const [monthOptions, setMonthOptions] = useState<{label: string, value: string}[]>([]);
 
 
   const employeesCollectionRef = useMemoFirebase(() => {
@@ -96,17 +82,29 @@ export default function PayrollPage() {
         }
 
         setAttendanceLoading(true);
-        const attendancePromises = employees.map(employee => {
-            const attColRef = collection(firestore, 'employees', employee.id, 'attendance');
-            return getDocs(attColRef);
-        });
+        const allRecords: AttendanceRecord[] = [];
+        let date = new Date(employees.reduce((min, e) => !e.attendanceStartDate || new Date(e.attendanceStartDate) < min ? new Date(e.attendanceStartDate!) : min, new Date()));
+        const today = new Date();
+        
+        while(date <= today) {
+            const dateStr = format(date, 'yyyy-MM-dd');
+            const attColRef = collection(firestore, 'attendance', dateStr, 'records');
+             try {
+                const querySnapshot = await getDocs(attColRef);
+                querySnapshot.forEach(doc => {
+                    allRecords.push({ id: doc.id, ...doc.data(), employeeId: doc.data().employeeId } as AttendanceRecord);
+                });
+            } catch(e) {
+                 const permissionError = new FirestorePermissionError({
+                    path: attColRef.path,
+                    operation: 'list',
+                });
+                errorEmitter.emit('permission-error', permissionError);
+            }
+            date = addDays(date, 1);
+        }
 
-        const allSnapshots = await Promise.all(attendancePromises);
-        const records = allSnapshots.flatMap(snapshot => 
-            snapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), employeeId: snapshot.query.parent?.parent?.id } as AttendanceRecord))
-        );
-
-        setAttendanceRecords(records);
+        setAttendanceRecords(allRecords);
         setAttendanceLoading(false);
     };
 
@@ -117,67 +115,65 @@ export default function PayrollPage() {
   
   useEffect(() => {
     setTitle("Payroll Analytics");
+
+    const today = new Date();
+    const options = [];
+    for(let i=0; i<12; i++){
+        let ethDate = toEthiopian(today);
+        let monthStartGregorian;
+
+        if (i === 0) {
+            monthStartGregorian = toGregorian(ethDate.year, ethDate.month, 1);
+        } else {
+            const prevMonth = ethDate.month - i;
+            if (prevMonth > 0) {
+                monthStartGregorian = toGregorian(ethDate.year, prevMonth, 1);
+            } else {
+                const yearOffset = Math.floor((i - ethDate.month) / 13) + 1;
+                const month = 13 + ((prevMonth - 1) % 13);
+                monthStartGregorian = toGregorian(ethDate.year - yearOffset, month, 1);
+            }
+        }
+        
+        const ethMonthInfo = toEthiopian(monthStartGregorian);
+        const monthName = ethiopianDateFormatter(monthStartGregorian, { month: 'long' });
+
+        options.push({
+            value: monthStartGregorian.toISOString(),
+            label: `${monthName} ${ethMonthInfo.year}`
+        });
+    }
+    setMonthOptions(options);
   }, [setTitle]);
 
-  const handleMonthSelect = (date: Date | undefined) => {
-    if (!date) return;
-    setSelectedMonth(date);
+  const handleMonthSelect = (value: string) => {
+    if (!value) return;
+    setSelectedMonth(new Date(value));
   }
   
   if (employeesLoading || attendanceLoading || isUserLoading) {
     return <div>Loading...</div>;
   }
 
-  const calendarCaption = (
-      <div className="flex flex-col items-center">
-        <p>{format(selectedMonth, 'MMMM yyyy')}</p>
-        <p className="text-sm text-muted-foreground">
-          {ethiopianDateFormatter(selectedMonth, { month: 'long', year: 'numeric' })}
-        </p>
-      </div>
-    );
-
   return (
     <div className="flex flex-col gap-8">
         <Card>
           <CardHeader>
               <CardTitle>Monthly Expense History</CardTitle>
-              <CardDescription>Select a Gregorian month to view the detailed expense breakdown. The corresponding Ethiopian month is shown for reference.</CardDescription>
+              <CardDescription>Select an Ethiopian month to view the detailed expense breakdown.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             <div className="lg:col-span-1">
-                 <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant={"outline"}
-                        className={cn(
-                          "w-full justify-start text-left font-normal",
-                          !selectedMonth && "text-muted-foreground"
-                        )}
-                      >
-                        <CalendarIcon className="mr-2 h-4 w-4" />
-                        {selectedMonth ? (
-                            <div className="flex flex-col">
-                               <span>{format(selectedMonth, "MMMM yyyy")}</span>
-                               <span className="text-xs text-muted-foreground">{ethiopianDateFormatter(selectedMonth, { month: 'long', year: 'numeric' })}</span>
-                            </div>
-                        ) : (
-                            <span>Pick a month</span>
-                        )}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0">
-                      <Calendar
-                        mode="single"
-                        selected={selectedMonth}
-                        onSelect={handleMonthSelect}
-                        initialFocus
-                        captionLayout="dropdown-buttons"
-                        fromYear={2015}
-                        toYear={2035}
-                      />
-                    </PopoverContent>
-                  </Popover>
+                 <Select onValueChange={handleMonthSelect} defaultValue={selectedMonth.toISOString()}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select a month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {monthOptions.map(option => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
             </div>
              <div className="lg:col-span-2">
                 <ExpenseChart 
@@ -191,4 +187,5 @@ export default function PayrollPage() {
     </div>
   );
 }
+
     

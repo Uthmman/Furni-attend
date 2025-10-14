@@ -4,7 +4,7 @@
 import { useMemo } from 'react';
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
 import { type Employee, type AttendanceRecord } from '@/lib/types';
-import { isWithinInterval, startOfMonth, endOfMonth, parse, format, isValid, eachDayOfInterval } from 'date-fns';
+import { isWithinInterval, parse, format, isValid, eachDayOfInterval, addDays } from 'date-fns';
 import { Timestamp } from 'firebase/firestore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 
@@ -13,20 +13,6 @@ interface ExpenseChartProps {
   attendanceRecords: AttendanceRecord[];
   selectedMonth: Date;
 }
-
-const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): number => {
-    if (!morningEntry || !afternoonEntry) return 0;
-    const morningStartTime = parse("08:00", "HH:mm", new Date());
-    const morningEndTime = parse("12:30", "HH:mm", new Date());
-    const afternoonStartTime = parse("13:30", "HH:mm", new Date());
-    const afternoonEndTime = parse("17:00", "HH:mm", new Date());
-    const morningEntryTime = parse(morningEntry, "HH:mm", new Date());
-    const afternoonEntryTime = parse(afternoonEntry, "HH:mm", new Date());
-    let totalHours = 0;
-    if(morningEntryTime < morningEndTime) totalHours += (morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime())) / (1000 * 60 * 60);
-    if(afternoonEntryTime < afternoonEndTime) totalHours += (afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime())) / (1000 * 60 * 60);
-    return Math.max(0, totalHours);
-};
 
 const getDateFromRecord = (date: string | Timestamp): Date => {
     if (date instanceof Timestamp) return date.toDate();
@@ -38,12 +24,31 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
   return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
 };
 
+const toEthiopian = (date: Date) => {
+    const parts = ethiopianDateFormatter(date, { year: 'numeric', month: 'numeric', day: 'numeric' }).split('/');
+    return {
+        month: parseInt(parts[0], 10),
+        day: parseInt(parts[1], 10),
+        year: parseInt(parts[2], 10)
+    };
+};
+
+const getEthiopianMonthDays = (year: number, month: number): number => {
+    if (month < 1 || month > 13) return 0;
+    if (month <= 12) return 30;
+    const isLeap = (year + 1) % 4 === 0;
+    return isLeap ? 6 : 5;
+};
+
 export function ExpenseChart({ employees, attendanceRecords, selectedMonth }: ExpenseChartProps) {
   const chartData = useMemo(() => {
     if (!employees || !attendanceRecords) return { data: [], totals: { weekly: 0, monthly: 0, total: 0 } };
 
-    const monthStart = startOfMonth(selectedMonth);
-    const monthEnd = endOfMonth(selectedMonth);
+    const ethSelected = toEthiopian(selectedMonth);
+    const monthStart = selectedMonth;
+    const daysInMonthCount = getEthiopianMonthDays(ethSelected.year, ethSelected.month);
+    const monthEnd = addDays(monthStart, daysInMonthCount - 1);
+
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
     let totalMonthly = 0;
@@ -52,6 +57,7 @@ export function ExpenseChart({ employees, attendanceRecords, selectedMonth }: Ex
     const data = daysInMonth.map(day => {
         let dailyWeeklyExpense = 0;
         let dailyMonthlyExpense = 0;
+        const dayStr = format(day, 'yyyy-MM-dd');
 
         employees.forEach(employee => {
             const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
@@ -59,12 +65,15 @@ export function ExpenseChart({ employees, attendanceRecords, selectedMonth }: Ex
 
             const record = attendanceRecords.find(r => 
                 r.employeeId === employee.id && 
-                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd') &&
-                (r.status === 'Present' || r.status === 'Late')
+                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr &&
+                (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')
             );
             
             if (record) {
-                const hoursWorked = calculateHoursWorked(record.morningEntry, record.afternoonEntry);
+                let hoursWorked = 0;
+                if(record.morningStatus !== 'Absent') hoursWorked += 4.5;
+                if(record.afternoonStatus !== 'Absent') hoursWorked += 3.5;
+                
                 const overtime = record.overtimeHours || 0;
                 const dailyTotal = (hoursWorked + overtime) * hourlyRate;
 
@@ -80,7 +89,7 @@ export function ExpenseChart({ employees, attendanceRecords, selectedMonth }: Ex
         totalMonthly += dailyMonthlyExpense;
 
         return {
-            name: format(day, 'd'),
+            name: toEthiopian(day).day.toString(),
             weekly: dailyWeeklyExpense,
             monthly: dailyMonthlyExpense
         };
@@ -100,10 +109,10 @@ export function ExpenseChart({ employees, attendanceRecords, selectedMonth }: Ex
     <Card>
         <CardHeader>
             <CardTitle>
-                Expense Breakdown for {format(selectedMonth, 'MMMM yyyy')}
+                Expense Breakdown for {ethiopianDateFormatter(selectedMonth, {month: 'long', year: 'numeric'})}
             </CardTitle>
             <CardDescription>
-                Ethiopian equivalent: {ethiopianDateFormatter(selectedMonth, { month: 'long', year: 'numeric' })}
+                Gregorian equivalent: {format(selectedMonth, 'MMMM yyyy')}
             </CardDescription>
         </CardHeader>
         <CardContent>
@@ -148,3 +157,5 @@ export function ExpenseChart({ employees, attendanceRecords, selectedMonth }: Ex
     </Card>
   );
 }
+
+    

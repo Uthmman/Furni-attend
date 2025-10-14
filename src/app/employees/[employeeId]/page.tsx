@@ -22,17 +22,10 @@ import {
 } from "@/components/ui/table";
 import {
   format,
-  startOfWeek,
-  endOfWeek,
-  startOfMonth,
-  endOfMonth,
   isWithinInterval,
   parse,
-  eachWeekOfInterval,
-  eachMonthOfInterval,
   isValid,
-  subMonths,
-  subWeeks,
+  addDays,
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -40,8 +33,8 @@ import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Copy, Phone, Trash2, Edit, Calendar } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
-import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, doc, deleteDoc } from "firebase/firestore";
+import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
+import { collection, doc, deleteDoc, getDocs } from "firebase/firestore";
 import type { AttendanceRecord } from "@/lib/types";
 import { EmployeeForm } from "../employee-form";
 import {
@@ -107,6 +100,30 @@ const getDateFromRecord = (date: string | Timestamp): Date => {
   return new Date(date);
 }
 
+const getEthiopianMonthDays = (year: number, month: number): number => {
+    if (month < 1 || month > 13) return 0;
+    if (month <= 12) return 30;
+    // Pagume (13th month)
+    const isLeap = (year + 1) % 4 === 0;
+    return isLeap ? 6 : 5;
+};
+
+const toEthiopian = (date: Date) => {
+    const parts = ethiopianDateFormatter(date, { year: 'numeric', month: 'numeric', day: 'numeric' }).split('/');
+    return {
+        month: parseInt(parts[0], 10),
+        day: parseInt(parts[1], 10),
+        year: parseInt(parts[2], 10)
+    };
+};
+
+const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
+    const today = new Date();
+    const ethToday = toEthiopian(today);
+    const dayDiff = ((ethYear - ethToday.year) * 365) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
+    return addDays(today, dayDiff);
+};
+
 
 export default function EmployeeProfilePage() {
   const params = useParams();
@@ -121,24 +138,58 @@ export default function EmployeeProfilePage() {
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
+
   const employeeDocRef = useMemoFirebase(() => {
     if (!firestore || !employeeId || !user) return null;
     return doc(firestore, 'employees', employeeId as string);
   }, [firestore, employeeId, user]);
   
   const { data: employee, loading: employeeLoading } = useDoc(employeeDocRef);
+  
+  useEffect(() => {
+    const fetchAllAttendance = async () => {
+        if (!firestore) return;
+        setAttendanceLoading(true);
 
-  const attendanceCollectionRef = useMemoFirebase(() => {
-    if (!firestore || !employeeId || !user) return null;
-    return collection(firestore, 'employees', employeeId as string, 'attendance');
-  }, [firestore, employeeId, user]);
+        const allRecords: AttendanceRecord[] = [];
+        let date = new Date(employee?.attendanceStartDate || '2023-01-01');
+        const today = new Date();
 
-  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
+        while (date <= today) {
+            const dateStr = format(date, 'yyyy-MM-dd');
+            const attColRef = collection(firestore, 'attendance', dateStr, 'records');
+            try {
+                const querySnapshot = await getDocs(attColRef);
+                querySnapshot.forEach(doc => {
+                    if(doc.data().employeeId === employeeId) {
+                        allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
+                    }
+                });
+            } catch(e) {
+                 const permissionError = new FirestorePermissionError({
+                    path: attColRef.path,
+                    operation: 'list',
+                });
+                errorEmitter.emit('permission-error', permissionError);
+            }
+            date = addDays(date, 1);
+        }
+        
+        setAllAttendance(allRecords);
+        setAttendanceLoading(false);
+    };
+
+    if (!isUserLoading && employee) {
+        fetchAllAttendance();
+    }
+  }, [firestore, employeeId, isUserLoading, employee]);
 
 
   const employeeAttendance = useMemo(() => 
-    (attendanceRecords || []).map(r => ({...r, date: getDateFromRecord(r.date)})).sort((a, b) => b.date.getTime() - a.date.getTime()),
-    [attendanceRecords]
+    (allAttendance || []).map(r => ({...r, date: getDateFromRecord(r.date)})).sort((a, b) => b.date.getTime() - a.date.getTime()),
+    [allAttendance]
   );
   
   useEffect(() => {
@@ -167,40 +218,41 @@ export default function EmployeeProfilePage() {
     if (!employee || !isValid(firstAttendanceDate)) return [];
     
     const today = new Date();
-    const interval = { start: firstAttendanceDate, end: today };
     const options: { value: string, label: string }[] = [];
 
     if (employee.paymentMethod === 'Monthly') {
-      const months = eachMonthOfInterval(interval);
-      // Also include current month if not already there
-      if (!months.find(m => m.getMonth() === today.getMonth() && m.getFullYear() === today.getFullYear())) {
-        months.push(startOfMonth(today));
-      }
-      months.reverse().forEach(monthStart => {
-        options.push({
-          value: monthStart.toISOString(),
-          label: `${format(monthStart, 'MMMM yyyy')} / ${ethiopianDateFormatter(monthStart, { month: 'long', year: 'numeric' })}`
-        });
-      });
-    } else { // Weekly, Monday to Saturday
-       const weeks = eachWeekOfInterval(interval, { weekStartsOn: 1 });
-        // Also include current week if not already there
-        const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
-        if (!weeks.find(w => w.getTime() === currentWeekStart.getTime())) {
-            weeks.push(currentWeekStart);
-        }
-      weeks.reverse().forEach(weekStart => {
-        const period = { start: startOfWeek(weekStart, { weekStartsOn: 1 }), end: endOfWeek(weekStart, { weekStartsOn: 1 }) };
-        const startDay = format(period.start, 'MMM d');
-        const endDay = format(period.end, 'MMM d, yyyy');
-        const startDayEth = ethiopianDateFormatter(period.start, { day: 'numeric', month: 'short' });
-        const endDayEth = ethiopianDateFormatter(period.end, { day: 'numeric', month: 'short', year: 'numeric' });
+        let current = toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1);
+        for(let i=0; i < 12; i++){
+            const ethDate = toEthiopian(current);
+            const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
+            if (monthStart < firstAttendanceDate) break;
 
-        options.push({
-          value: period.start.toISOString(),
-          label: `${startDay} - ${endDay} / ${startDayEth} - ${endDayEth}`
-        });
-      });
+            const monthName = ethiopianDateFormatter(monthStart, { month: 'long' });
+            options.push({
+                value: monthStart.toISOString(),
+                label: `${monthName} ${ethDate.year}`
+            });
+            const prevMonth = ethDate.month > 1 ? ethDate.month - 1 : 13;
+            const prevYear = ethDate.month > 1 ? ethDate.year : ethDate.year - 1;
+            current = toGregorian(prevYear, prevMonth, 1);
+        }
+
+    } else { // Weekly
+        let current = addDays(new Date(), (1 - new Date().getDay() + 7) % 7); // Start of current week (Monday)
+        for(let i=0; i<12; i++){
+            const weekStart = current;
+            const weekEnd = addDays(weekStart, 6);
+            if (weekStart < firstAttendanceDate) break;
+            
+            const startDayEth = ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' });
+            const endDayEth = ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' });
+            
+            options.push({
+                value: weekStart.toISOString(),
+                label: `${startDayEth} - ${endDayEth}`
+            });
+            current = addDays(current, -7);
+        }
     }
     return options;
   }, [employee, firstAttendanceDate]);
@@ -212,9 +264,11 @@ export default function EmployeeProfilePage() {
     const startDate = new Date(selectedPeriod);
     let interval;
     if (employee.paymentMethod === 'Weekly') {
-      interval = { start: startOfWeek(startDate, { weekStartsOn: 1 }), end: endOfWeek(startDate, { weekStartsOn: 1 }) };
+      interval = { start: startDate, end: addDays(startDate, 6) };
     } else { // monthly
-      interval = { start: startOfMonth(startDate), end: endOfMonth(startDate) };
+      const ethDate = toEthiopian(startDate);
+      const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
+      interval = { start: startDate, end: addDays(startDate, daysInMonth - 1) };
     }
     return employeeAttendance.filter(r => isWithinInterval(new Date(r.date), interval));
   }, [employeeAttendance, selectedPeriod, employee]);
@@ -228,8 +282,8 @@ export default function EmployeeProfilePage() {
 
     const totalHours = relevantRecords.reduce((acc, record) => {
         let hours = 0;
-        if (record.morningStatus !== 'Absent') hours += 4.5; // 8:00 to 12:30
-        if (record.afternoonStatus !== 'Absent') hours += 3.5; // 13:30 to 17:00
+        if (record.morningStatus !== 'Absent') hours += 4.5;
+        if (record.afternoonStatus !== 'Absent') hours += 3.5;
         return acc + hours;
     }, 0);
     
@@ -262,12 +316,11 @@ export default function EmployeeProfilePage() {
       });
       router.push("/employees");
     } catch (error) {
-      console.error("Error deleting employee: ", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Failed to delete employee. Please try again.",
-      });
+       const permissionError = new FirestorePermissionError({
+          path: `employees/${employeeId}`,
+          operation: 'delete',
+        });
+        errorEmitter.emit('permission-error', permissionError);
     }
   };
   
@@ -471,3 +524,6 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
+
+
+    

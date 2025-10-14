@@ -16,48 +16,18 @@ import {
   isWithinInterval,
   addDays,
   parse,
-  endOfMonth,
   getDay,
-  startOfMonth,
   differenceInDays,
-  startOfWeek,
-  endOfWeek,
   format,
   isValid,
-  subMonths,
+  subMonths
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, getDocs } from "firebase/firestore";
-import { type Employee, type AttendanceRecord, type PayrollEntry } from "@/lib/types";
+import { type Employee, type AttendanceRecord } from "@/lib/types";
 import { ExpenseChart } from "./payroll/expense-chart";
 import { PayrollHistoryChart } from "./payroll/payroll-history-chart";
-
-const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): number => {
-    if (!morningEntry || !afternoonEntry) return 0;
-
-    const morningStartTime = parse("08:00", "HH:mm", new Date());
-    const morningEndTime = parse("12:30", "HH:mm", new Date());
-    const afternoonStartTime = parse("13:30", "HH:mm", new Date());
-    const afternoonEndTime = parse("17:00", "HH:mm", new Date());
-
-    const morningEntryTime = parse(morningEntry, "HH:mm", new Date());
-    const afternoonEntryTime = parse(afternoonEntry, "HH:mm", new Date());
-    
-    let totalHours = 0;
-
-    if(morningEntryTime < morningEndTime) {
-        const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
-        totalHours += morningWorkMs / (1000 * 60 * 60);
-    }
-    
-    if(afternoonEntryTime < afternoonEndTime) {
-        const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
-        totalHours += afternoonWorkMs / (1000 * 60 * 60);
-    }
-
-    return Math.max(0, totalHours);
-};
 
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
   if (!isValid(date)) return "Invalid Date";
@@ -77,6 +47,30 @@ const getDateFromRecord = (date: string | Timestamp): Date => {
   return new Date(date);
 }
 
+const getEthiopianMonthDays = (year: number, month: number): number => {
+    if (month < 1 || month > 13) return 0;
+    if (month <= 12) return 30;
+    const isLeap = (year + 1) % 4 === 0;
+    return isLeap ? 6 : 5;
+};
+
+const toEthiopian = (date: Date) => {
+    const parts = ethiopianDateFormatter(date, { year: 'numeric', month: 'numeric', day: 'numeric' }).split('/');
+    return {
+        month: parseInt(parts[0], 10),
+        day: parseInt(parts[1], 10),
+        year: parseInt(parts[2], 10)
+    };
+};
+
+const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
+    const today = new Date();
+    const ethToday = toEthiopian(today);
+    // Rough conversion, not perfectly accurate but good enough for this app's purpose
+    const dayDiff = ((ethYear - ethToday.year) * 365.25) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
+    return addDays(today, dayDiff);
+};
+
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
@@ -91,7 +85,11 @@ export default function DashboardPage() {
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
   
   const today = new Date();
-  const monthStart = startOfMonth(today);
+  const ethToday = toEthiopian(today);
+  const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
+  const monthEnd = addDays(monthStart, getEthiopianMonthDays(ethToday.year, ethToday.month) - 1);
+  const weekStart = addDays(today, (1 - getDay(today) + 7) % 7); // Monday
+  const weekEnd = addDays(weekStart, 6); // Sunday
 
   useEffect(() => {
     setTitle("Dashboard");
@@ -105,17 +103,28 @@ export default function DashboardPage() {
         };
 
         setAttendanceLoading(true);
-        const attendancePromises = employees.map(employee => {
-            const attColRef = collection(firestore, 'employees', employee.id, 'attendance');
-            return getDocs(attColRef);
-        });
+        const allRecords: AttendanceRecord[] = [];
+        let date = new Date(employees.reduce((min, e) => !e.attendanceStartDate || new Date(e.attendanceStartDate) < min ? new Date(e.attendanceStartDate!) : min, new Date()));
+        
+        while(date <= today) {
+            const dateStr = format(date, 'yyyy-MM-dd');
+            const attColRef = collection(firestore, 'attendance', dateStr, 'records');
+             try {
+                const querySnapshot = await getDocs(attColRef);
+                querySnapshot.forEach(doc => {
+                    allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
+                });
+            } catch(e) {
+                 const permissionError = new FirestorePermissionError({
+                    path: attColRef.path,
+                    operation: 'list',
+                });
+                errorEmitter.emit('permission-error', permissionError);
+            }
+            date = addDays(date, 1);
+        }
 
-        const allSnapshots = await Promise.all(attendancePromises);
-        const records = allSnapshots.flatMap(snapshot => 
-            snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord))
-        );
-
-        setAllAttendance(records);
+        setAllAttendance(allRecords);
         setAttendanceLoading(false);
     };
 
@@ -132,7 +141,6 @@ export default function DashboardPage() {
 
   const monthlyExpense = useMemo(() => {
     if(!employees || !attendanceRecords) return { actual: 0, estimated: 0 };
-    const monthEnd = endOfMonth(today);
     
     let actualAmount = 0;
     
@@ -146,10 +154,16 @@ export default function DashboardPage() {
             (record) =>
             record.employeeId === employee.id &&
             isWithinInterval(getDateFromRecord(record.date), {start: monthStart, end: today}) &&
-            (record.status === "Present" || record.status === "Late")
+            (record.morningStatus !== "Absent" || record.afternoonStatus !== "Absent")
         );
-
-        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+        
+        const totalHours = relevantRecords.reduce((acc, r) => {
+             let hours = 0;
+            if (r.morningStatus !== 'Absent') hours += 4.5;
+            if (r.afternoonStatus !== 'Absent') hours += 3.5;
+            return acc + hours;
+        }, 0);
+        
         const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
         actualAmount += (totalHours + totalOvertime) * hourlyRate;
     });
@@ -161,7 +175,7 @@ export default function DashboardPage() {
         let remainingWorkdays = 0;
         for (let i = 1; i <= remainingDays; i++) {
             const date = addDays(today, i);
-            if (getDay(date) !== 0) { // Monday to Saturday are working days (0 is Sunday)
+            if (getDay(date) !== 0) { // Not Sunday
                 remainingWorkdays++;
             }
         }
@@ -180,13 +194,12 @@ export default function DashboardPage() {
         actual: actualAmount,
         estimated: actualAmount + estimatedFutureAmount
     };
-  }, [employees, attendanceRecords, today, monthStart]);
+  }, [employees, attendanceRecords, today, monthStart, monthEnd]);
 
   const totalEmployees = employees?.length || 0;
 
   const upcomingTotals = useMemo(() => {
     if (!employees || !attendanceRecords) return { weekly: 0, monthly: 0 };
-    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
     
     return employees.reduce((acc, employee) => {
         const hourlyRate = employee.hourlyRate || 
@@ -195,16 +208,21 @@ export default function DashboardPage() {
         if (!hourlyRate) return acc;
 
         const period = employee.paymentMethod === 'Weekly' 
-            ? { start: currentWeekStart, end: today }
+            ? { start: weekStart, end: today }
             : { start: monthStart, end: today };
         
         const relevantRecords = attendanceRecords.filter(r =>
             r.employeeId === employee.id &&
-            (r.status === "Present" || r.status === "Late") &&
+            (r.morningStatus !== "Absent" || r.afternoonStatus !== "Absent") &&
             isWithinInterval(getDateFromRecord(r.date), period)
         );
 
-        const totalHours = relevantRecords.reduce((total, r) => total + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+        const totalHours = relevantRecords.reduce((total, r) => {
+             let hours = 0;
+            if (r.morningStatus !== 'Absent') hours += 4.5;
+            if (r.afternoonStatus !== 'Absent') hours += 3.5;
+            return total + hours;
+        }, 0);
         const totalOvertime = relevantRecords.reduce((total, r) => total + (r.overtimeHours || 0), 0);
         const amount = (totalHours + totalOvertime) * hourlyRate;
 
@@ -215,13 +233,10 @@ export default function DashboardPage() {
         }
         return acc;
     }, { weekly: 0, monthly: 0 });
-  }, [employees, attendanceRecords, today, monthStart]);
+  }, [employees, attendanceRecords, today, monthStart, weekStart]);
 
   const estimatedUpcomingTotals = useMemo(() => {
     if (!employees) return { weekly: 0, monthly: 0 };
-    
-    const weekEnd = endOfWeek(today, { weekStartsOn: 1 });
-    const monthEnd = endOfMonth(today);
     
     let estimatedWeekly = upcomingTotals.weekly;
     let estimatedMonthly = upcomingTotals.monthly;
@@ -257,7 +272,7 @@ export default function DashboardPage() {
     }
 
     return { weekly: estimatedWeekly, monthly: estimatedMonthly };
-  }, [employees, today, upcomingTotals]);
+  }, [employees, today, upcomingTotals, weekEnd, monthEnd]);
 
   const gregorianDate = format(today, 'EEEE, MMMM d, yyyy');
   const ethiopianFullDate = ethiopianDateFormatter(today, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -266,14 +281,20 @@ export default function DashboardPage() {
     if (!employees || !attendanceRecords || employees.length === 0 || attendanceRecords.length === 0) return [];
     
     const history: { month: string, total: number }[] = [];
-    const sixMonthsAgo = startOfMonth(subMonths(today, 5));
     
     for (let i = 0; i < 6; i++) {
-        const monthDate = startOfMonth(subMonths(today, i));
-        const monthKey = format(monthDate, 'yyyy-MM');
-        
-        const monthStart = startOfMonth(monthDate);
-        const monthEnd = endOfMonth(monthDate);
+        let monthDateEth = toEthiopian(subMonths(today, i));
+        monthDateEth = {...monthDateEth, day: 1};
+        if(i > 0) {
+             monthDateEth.month = monthDateEth.month -1;
+             if(monthDateEth.month === 0){
+                monthDateEth.month = 13;
+                monthDateEth.year = monthDateEth.year -1;
+             }
+        }
+
+        const monthStart = toGregorian(monthDateEth.year, monthDateEth.month, 1);
+        const monthEnd = addDays(monthStart, getEthiopianMonthDays(monthDateEth.year, monthDateEth.month) - 1);
         
         let monthTotal = 0;
         employees.forEach(employee => {
@@ -284,16 +305,21 @@ export default function DashboardPage() {
 
             const relevantRecords = attendanceRecords.filter(r =>
                 r.employeeId === employee.id &&
-                (r.status === "Present" || r.status === "Late") &&
+                (r.morningStatus !== "Absent" || r.afternoonStatus !== "Absent") &&
                 isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })
             );
 
-            const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r.morningEntry, r.afternoonEntry), 0);
+             const totalHours = relevantRecords.reduce((acc, r) => {
+                let hours = 0;
+                if (r.morningStatus !== 'Absent') hours += 4.5;
+                if (r.afternoonStatus !== 'Absent') hours += 3.5;
+                return acc + hours;
+            }, 0);
             const totalOvertime = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
             monthTotal += (totalHours + totalOvertime) * hourlyRate;
         });
         
-        history.push({ month: format(monthDate, 'MMM yyyy'), total: monthTotal });
+        history.push({ month: ethiopianDateFormatter(monthStart, {month: 'short', year: 'numeric'}), total: monthTotal });
     }
     
     return history.reverse();
@@ -325,7 +351,7 @@ export default function DashboardPage() {
              <Card className="hover:shadow-lg transition-shadow rounded-xl col-span-2 lg:col-span-1">
                 <CardHeader>
                     <CardTitle className="text-base font-semibold flex items-center justify-between">
-                        Monthly Expense
+                        Monthly Expense ({ethiopianDateFormatter(today, {month: 'long'})})
                         <Wallet className="size-5 text-muted-foreground" />
                     </CardTitle>
                 </CardHeader>
@@ -381,7 +407,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
         <Card>
           <CardHeader>
-            <CardTitle>Current Gregorian Month Expense</CardTitle>
+            <CardTitle>Current Month Expense ({ethiopianDateFormatter(today, {month: 'long'})})</CardTitle>
           </CardHeader>
           <CardContent>
             <ExpenseChart
@@ -403,5 +429,7 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
 
     
