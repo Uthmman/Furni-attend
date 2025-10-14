@@ -4,18 +4,24 @@
 import { useMemo, useEffect } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet } from "lucide-react";
+import { Users, UserCheck, Wallet, Calendar } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
-import { format, isToday } from "date-fns";
+import { format, isValid } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, query, where, getDocs } from "firebase/firestore";
+import { collection } from "firebase/firestore";
+import { Card, CardContent } from '@/components/ui/card';
 
-const getDateFromRecord = (date: string | { toDate: () => Date }): Date => {
-  if (typeof date === 'string') {
-    return new Date(date);
+
+const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+  if (!isValid(date)) return "Invalid Date";
+  try {
+      return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+  } catch (e) {
+      console.error("Error formatting Ethiopian date:", e);
+      return "Invalid Date";
   }
-  return date.toDate();
 };
+
 
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
@@ -69,6 +75,8 @@ export default function DashboardPage() {
   }, [employees, todayAttendance]);
   
   const loading = employeesLoading || attendanceLoading || isUserLoading;
+  
+  const today = new Date();
 
   if (loading) {
     return <div>Loading...</div>
@@ -76,6 +84,17 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
+        <Card>
+            <CardContent className="p-4 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <Calendar className="h-6 w-6 text-primary" />
+                    <div>
+                        <p className="text-lg font-semibold">{format(today, 'EEEE, MMMM d, yyyy')}</p>
+                        <p className="text-sm text-muted-foreground">{ethiopianDateFormatter(today, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+                    </div>
+                </div>
+            </CardContent>
+        </Card>
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <StatCard
           title="Total Employees"
