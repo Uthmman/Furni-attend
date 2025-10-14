@@ -223,11 +223,14 @@ export default function EmployeeProfilePage() {
     if (!employee) return { hours: 0, amount: 0, daysWorked: 0, overtimePay: 0, totalAmount: 0 };
 
     const relevantRecords = filteredAttendance.filter(
-      (record) => record.status === "Present" || record.status === "Late"
+      (record) => record.morningStatus !== "Absent" || record.afternoonStatus !== "Absent"
     );
 
     const totalHours = relevantRecords.reduce((acc, record) => {
-      return acc + calculateHoursWorked(record.morningEntry, record.afternoonEntry);
+        let hours = 0;
+        if (record.morningStatus !== 'Absent') hours += 4.5; // 8:00 to 12:30
+        if (record.afternoonStatus !== 'Absent') hours += 3.5; // 13:30 to 17:00
+        return acc + hours;
     }, 0);
     
     const totalOvertimeHours = relevantRecords.reduce((acc, record) => {
@@ -237,11 +240,13 @@ export default function EmployeeProfilePage() {
     const baseAmount = totalHours * (hourlyRate || 0);
     const overtimePay = totalOvertimeHours * (hourlyRate || 0);
     const totalAmount = baseAmount + overtimePay;
+    
+    const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size
 
     return {
       hours: totalHours,
       amount: baseAmount,
-      daysWorked: relevantRecords.length,
+      daysWorked: daysWorked,
       overtimePay: overtimePay,
       totalAmount: totalAmount
     };
@@ -419,7 +424,6 @@ export default function EmployeeProfilePage() {
                     <TableHeader>
                     <TableRow>
                         <TableHead>Date</TableHead>
-                        <TableHead>Status</TableHead>
                         <TableHead>Morning</TableHead>
                         <TableHead>Afternoon</TableHead>
                         <TableHead>Overtime</TableHead>
@@ -436,12 +440,17 @@ export default function EmployeeProfilePage() {
                                 </div>
                             </TableCell>
                             <TableCell>
-                            <Badge variant={record.status === 'Absent' ? 'destructive' : 'secondary'}>
-                                {record.status}
-                            </Badge>
+                                <Badge variant={record.morningStatus === 'Absent' ? 'destructive' : 'secondary'}>
+                                    {record.morningStatus}
+                                </Badge>
+                                <p className="text-xs text-muted-foreground">{record.morningEntry || 'N/A'}</p>
                             </TableCell>
-                            <TableCell>{record.morningEntry || "N/A"}</TableCell>
-                            <TableCell>{record.afternoonEntry || "N/A"}</TableCell>
+                            <TableCell>
+                                <Badge variant={record.afternoonStatus === 'Absent' ? 'destructive' : 'secondary'}>
+                                    {record.afternoonStatus}
+                                </Badge>
+                                <p className="text-xs text-muted-foreground">{record.afternoonEntry || 'N/A'}</p>
+                            </TableCell>
                             <TableCell>{record.overtimeHours ? `${record.overtimeHours} hr(s)` : "N/A"}</TableCell>
                         </TableRow>
                         ))

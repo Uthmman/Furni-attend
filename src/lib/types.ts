@@ -24,7 +24,8 @@ export interface AttendanceRecord extends DocumentData {
   date: string | Timestamp;
   morningEntry?: string;
   afternoonEntry?: string;
-  status: AttendanceStatus;
+  morningStatus: AttendanceStatus;
+  afternoonStatus: AttendanceStatus;
   overtimeHours?: number;
 }
 

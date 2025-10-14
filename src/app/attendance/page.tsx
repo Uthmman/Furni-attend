@@ -29,7 +29,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { AttendanceRecord, Employee } from "@/lib/types";
+import type { AttendanceRecord, Employee, AttendanceStatus } from "@/lib/types";
 import { format, isValid } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
@@ -39,13 +39,14 @@ import { useToast } from "@/hooks/use-toast";
 type DailyAttendance = {
   employeeId: string;
   employeeName: string;
-  status: "Present" | "Absent" | "Late";
+  morningStatus: AttendanceStatus;
+  afternoonStatus: AttendanceStatus;
   morningEntry?: string;
   afternoonEntry?: string;
   overtimeHours?: number;
 };
 
-const getStatusVariant = (status: "Present" | "Absent" | "Late") => {
+const getStatusVariant = (status: AttendanceStatus) => {
   switch (status) {
     case "Present":
     case "Late":
@@ -56,6 +57,13 @@ const getStatusVariant = (status: "Present" | "Absent" | "Late") => {
       return "outline";
   }
 };
+
+const getOverallStatus = (morning: AttendanceStatus, afternoon: AttendanceStatus): AttendanceStatus => {
+    if (morning === 'Absent' && afternoon === 'Absent') return 'Absent';
+    if (morning === 'Late' || afternoon === 'Late') return 'Late';
+    if (morning === 'Present' || afternoon === 'Present') return 'Present';
+    return 'Absent';
+}
 
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
   if (!isValid(date)) return "Invalid Date";
@@ -109,7 +117,8 @@ export default function AttendancePage() {
         return {
           employeeId: emp.id,
           employeeName: emp.name,
-          status: record?.status || "Absent",
+          morningStatus: record?.morningStatus || "Absent",
+          afternoonStatus: record?.afternoonStatus || "Absent",
           morningEntry: record?.morningEntry || "",
           afternoonEntry: record?.afternoonEntry || "",
           overtimeHours: record?.overtimeHours || 0,
@@ -139,19 +148,22 @@ export default function AttendancePage() {
   ) => {
     if (selectedEmployeeAttendance) {
       const updated = { ...selectedEmployeeAttendance, [field]: value };
-       if (field === 'status') {
+       if (field === 'morningStatus') {
             if (value === 'Absent') {
                 updated.morningEntry = "";
-                updated.afternoonEntry = "";
-                updated.overtimeHours = 0;
-            } else if (value === 'Present' || value === 'Late') {
-                if (!updated.morningEntry) {
-                    updated.morningEntry = "08:00";
-                }
-                if (!updated.afternoonEntry) {
-                    updated.afternoonEntry = "13:30";
-                }
+            } else if ((value === 'Present' || value === 'Late') && !updated.morningEntry) {
+                updated.morningEntry = "08:00";
             }
+        }
+        if (field === 'afternoonStatus') {
+            if (value === 'Absent') {
+                updated.afternoonEntry = "";
+            } else if ((value === 'Present' || value === 'Late') && !updated.afternoonEntry) {
+                updated.afternoonEntry = "13:30";
+            }
+        }
+        if (updated.morningStatus === 'Absent' && updated.afternoonStatus === 'Absent') {
+            updated.overtimeHours = 0;
         }
       setSelectedEmployeeAttendance(updated);
     }
@@ -166,16 +178,16 @@ export default function AttendancePage() {
     const recordRef = doc(firestore, 'attendance', dateStr, 'records', att.employeeId);
     const employeeAttendanceRef = doc(firestore, 'employees', att.employeeId, 'attendance', dateStr);
     
-    const record: Omit<AttendanceRecord, 'id' | 'date'> & { date: string } = {
+    const record: Partial<AttendanceRecord> = {
         employeeId: att.employeeId,
         date: selectedDate.toISOString(),
-        status: att.status,
+        morningStatus: att.morningStatus,
+        afternoonStatus: att.afternoonStatus,
         morningEntry: att.morningEntry || "",
         afternoonEntry: att.afternoonEntry || "",
         overtimeHours: att.overtimeHours || 0,
     };
     
-    // Using a batch to ensure both documents are updated atomically
     const batch = writeBatch(firestore);
     batch.set(recordRef, record);
     batch.set(employeeAttendanceRef, record);
@@ -183,7 +195,6 @@ export default function AttendancePage() {
     batch.commit()
       .then(() => {
         toast({ title: "Attendance saved!" });
-        // Update local state after successful save
         setAttendance((prev) =>
           prev.map((a) =>
             a.employeeId === att.employeeId ? att : a
@@ -232,10 +243,11 @@ export default function AttendancePage() {
         const recordRef = doc(firestore, 'attendance', dateStr, 'records', att.employeeId);
         const employeeAttendanceRef = doc(firestore, 'employees', att.employeeId, 'attendance', dateStr);
 
-        const record: Omit<AttendanceRecord, 'id' | 'date'> & { date: string } = {
+        const record: Partial<AttendanceRecord> = {
             employeeId: att.employeeId,
             date: selectedDate.toISOString(),
-            status: att.status,
+            morningStatus: att.morningStatus,
+            afternoonStatus: att.afternoonStatus,
             morningEntry: att.morningEntry || "",
             afternoonEntry: att.afternoonEntry || "",
             overtimeHours: att.overtimeHours || 0,
@@ -313,18 +325,21 @@ export default function AttendancePage() {
             <CardContent>
                 {attendanceLoading && <p>Loading attendance...</p>}
                 {!attendanceLoading && <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-                    {attendance.map((att) => (
-                        <button key={att.employeeId} onClick={() => openDialogForEmployee(att.employeeId)} className="text-left">
-                            <Card className="hover:bg-accent transition-colors">
-                                <CardContent className="flex items-center justify-between p-4">
-                                    <p className="font-medium">{att.employeeName}</p>
-                                    <Badge variant={getStatusVariant(att.status)} className="capitalize">
-                                        {att.status}
-                                    </Badge>
-                                </CardContent>
-                            </Card>
-                        </button>
-                    ))}
+                    {attendance.map((att) => {
+                        const overallStatus = getOverallStatus(att.morningStatus, att.afternoonStatus);
+                        return (
+                            <button key={att.employeeId} onClick={() => openDialogForEmployee(att.employeeId)} className="text-left">
+                                <Card className="hover:bg-accent transition-colors">
+                                    <CardContent className="flex items-center justify-between p-4">
+                                        <p className="font-medium">{att.employeeName}</p>
+                                        <Badge variant={getStatusVariant(overallStatus)} className="capitalize">
+                                            {overallStatus}
+                                        </Badge>
+                                    </CardContent>
+                                </Card>
+                            </button>
+                        )
+                    })}
                 </div>}
             </CardContent>
           </Card>
@@ -341,13 +356,13 @@ export default function AttendancePage() {
           {selectedEmployeeAttendance && (
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="status" className="text-right">
-                  Status
+                <Label htmlFor="morningStatus" className="text-right">
+                  Morning
                 </Label>
                 <Select
-                  value={selectedEmployeeAttendance.status}
-                  onValueChange={(value: "Present" | "Absent" | "Late") =>
-                    handleDialogInputChange("status", value)
+                  value={selectedEmployeeAttendance.morningStatus}
+                  onValueChange={(value: AttendanceStatus) =>
+                    handleDialogInputChange("morningStatus", value)
                   }
                 >
                   <SelectTrigger className="col-span-3">
@@ -362,7 +377,7 @@ export default function AttendancePage() {
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="morning" className="text-right">
-                  Morning
+                  Entry Time
                 </Label>
                 <Input
                   id="morning"
@@ -372,12 +387,32 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("morningEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.status === 'Absent'}
+                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent'}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="afternoon" className="text-right">
+                <Label htmlFor="afternoonStatus" className="text-right">
                   Afternoon
+                </Label>
+                <Select
+                  value={selectedEmployeeAttendance.afternoonStatus}
+                  onValueChange={(value: AttendanceStatus) =>
+                    handleDialogInputChange("afternoonStatus", value)
+                  }
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Present">Present</SelectItem>
+                    <SelectItem value="Late">Late</SelectItem>
+                    <SelectItem value="Absent">Absent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="afternoon" className="text-right">
+                  Entry Time
                 </Label>
                 <Input
                   id="afternoon"
@@ -387,7 +422,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("afternoonEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.status === 'Absent'}
+                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent'}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -403,7 +438,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("overtimeHours", Number(e.target.value))
                   }
-                  disabled={selectedEmployeeAttendance.status === 'Absent'}
+                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent' && selectedEmployeeAttendance.afternoonStatus === 'Absent'}
                 />
               </div>
                {overtimePay > 0 && (
