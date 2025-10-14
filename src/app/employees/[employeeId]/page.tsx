@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
@@ -164,7 +165,7 @@ export default function EmployeeProfilePage() {
                 const querySnapshot = await getDocs(attColRef);
                 querySnapshot.forEach(doc => {
                     if(doc.data().employeeId === employeeId) {
-                        allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
+                        allRecords.push({ id: `${dateStr}-${doc.id}`, ...doc.data() } as AttendanceRecord);
                     }
                 });
             } catch(e) {
