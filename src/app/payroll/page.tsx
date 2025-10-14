@@ -17,7 +17,7 @@ import {
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import type { Employee, AttendanceRecord } from "@/lib/types";
-import { useFirestore, useUser, errorEmitter, FirestorePermissionError, useMemoFirebase } from '@/firebase';
+import { useFirestore, useUser, errorEmitter, FirestorePermissionError, useMemoFirebase, useCollection } from '@/firebase';
 import { collection, getDocs } from 'firebase/firestore';
 import { ExpenseChart } from './expense-chart';
 import { Button } from '@/components/ui/button';
@@ -187,5 +187,3 @@ export default function PayrollPage() {
     </div>
   );
 }
-
-    
