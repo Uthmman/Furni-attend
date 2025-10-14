@@ -110,19 +110,33 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 };
 
 const toEthiopian = (date: Date) => {
-    const parts = ethiopianDateFormatter(date, { year: 'numeric', month: 'numeric', day: 'numeric' }).split('/');
+    const ethiopicDate = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { year: 'numeric', month: 'numeric', day: 'numeric' });
+    const parts = ethiopicDate.formatToParts(date);
+    let day = '1', month = '1', year = '1970';
+    for (const part of parts) {
+        if (part.type === 'day') day = part.value;
+        if (part.type === 'month') month = part.value;
+        if (part.type === 'year') year = part.value;
+    }
     return {
-        month: parseInt(parts[0], 10),
-        day: parseInt(parts[1], 10),
-        year: parseInt(parts[2], 10)
+        day: parseInt(day),
+        month: parseInt(month),
+        year: parseInt(year),
     };
 };
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
+    // This is an approximation. For exact conversion, a library is better.
+    // The core idea is to find an anchor date and calculate the offset.
+    // Anchor: 1st day of Meskerem 1 EC is Sep 11, 8 AD (Julian).
+    // Let's use a simpler, albeit less accurate, approximation based on offsets from today.
     const today = new Date();
     const ethToday = toEthiopian(today);
-    const dayDiff = ((ethYear - ethToday.year) * 365) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
-    return addDays(today, dayDiff);
+
+    // Approximate days since our epoch
+    const ethDays = (ethYear - ethToday.year) * 365.25 + (ethMonth - ethToday.month) * 30 + (ethDay - ethToday.day);
+    
+    return addDays(today, Math.round(ethDays));
 };
 
 
@@ -151,11 +165,14 @@ export default function EmployeeProfilePage() {
   
   useEffect(() => {
     const fetchAllAttendance = async () => {
-        if (!firestore) return;
+        if (!firestore || !employee?.attendanceStartDate) {
+            setAttendanceLoading(false);
+            return;
+        }
         setAttendanceLoading(true);
 
         const allRecords: AttendanceRecord[] = [];
-        let date = new Date(employee?.attendanceStartDate || '2023-01-01');
+        let date = new Date(employee.attendanceStartDate);
         const today = new Date();
 
         while (date <= today) {
@@ -163,9 +180,9 @@ export default function EmployeeProfilePage() {
             const attColRef = collection(firestore, 'attendance', dateStr, 'records');
             try {
                 const querySnapshot = await getDocs(attColRef);
-                querySnapshot.forEach(doc => {
-                    if(doc.data().employeeId === employeeId) {
-                        allRecords.push({ id: `${dateStr}-${doc.id}`, ...doc.data() } as AttendanceRecord);
+                querySnapshot.forEach(docSnap => {
+                    if(docSnap.data().employeeId === employeeId) {
+                        allRecords.push({ id: `${dateStr}-${docSnap.id}`, ...docSnap.data() } as AttendanceRecord);
                     }
                 });
             } catch(e) {
@@ -210,10 +227,8 @@ export default function EmployeeProfilePage() {
     if (employee?.attendanceStartDate) {
       return new Date(employee.attendanceStartDate);
     }
-    if (employeeAttendance.length === 0) return new Date();
-    // Since it's sorted descending, last element is the earliest
-    return new Date(employeeAttendance[employeeAttendance.length - 1].date);
-  }, [employee, employeeAttendance]);
+    return new Date();
+  }, [employee]);
 
   const periodOptions = useMemo(() => {
     if (!employee || !isValid(firstAttendanceDate)) return [];
@@ -222,28 +237,33 @@ export default function EmployeeProfilePage() {
     const options: { value: string, label: string }[] = [];
 
     if (employee.paymentMethod === 'Monthly') {
-        let current = toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1);
+        let currentMonthStart = toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1);
+        
         for(let i=0; i < 12; i++){
-            const ethDate = toEthiopian(current);
+            const ethDate = toEthiopian(currentMonthStart);
             const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
-            if (monthStart < firstAttendanceDate) break;
+            
+            // Heuristic to check if we've gone too far back in time
+            if (monthStart < addDays(firstAttendanceDate, -31)) break;
 
             const monthName = ethiopianDateFormatter(monthStart, { month: 'long' });
             options.push({
                 value: monthStart.toISOString(),
                 label: `${monthName} ${ethDate.year}`
             });
-            const prevMonth = ethDate.month > 1 ? ethDate.month - 1 : 13;
-            const prevYear = ethDate.month > 1 ? ethDate.year : ethDate.year - 1;
-            current = toGregorian(prevYear, prevMonth, 1);
+
+            // Go to previous month
+            const prevMonthDate = addDays(monthStart, -5); // Go back a few days to be sure we are in the previous month
+            const prevEthDate = toEthiopian(prevMonthDate);
+            currentMonthStart = toGregorian(prevEthDate.year, prevEthDate.month, 1);
         }
 
     } else { // Weekly
-        let current = addDays(new Date(), (1 - new Date().getDay() + 7) % 7); // Start of current week (Monday)
+        let currentWeekStart = addDays(new Date(), -((new Date().getDay() + 6) % 7)); // Start of current week (Monday)
         for(let i=0; i<12; i++){
-            const weekStart = current;
+            const weekStart = currentWeekStart;
             const weekEnd = addDays(weekStart, 6);
-            if (weekStart < firstAttendanceDate) break;
+            if (weekEnd < firstAttendanceDate) break;
             
             const startDayEth = ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' });
             const endDayEth = ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -252,7 +272,7 @@ export default function EmployeeProfilePage() {
                 value: weekStart.toISOString(),
                 label: `${startDayEth} - ${endDayEth}`
             });
-            current = addDays(current, -7);
+            currentWeekStart = addDays(currentWeekStart, -7);
         }
     }
     return options;
@@ -528,3 +548,4 @@ export default function EmployeeProfilePage() {
 
 
     
+

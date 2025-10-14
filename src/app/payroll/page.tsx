@@ -21,7 +21,7 @@ import {
 import { Timestamp } from "firebase/firestore";
 import type { Employee, AttendanceRecord, PayrollEntry } from "@/lib/types";
 import { useFirestore, useUser, errorEmitter, useMemoFirebase } from '@/firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, FirestoreError } from 'firebase/firestore';
 import { ExpenseChart } from './expense-chart';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCollection } from '@/firebase/firestore/use-collection';
@@ -46,11 +46,18 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
 };
 
 const toEthiopian = (date: Date) => {
-    const parts = ethiopianDateFormatter(date, { year: 'numeric', month: 'numeric', day: 'numeric' }).split('/');
+    const ethiopicDate = new Intl.DateTimeFormat('en-US-u-ca-ethiopic', { year: 'numeric', month: 'numeric', day: 'numeric' });
+    const parts = ethiopicDate.formatToParts(date);
+    let day = '1', month = '1', year = '1970';
+    for (const part of parts) {
+        if (part.type === 'day') day = part.value;
+        if (part.type === 'month') month = part.value;
+        if (part.type === 'year') year = part.value;
+    }
     return {
-        month: parseInt(parts[0], 10),
-        day: parseInt(parts[1], 10),
-        year: parseInt(parts[2], 10)
+        day: parseInt(day),
+        month: parseInt(month),
+        year: parseInt(year),
     };
 };
 
@@ -65,8 +72,9 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
     const today = new Date();
     const ethToday = toEthiopian(today);
-    const dayDiff = ((ethYear - ethToday.year) * 365) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
-    return addDays(today, dayDiff);
+    // Rough approximation
+    const dayDiff = ((ethYear - ethToday.year) * 365.25) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
+    return addDays(today, Math.round(dayDiff));
 };
 
 
@@ -76,7 +84,7 @@ export default function PayrollPage() {
   const { user, isUserLoading } = useUser();
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
-  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
+  const [selectedMonth, setSelectedMonth] = useState<Date>(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1));
   const [monthOptions, setMonthOptions] = useState<{label: string, value: string}[]>([]);
 
 
@@ -113,11 +121,8 @@ export default function PayrollPage() {
                     allRecords.push({ id: doc.id, ...doc.data(), employeeId: doc.data().employeeId } as AttendanceRecord);
                 });
             } catch(e) {
-                 const permissionError = new FirestorePermissionError({
-                    path: attColRef.path,
-                    operation: 'list',
-                });
-                errorEmitter.emit('permission-error', permissionError);
+                 const permissionError = new FirestoreError( 'permission-denied', `Missing or insufficient permissions to read collection at path: ${attColRef.path}`);
+                 errorEmitter.emit('permission-error', permissionError as any);
             }
             date = addDays(date, 1);
         }
@@ -136,24 +141,27 @@ export default function PayrollPage() {
 
     const today = new Date();
     const options = [];
-    let current = toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1);
+    let currentMonthStart = toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1);
+    
     for(let i=0; i<12; i++){
-        const ethDate = toEthiopian(current);
+        const ethDate = toEthiopian(currentMonthStart);
         const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
 
-        const earliestAttendance = allAttendance.length > 0 ? getDateFromRecord(allAttendance[0].date) : new Date();
-        if (monthStart < earliestAttendance && i > 0) break;
+        const earliestAttendance = new Date( '2023-01-01');
+        if (monthStart < addDays(earliestAttendance, -31)) break;
 
         const monthName = ethiopianDateFormatter(monthStart, { month: 'long' });
         options.push({
             value: monthStart.toISOString(),
             label: `${monthName} ${ethDate.year}`
         });
-        const prevMonth = ethDate.month > 1 ? ethDate.month - 1 : 13;
-        const prevYear = ethDate.month > 1 ? ethDate.year : ethDate.year - 1;
-        current = toGregorian(prevYear, prevMonth, 1);
+
+        const prevMonthDate = addDays(monthStart, -5);
+        const prevEthDate = toEthiopian(prevMonthDate);
+        currentMonthStart = toGregorian(prevEthDate.year, prevEthDate.month, 1);
     }
     setMonthOptions(options);
+    setSelectedMonth(new Date(options[0]?.value || new Date()));
   }, [setTitle, allAttendance]);
 
 
@@ -167,7 +175,7 @@ export default function PayrollPage() {
     const ethToday = toEthiopian(today);
 
     // Weekly calculation
-    const weekStart = addDays(today, (1 - getDay(today) + 7) % 7);
+    const weekStart = addDays(today, -((today.getDay() + 6) % 7)); // Monday of current week
     const weekEnd = addDays(weekStart, 6);
     const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
@@ -252,7 +260,7 @@ export default function PayrollPage() {
               <CardDescription>Select an Ethiopian month to view the detailed expense breakdown.</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-6">
-                 <Select onValueChange={handleMonthSelect} defaultValue={selectedMonth.toISOString()}>
+                 <Select onValueChange={handleMonthSelect} value={selectedMonth.toISOString()}>
                     <SelectTrigger className="w-full lg:w-1/3">
                         <SelectValue placeholder="Select a month" />
                     </SelectTrigger>
