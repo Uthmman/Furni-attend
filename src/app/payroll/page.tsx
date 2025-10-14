@@ -16,7 +16,8 @@ import {
   isValid,
   addDays,
   isWithinInterval,
-  getDay
+  getDay,
+  eachDayOfInterval
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import type { Employee, AttendanceRecord, PayrollEntry } from "@/lib/types";
@@ -139,30 +140,39 @@ export default function PayrollPage() {
   useEffect(() => {
     setTitle("Payroll Analytics");
 
-    const today = new Date();
-    const options = [];
-    let currentMonthStart = toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1);
-    
-    for(let i=0; i<12; i++){
-        const ethDate = toEthiopian(currentMonthStart);
-        const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
+    if (allAttendance.length > 0 && employees && employees.length > 0) {
+        const today = new Date();
+        const options = [];
+        let currentMonthStart = toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1);
+        
+        const earliestAttendance = employees.reduce((min, e) => {
+            if (!e.attendanceStartDate) return min;
+            const d = new Date(e.attendanceStartDate);
+            return d < min ? d : min;
+        }, new Date());
 
-        const earliestAttendance = new Date( '2023-01-01');
-        if (monthStart < addDays(earliestAttendance, -31)) break;
+        for(let i=0; i < 12; i++){
+            const ethDate = toEthiopian(currentMonthStart);
+            const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
 
-        const monthName = ethiopianDateFormatter(monthStart, { month: 'long' });
-        options.push({
-            value: monthStart.toISOString(),
-            label: `${monthName} ${ethDate.year}`
-        });
+            if (monthStart < addDays(earliestAttendance, -31)) break;
 
-        const prevMonthDate = addDays(monthStart, -5);
-        const prevEthDate = toEthiopian(prevMonthDate);
-        currentMonthStart = toGregorian(prevEthDate.year, prevEthDate.month, 1);
+            const monthName = ethiopianDateFormatter(monthStart, { month: 'long' });
+            options.push({
+                value: monthStart.toISOString(),
+                label: `${monthName} ${ethDate.year}`
+            });
+
+            const prevMonthDate = addDays(monthStart, -5);
+            const prevEthDate = toEthiopian(prevMonthDate);
+            currentMonthStart = toGregorian(prevEthDate.year, prevEthDate.month, 1);
+        }
+        setMonthOptions(options);
+        if (options.length > 0) {
+           setSelectedMonth(new Date(options[0]?.value || new Date()));
+        }
     }
-    setMonthOptions(options);
-    setSelectedMonth(new Date(options[0]?.value || new Date()));
-  }, [setTitle, allAttendance]);
+  }, [setTitle, allAttendance, employees]);
 
 
   const { weeklyPayroll, monthlyPayroll } = useMemo(() => {
@@ -175,7 +185,7 @@ export default function PayrollPage() {
     const ethToday = toEthiopian(today);
 
     // Weekly calculation
-    const weekStart = addDays(today, -((today.getDay() + 6) % 7)); // Monday of current week
+    const weekStart = addDays(today, -((getDay(today) + 6) % 7));
     const weekEnd = addDays(weekStart, 6);
     const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
@@ -237,6 +247,74 @@ export default function PayrollPage() {
 
   }, [employees, allAttendance]);
 
+  const expenseHistoryData = useMemo(() => {
+    if (!employees || !allAttendance) return { weekly: [], monthly: [], total: [], totalWeekly: 0, totalMonthly: 0, overallTotal: 0 };
+
+    const ethSelected = toEthiopian(selectedMonth);
+    const monthStart = selectedMonth;
+    const daysInMonthCount = getEthiopianMonthDays(ethSelected.year, ethSelected.month);
+    const monthEnd = addDays(monthStart, daysInMonthCount - 1);
+
+    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+    let totalMonthlyExpense = 0;
+    let totalWeeklyExpense = 0;
+
+    const weeklyData: {name: string, weekly: number}[] = [];
+    const monthlyData: {name: string, monthly: number}[] = [];
+    const totalData: {name: string, total: number}[] = [];
+
+
+    daysInMonth.map(day => {
+        let dailyWeeklyExpense = 0;
+        let dailyMonthlyExpense = 0;
+        const dayStr = format(day, 'yyyy-MM-dd');
+
+        employees.forEach(employee => {
+            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+            if (!hourlyRate) return;
+
+            const record = allAttendance.find(r => 
+                r.employeeId === employee.id && 
+                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr &&
+                (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')
+            );
+            
+            if (record) {
+                let hoursWorked = 0;
+                if(record.morningStatus !== 'Absent') hoursWorked += 4.5;
+                if(record.afternoonStatus !== 'Absent') hoursWorked += 3.5;
+                
+                const overtime = record.overtimeHours || 0;
+                const dailyTotal = (hoursWorked + overtime) * hourlyRate;
+
+                if (employee.paymentMethod === 'Weekly') {
+                    dailyWeeklyExpense += dailyTotal;
+                } else {
+                    dailyMonthlyExpense += dailyTotal;
+                }
+            }
+        });
+        
+        totalWeeklyExpense += dailyWeeklyExpense;
+        totalMonthlyExpense += dailyMonthlyExpense;
+
+        const dayName = toEthiopian(day).day.toString();
+        weeklyData.push({ name: dayName, weekly: dailyWeeklyExpense });
+        monthlyData.push({ name: dayName, monthly: dailyMonthlyExpense });
+        totalData.push({ name: dayName, total: dailyWeeklyExpense + dailyMonthlyExpense });
+    });
+
+    return {
+        weekly: weeklyData,
+        monthly: monthlyData,
+        total: totalData,
+        totalWeekly: totalWeeklyExpense,
+        totalMonthly: totalMonthlyExpense,
+        overallTotal: totalWeeklyExpense + totalMonthlyExpense
+    };
+  }, [employees, allAttendance, selectedMonth]);
+
 
   const handleMonthSelect = (value: string) => {
     if (!value) return;
@@ -246,6 +324,8 @@ export default function PayrollPage() {
   if (employeesLoading || attendanceLoading || isUserLoading) {
     return <div>Loading...</div>;
   }
+
+  const monthLabel = ethiopianDateFormatter(selectedMonth, {month: 'long', year: 'numeric'});
 
   return (
     <div className="flex flex-col gap-8">
@@ -270,11 +350,29 @@ export default function PayrollPage() {
                         ))}
                     </SelectContent>
                 </Select>
-                <ExpenseChart 
-                    employees={employees || []} 
-                    attendanceRecords={allAttendance} 
-                    selectedMonth={selectedMonth} 
-                />
+                <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    <ExpenseChart 
+                        title="Weekly Expenses"
+                        description={monthLabel}
+                        chartData={expenseHistoryData.weekly}
+                        series={[{key: 'weekly', name: 'Weekly', color: 'hsl(var(--chart-1))'}]}
+                        total={expenseHistoryData.totalWeekly}
+                    />
+                    <ExpenseChart 
+                        title="Monthly Expenses"
+                        description={monthLabel}
+                        chartData={expenseHistoryData.monthly}
+                        series={[{key: 'monthly', name: 'Monthly', color: 'hsl(var(--chart-2))'}]}
+                        total={expenseHistoryData.totalMonthly}
+                    />
+                     <ExpenseChart 
+                        title="Total Expenses"
+                        description={monthLabel}
+                        chartData={expenseHistoryData.total}
+                        series={[{key: 'total', name: 'Total', color: 'hsl(var(--chart-3))'}]}
+                        total={expenseHistoryData.overallTotal}
+                    />
+                </div>
           </CardContent>
         </Card>
     </div>
