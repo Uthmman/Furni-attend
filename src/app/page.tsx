@@ -138,12 +138,11 @@ export default function DashboardPage() {
     const ethToday = toEthiopian(today);
 
     // Week calculations
-    const weekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
-    const weekEnd = endOfWeek(today, { weekStartsOn: 1 }); // Sunday
+    const weekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
     
     const estWeekly = employees.reduce((acc, emp) => {
         if (emp.paymentMethod === 'Weekly' && emp.dailyRate) {
-            return acc + (emp.dailyRate * 6); // Assuming 6-day work week
+            return acc + (emp.dailyRate * 7); // 7-day work week
         }
         return acc;
     }, 0);
@@ -169,7 +168,6 @@ export default function DashboardPage() {
 
     // Month calculations
     const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
-    const monthEnd = addDays(monthStart, getEthiopianMonthDays(ethToday.year, ethToday.month) - 1);
     
     const estMonthly = employees.reduce((acc, emp) => {
         if (emp.paymentMethod === 'Monthly' && emp.monthlyRate) {

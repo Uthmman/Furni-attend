@@ -27,6 +27,7 @@ import {
   parse,
   isValid,
   addDays,
+  startOfWeek,
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -259,7 +260,7 @@ export default function EmployeeProfilePage() {
         }
 
     } else { // Weekly
-        let currentWeekStart = addDays(new Date(), -((new Date().getDay() + 6) % 7)); // Start of current week (Monday)
+        let currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 0 }); // Start of current week (Sunday)
         for(let i=0; i<12; i++){
             const weekStart = currentWeekStart;
             const weekEnd = addDays(weekStart, 6);
@@ -548,4 +549,3 @@ export default function EmployeeProfilePage() {
 
 
     
-

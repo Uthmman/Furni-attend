@@ -98,7 +98,7 @@ export default function PayrollPage() {
     if (!firestore || !user) return null;
     return collection(firestore, 'employees');
   }, [firestore, user]);
-  const { data: employees, isLoading: employeesLoading } = useCollection(employeesCollectionRef);
+  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
   
   useEffect(() => {
     const fetchAllAttendance = async () => {
@@ -172,7 +172,7 @@ export default function PayrollPage() {
 
         // Week Options
         const wOptions = [];
-        let currentWeekStart = startOfWeek(today, { weekStartsOn: 1 }); // Monday
+        let currentWeekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
         for(let i=0; i < 12; i++){
             const weekEnd = addDays(currentWeekStart, 6);
             if (weekEnd < earliestAttendance) break;
@@ -197,7 +197,7 @@ export default function PayrollPage() {
     const ethToday = toEthiopian(today);
 
     // Weekly calculation
-    const weekStart = addDays(today, -((getDay(today) + 6) % 7));
+    const weekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
     const weekEnd = addDays(weekStart, 6);
     const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
@@ -458,4 +458,3 @@ export default function PayrollPage() {
     </div>
   );
 }
-
