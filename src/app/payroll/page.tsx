@@ -109,6 +109,14 @@ const calculateHoursWorked = (record: AttendanceRecord): number => {
     return Math.max(0, totalHours);
 };
 
+const calculateExpectedHours = (record: AttendanceRecord): number => {
+    if (!record) return 0;
+    let expected = 0;
+    if (record.morningStatus !== 'Absent') expected += 4.5;
+    if (record.afternoonStatus !== 'Absent') expected += 3.5;
+    return expected;
+}
+
 
 export default function PayrollPage() {
   const { setTitle } = usePageTitle();
@@ -228,7 +236,7 @@ export default function PayrollPage() {
 
     // Weekly calculation
     const weekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
-    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
+    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 }); // Saturday
     const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
     // Monthly calculation
@@ -268,21 +276,29 @@ export default function PayrollPage() {
         const overtimeAmount = overtimeHours * hourlyRate;
         const amount = baseAmount + overtimeAmount;
 
+        const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r), 0);
+        const lateHours = expectedHours - totalHours;
+        const lateDeduction = lateHours > 0 ? lateHours * hourlyRate : 0;
+        const finalAmount = (baseAmount + overtimeAmount) - lateDeduction;
+
+
         const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
 
-        if (amount > 0) {
+        if (finalAmount > 0) {
             targetList.push({
                 employeeId: employee.id,
                 employeeName: employee.name,
                 paymentMethod: employee.paymentMethod,
                 period: periodLabel,
-                amount: amount,
+                amount: finalAmount,
                 status: 'Unpaid',
                 workingDays: daysWorked,
+                expectedHours: expectedHours,
                 totalHours: totalHours,
                 overtimeHours: overtimeHours,
                 baseAmount: baseAmount,
                 overtimeAmount: overtimeAmount,
+                lateDeduction: lateDeduction,
             });
         }
     });

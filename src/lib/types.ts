@@ -37,9 +37,10 @@ export interface PayrollEntry {
   amount: number;
   status: "Paid" | "Unpaid";
   workingDays?: number;
+  expectedHours: number;
   totalHours: number;
   overtimeHours: number;
   baseAmount: number;
   overtimeAmount: number;
+  lateDeduction: number;
 };
-

@@ -28,14 +28,12 @@ interface PayrollListProps {
 }
 
 const generateSmsSummary = (entry: PayrollEntry): string => {
-    return `Hi ${entry.employeeName},\n\nHere is your payroll summary for the period: ${entry.period}.\n\n` +
-           `Working Days: ${entry.workingDays}\n` +
-           `Total Hours: ${entry.totalHours.toFixed(2)} hrs\n` +
-           `Overtime: ${entry.overtimeHours.toFixed(2)} hrs\n\n` +
-           `Base Pay: ETB ${entry.baseAmount.toFixed(2)}\n` +
-           `Overtime Pay: ETB ${entry.overtimeAmount.toFixed(2)}\n` +
-           `Total Payout: ETB ${entry.amount.toFixed(2)}\n\n` +
-           `Thank you!`;
+    return `Hi ${entry.employeeName}, your payroll for ${entry.period}:\n` +
+           `Base: ETB ${entry.baseAmount.toFixed(2)}\n` +
+           `Overtime: ETB ${entry.overtimeAmount.toFixed(2)}\n` +
+           `Late Deduction: -ETB ${entry.lateDeduction.toFixed(2)}\n` +
+           `Total: ETB ${entry.amount.toFixed(2)}\n` +
+           `Thank you.`;
 };
 
 
