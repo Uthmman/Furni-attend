@@ -6,7 +6,7 @@ import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
 import { Users, UserCheck, Wallet, Calendar } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, startOfMonth, endOfMonth, isWithinInterval, addDays } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter } from "@/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent } from '@/components/ui/card';
@@ -49,6 +49,35 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
     const ethToday = toEthiopian(today);
     const dayDiff = ((ethYear - ethToday.year) * 365.25) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
     return addDays(today, Math.round(dayDiff));
+};
+
+const calculateHoursWorked = (record: AttendanceRecord): number => {
+    if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) return 0;
+
+    const morningStartTime = parse("08:00", "HH:mm", new Date());
+    const morningEndTime = parse("12:30", "HH:mm", new Date());
+    const afternoonStartTime = parse("13:30", "HH:mm", new Date());
+    const afternoonEndTime = parse("17:00", "HH:mm", new Date());
+
+    let totalHours = 0;
+
+    if (record.morningStatus !== 'Absent' && record.morningEntry) {
+        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+        if(morningEntryTime < morningEndTime) {
+            const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
+            totalHours += morningWorkMs / (1000 * 60 * 60);
+        }
+    }
+    
+    if (record.afternoonStatus !== 'Absent' && record.afternoonEntry) {
+        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+        if(afternoonEntryTime < afternoonEndTime) {
+            const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
+            totalHours += afternoonWorkMs / (1000 * 60 * 60);
+        }
+    }
+
+    return Math.max(0, totalHours);
 };
 
 export default function DashboardPage() {
@@ -142,7 +171,7 @@ export default function DashboardPage() {
     
     const estWeekly = employees.reduce((acc, emp) => {
         if (emp.paymentMethod === 'Weekly' && emp.dailyRate) {
-            return acc + (emp.dailyRate * 7); // 7-day work week
+            return acc + (emp.dailyRate * 7);
         }
         return acc;
     }, 0);
@@ -154,14 +183,11 @@ export default function DashboardPage() {
 
         const recordsInWeek = allAttendance.filter(r => 
             r.employeeId === emp.id &&
-            isWithinInterval(new Date(r.date as string), { start: weekStart, end: today }) &&
-            (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')
+            isValid(new Date(r.date as string)) &&
+            isWithinInterval(new Date(r.date as string), { start: weekStart, end: today })
         );
         const hoursWorked = recordsInWeek.reduce((sum, r) => {
-            let hours = 0;
-            if (r.morningStatus !== 'Absent') hours += 4.5;
-            if (r.afternoonStatus !== 'Absent') hours += 3.5;
-            return sum + hours + (r.overtimeHours || 0);
+            return sum + calculateHoursWorked(r) + (r.overtimeHours || 0);
         }, 0);
         return acc + (hoursWorked * hourlyRate);
     }, 0);
@@ -183,15 +209,12 @@ export default function DashboardPage() {
 
         const recordsInMonth = allAttendance.filter(r => 
             r.employeeId === emp.id &&
-            isWithinInterval(new Date(r.date as string), { start: monthStart, end: today }) &&
-            (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')
+            isValid(new Date(r.date as string)) &&
+            isWithinInterval(new Date(r.date as string), { start: monthStart, end: today })
         );
 
         const hoursWorked = recordsInMonth.reduce((sum, r) => {
-            let hours = 0;
-            if (r.morningStatus !== 'Absent') hours += 4.5;
-            if (r.afternoonStatus !== 'Absent') hours += 3.5;
-            return sum + hours + (r.overtimeHours || 0);
+            return sum + calculateHoursWorked(r) + (r.overtimeHours || 0);
         }, 0);
 
         return acc + (hoursWorked * hourlyRate);

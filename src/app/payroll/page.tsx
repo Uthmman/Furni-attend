@@ -16,10 +16,10 @@ import {
   isValid,
   addDays,
   isWithinInterval,
-  getDay,
   eachDayOfInterval,
   startOfWeek,
   endOfWeek,
+  parse,
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import type { Employee, AttendanceRecord, PayrollEntry } from "@/lib/types";
@@ -78,6 +78,35 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
     // Rough approximation
     const dayDiff = ((ethYear - ethToday.year) * 365.25) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
     return addDays(today, Math.round(dayDiff));
+};
+
+const calculateHoursWorked = (record: AttendanceRecord): number => {
+    if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) return 0;
+
+    const morningStartTime = parse("08:00", "HH:mm", new Date());
+    const morningEndTime = parse("12:30", "HH:mm", new Date());
+    const afternoonStartTime = parse("13:30", "HH:mm", new Date());
+    const afternoonEndTime = parse("17:00", "HH:mm", new Date());
+
+    let totalHours = 0;
+
+    if (record.morningStatus !== 'Absent' && record.morningEntry) {
+        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+        if(morningEntryTime < morningEndTime) {
+            const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
+            totalHours += morningWorkMs / (1000 * 60 * 60);
+        }
+    }
+    
+    if (record.afternoonStatus !== 'Absent' && record.afternoonEntry) {
+        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+        if(afternoonEntryTime < afternoonEndTime) {
+            const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
+            totalHours += afternoonWorkMs / (1000 * 60 * 60);
+        }
+    }
+
+    return Math.max(0, totalHours);
 };
 
 
@@ -228,19 +257,13 @@ export default function PayrollPage() {
         
         const relevantRecords = allAttendance.filter(r => 
             r.employeeId === employee.id &&
-            isWithinInterval(getDateFromRecord(r.date), period) &&
-            (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')
+            isValid(getDateFromRecord(r.date)) &&
+            isWithinInterval(getDateFromRecord(r.date), period)
         );
 
-        const totalHours = relevantRecords.reduce((acc, r) => {
-            let hours = 0;
-            if (r.morningStatus !== 'Absent') hours += 4.5;
-            if (r.afternoonStatus !== 'Absent') hours += 3.5;
-            return acc + hours;
-        }, 0);
-
+        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
         const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-        const amount = (totalHours + overtimeHours) * hourlyRate;
+        const amount = totalHours * hourlyRate + overtimeHours * hourlyRate;
         const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
 
         if (amount > 0) {
@@ -261,7 +284,7 @@ export default function PayrollPage() {
   }, [employees, allAttendance]);
 
   const monthlyExpenseHistoryData = useMemo(() => {
-    if (!employees || !allAttendance || !selectedMonth) return { monthly: [], total: [], totalMonthly: 0, overallTotal: 0 };
+    if (!employees || !allAttendance || !selectedMonth) return { monthly: [], totalMonthly: 0 };
 
     const ethSelected = toEthiopian(selectedMonth);
     const monthStart = selectedMonth;
@@ -282,15 +305,11 @@ export default function PayrollPage() {
 
             const record = allAttendance.find(r => 
                 r.employeeId === employee.id && 
-                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr &&
-                (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')
+                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr
             );
             
             if (record) {
-                let hoursWorked = 0;
-                if(record.morningStatus !== 'Absent') hoursWorked += 4.5;
-                if(record.afternoonStatus !== 'Absent') hoursWorked += 3.5;
-                
+                const hoursWorked = calculateHoursWorked(record);
                 const overtime = record.overtimeHours || 0;
                 dailyMonthlyExpense += (hoursWorked + overtime) * hourlyRate;
             }
@@ -327,14 +346,11 @@ export default function PayrollPage() {
 
             const record = allAttendance.find(r => 
                 r.employeeId === employee.id && 
-                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr &&
-                (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')
+                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr
             );
             
             if (record) {
-                let hoursWorked = 0;
-                if(record.morningStatus !== 'Absent') hoursWorked += 4.5;
-                if(record.afternoonStatus !== 'Absent') hoursWorked += 3.5;
+                const hoursWorked = calculateHoursWorked(record);
                 const overtime = record.overtimeHours || 0;
                 dailyWeeklyExpense += (hoursWorked + overtime) * hourlyRate;
             }
@@ -352,26 +368,48 @@ export default function PayrollPage() {
   }, [employees, allAttendance, selectedWeek]);
   
   const totalExpenseHistoryData = useMemo(() => {
-    if (!selectedMonth) return { total: [], overallTotal: 0 };
+    if (!selectedMonth || !employees || !allAttendance) return { total: [], overallTotal: 0 };
 
-    const weeklyDataForMonth = weeklyExpenseHistoryData.weekly.reduce((acc, curr) => ({...acc, [curr.name]: curr.weekly }), {} as Record<string, number>);
-    const monthlyDataForMonth = monthlyExpenseHistoryData.monthly;
-    
+    const ethSelected = toEthiopian(selectedMonth);
+    const monthStart = selectedMonth;
+    const daysInMonthCount = getEthiopianMonthDays(ethSelected.year, ethSelected.month);
+    const monthEnd = addDays(monthStart, daysInMonthCount - 1);
+    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
     let overallTotal = 0;
-    const totalData = monthlyDataForMonth.map(m => {
-        const dayName = m.name; // Ethiopian day number
-        const weeklyExpense = weeklyDataForMonth[dayName] || 0;
-        const total = m.monthly + weeklyExpense;
-        overallTotal += total;
-        return { name: dayName, total };
+    const totalData: {name: string, total: number}[] = [];
+
+    daysInMonth.forEach(day => {
+        let dailyTotalExpense = 0;
+        const dayStr = format(day, 'yyyy-MM-dd');
+
+        employees.forEach(employee => {
+            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+            if (!hourlyRate) return;
+
+            const record = allAttendance.find(r => 
+                r.employeeId === employee.id && 
+                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr
+            );
+            
+            if (record) {
+                const hoursWorked = calculateHoursWorked(record);
+                const overtime = record.overtimeHours || 0;
+                dailyTotalExpense += (hoursWorked + overtime) * hourlyRate;
+            }
+        });
+        
+        overallTotal += dailyTotalExpense;
+        const dayName = toEthiopian(day).day.toString();
+        totalData.push({ name: dayName, total: dailyTotalExpense });
     });
     
     return {
         total: totalData,
-        overallTotal: monthlyExpenseHistoryData.totalMonthly + weeklyExpenseHistoryData.totalWeekly
+        overallTotal: overallTotal
     };
 
-  }, [selectedMonth, weeklyExpenseHistoryData, monthlyExpenseHistoryData]);
+  }, [selectedMonth, employees, allAttendance]);
 
 
   const handleMonthSelect = (value: string) => {

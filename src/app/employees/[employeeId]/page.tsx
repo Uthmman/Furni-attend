@@ -60,31 +60,35 @@ const getInitials = (name: string) => {
   return names.map((n) => n[0]).join("").toUpperCase();
 };
 
-const calculateHoursWorked = (morningEntry?: string, afternoonEntry?: string): number => {
-    if (!morningEntry || !afternoonEntry) return 0;
+const calculateHoursWorked = (record: AttendanceRecord): number => {
+    if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) return 0;
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
     const morningEndTime = parse("12:30", "HH:mm", new Date());
     const afternoonStartTime = parse("13:30", "HH:mm", new Date());
     const afternoonEndTime = parse("17:00", "HH:mm", new Date());
 
-    const morningEntryTime = parse(morningEntry, "HH:mm", new Date());
-    const afternoonEntryTime = parse(afternoonEntry, "HH:mm", new Date());
-    
     let totalHours = 0;
 
-    if(morningEntryTime < morningEndTime) {
-        const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
-        totalHours += morningWorkMs / (1000 * 60 * 60);
+    if (record.morningStatus !== 'Absent' && record.morningEntry) {
+        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+        if(morningEntryTime < morningEndTime) {
+            const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
+            totalHours += morningWorkMs / (1000 * 60 * 60);
+        }
     }
     
-    if(afternoonEntryTime < afternoonEndTime) {
-        const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
-        totalHours += afternoonWorkMs / (1000 * 60 * 60);
+    if (record.afternoonStatus !== 'Absent' && record.afternoonEntry) {
+        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+        if(afternoonEntryTime < afternoonEndTime) {
+            const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
+            totalHours += afternoonWorkMs / (1000 * 60 * 60);
+        }
     }
 
     return Math.max(0, totalHours);
 };
+
 
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
   if (!isValid(date)) return "Invalid Date";
@@ -178,7 +182,7 @@ export default function EmployeeProfilePage() {
         const today = new Date();
 
         while (date <= today) {
-            const dateStr = format(date, 'yyyy-MM-dd');
+            const dateStr = format(date, "yyyy-MM-dd");
             const attColRef = collection(firestore, 'attendance', dateStr, 'records');
             try {
                 const querySnapshot = await getDocs(attColRef);
@@ -300,26 +304,19 @@ export default function EmployeeProfilePage() {
   const payrollData = useMemo(() => {
     if (!employee) return { hours: 0, amount: 0, daysWorked: 0, overtimePay: 0, totalAmount: 0 };
 
-    const relevantRecords = filteredAttendance.filter(
-      (record) => record.morningStatus !== "Absent" || record.afternoonStatus !== "Absent"
-    );
-
-    const totalHours = relevantRecords.reduce((acc, record) => {
-        let hours = 0;
-        if (record.morningStatus !== 'Absent') hours += 4.5;
-        if (record.afternoonStatus !== 'Absent') hours += 3.5;
-        return acc + hours;
+    const totalOvertimeHours = filteredAttendance.reduce((acc, record) => {
+        return acc + (record.overtimeHours || 0);
     }, 0);
     
-    const totalOvertimeHours = relevantRecords.reduce((acc, record) => {
-        return acc + (record.overtimeHours || 0);
+    const totalHours = filteredAttendance.reduce((acc, record) => {
+        return acc + calculateHoursWorked(record);
     }, 0);
 
     const baseAmount = totalHours * (hourlyRate || 0);
     const overtimePay = totalOvertimeHours * (hourlyRate || 0);
     const totalAmount = baseAmount + overtimePay;
     
-    const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size
+    const daysWorked = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size
 
     return {
       hours: totalHours,
