@@ -1,4 +1,5 @@
 
+
 'use client';
 
 import {
@@ -31,7 +32,7 @@ const generateSmsSummary = (entry: PayrollEntry): string => {
     return `Hi ${entry.employeeName}, your payroll for ${entry.period}:\n` +
            `Base: ETB ${entry.baseAmount.toFixed(2)}\n` +
            `Overtime: ETB ${entry.overtimeAmount.toFixed(2)}\n` +
-           `Late Deduction: -ETB ${entry.lateDeduction.toFixed(2)}\n` +
+           `Late: -ETB ${entry.lateDeduction.toFixed(2)}\n` +
            `Total: ETB ${entry.amount.toFixed(2)}\n` +
            `Thank you.`;
 };
@@ -85,7 +86,7 @@ export function PayrollList({ title, payrollData }: PayrollListProps) {
                                         <div className="font-medium">{entry.employeeName}</div>
                                         <div className="text-sm text-muted-foreground">{entry.workingDays} day(s) worked</div>
                                     </TableCell>
-                                    <TableCell className="text-right">{entry.amount.toFixed(2)}</TableCell>
+                                    <TableCell className="text-right font-bold">{entry.amount.toFixed(2)}</TableCell>
                                     <TableCell>
                                         <Button variant="ghost" size="icon" onClick={() => handleCopy(entry)}>
                                             <Copy className="h-4 w-4" />
@@ -110,3 +111,5 @@ export function PayrollList({ title, payrollData }: PayrollListProps) {
         </Card>
     );
 }
+
+    

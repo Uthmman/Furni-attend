@@ -411,7 +411,7 @@ export default function EmployeeProfilePage() {
                             <p className="font-semibold">Start Date</p>
                              <div className="flex items-center gap-2">
                                 <Calendar className="h-4 w-4 text-muted-foreground" />
-                                <p className="text-muted-foreground">{format(new Date(employee.attendanceStartDate), "MMM d, yyyy")} / {ethiopianDateFormatter(new Date(employee.attendanceStartDate), { day: 'numeric', month: 'short', year: 'numeric'})}</p>
+                                <p className="text-muted-foreground">{format(new Date(employee.attendanceStartDate), "MMM d, yyyy")} / {ethiopianDateFormatter(new Date(employee.attendanceStartDate), { day: 'numeric', month: 'short', year: 'numeric' })}</p>
                              </div>
                         </div>
                     )}
@@ -546,5 +546,7 @@ export default function EmployeeProfilePage() {
   );
 }
 
+
+    
 
     
