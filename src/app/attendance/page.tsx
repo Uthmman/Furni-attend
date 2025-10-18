@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
@@ -73,6 +73,17 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
       console.error("Error formatting Ethiopian date:", e);
       return "Invalid Date";
   }
+};
+
+const CalendarCaption = ({ date }: { date: Date }) => {
+    return (
+      <div className="flex flex-col items-center">
+        <p>{format(date, 'MMMM yyyy')}</p>
+        <p className="text-sm text-muted-foreground">
+          {ethiopianDateFormatter(date, { month: 'long', year: 'numeric' })}
+        </p>
+      </div>
+    );
 };
 
 
@@ -273,17 +284,11 @@ export default function AttendancePage() {
   if (employeesLoading || isUserLoading) {
       return <div>Loading...</div>
   }
-
-  const calendarCaption = useMemo(() => {
-    return (
-      <div className="flex flex-col items-center">
-        <p>{format(selectedDate, 'MMMM yyyy')}</p>
-        <p className="text-sm text-muted-foreground">
-          {ethiopianDateFormatter(selectedDate, { month: 'long', year: 'numeric' })}
-        </p>
-      </div>
-    );
-  }, [selectedDate]);
+  
+  const caption = useCallback(
+    () => <CalendarCaption date={selectedDate} />,
+    [selectedDate]
+  );
 
   return (
     <div className="flex flex-col gap-6">
@@ -306,7 +311,7 @@ export default function AttendancePage() {
                 fromYear={2015}
                 toYear={2035}
                 components={{
-                    Caption: () => calendarCaption,
+                    Caption: caption,
                 }}
               />
             </CardContent>
