@@ -263,7 +263,11 @@ export default function PayrollPage() {
 
         const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
         const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-        const amount = totalHours * hourlyRate + overtimeHours * hourlyRate;
+        
+        const baseAmount = totalHours * hourlyRate;
+        const overtimeAmount = overtimeHours * hourlyRate;
+        const amount = baseAmount + overtimeAmount;
+
         const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
 
         if (amount > 0) {
@@ -275,6 +279,10 @@ export default function PayrollPage() {
                 amount: amount,
                 status: 'Unpaid',
                 workingDays: daysWorked,
+                totalHours: totalHours,
+                overtimeHours: overtimeHours,
+                baseAmount: baseAmount,
+                overtimeAmount: overtimeAmount,
             });
         }
     });
