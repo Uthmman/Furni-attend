@@ -41,7 +41,9 @@ const getDateFromRecord = (date: string | Timestamp): Date => {
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
     if (!isValid(date)) return "Invalid Date";
     try {
-        return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+        const customOptions: Intl.DateTimeFormatOptions = { ...options };
+        if (customOptions.era) delete customOptions.era;
+        return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", customOptions).format(date);
     } catch (e) {
       console.error("Error formatting Ethiopian date:", e);
       return "Invalid Date";
@@ -252,18 +254,18 @@ export default function PayrollPage() {
         let period: { start: Date, end: Date };
         let periodLabel: string;
         let targetList: PayrollEntry[];
-        let baseAmount: number;
+        let baseAmountForPeriod: number;
 
         if (employee.paymentMethod === 'Weekly') {
             period = { start: weekStart, end: weekEnd };
             periodLabel = weekPeriodLabel;
             targetList = weekly;
-            baseAmount = (employee.dailyRate || 0) * 6;
+            baseAmountForPeriod = (employee.dailyRate || 0) * 6;
         } else {
             period = { start: monthStart, end: monthEnd };
             periodLabel = monthPeriodLabel;
             targetList = monthly;
-            baseAmount = employee.monthlyRate || 0;
+            baseAmountForPeriod = employee.monthlyRate || 0;
         }
         
         const relevantRecords = allAttendance.filter(r => 
@@ -274,15 +276,15 @@ export default function PayrollPage() {
 
         const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
         const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-        
-        const actualAmount = (totalHours + overtimeHours) * hourlyRate;
+        const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r), 0);
+
+        const finalAmount = (totalHours + overtimeHours) * hourlyRate;
         const overtimeAmount = overtimeHours * hourlyRate;
 
-        const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r), 0);
-        const lateHours = expectedHours - totalHours;
-        const lateDeduction = lateHours > 0 ? lateHours * hourlyRate : 0;
+        const lateHours = Math.max(0, expectedHours - totalHours);
+        const lateDeduction = lateHours * hourlyRate;
         
-        const finalAmount = actualAmount - lateDeduction;
+        const baseAmount = (expectedHours - overtimeHours) * hourlyRate;
 
         const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
 
@@ -298,7 +300,7 @@ export default function PayrollPage() {
                 expectedHours: expectedHours,
                 totalHours: totalHours,
                 overtimeHours: overtimeHours,
-                baseAmount: baseAmount, // Using calculated base amount
+                baseAmount: baseAmount > 0 ? baseAmount : 0,
                 overtimeAmount: overtimeAmount,
                 lateDeduction: lateDeduction,
             });
@@ -523,5 +525,3 @@ export default function PayrollPage() {
     </div>
   );
 }
-
-    
