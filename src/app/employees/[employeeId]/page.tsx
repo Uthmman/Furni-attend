@@ -28,6 +28,7 @@ import {
   isValid,
   addDays,
   startOfWeek,
+  endOfWeek,
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -263,7 +264,7 @@ export default function EmployeeProfilePage() {
         let currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 0 }); // Start of current week (Sunday)
         for(let i=0; i<12; i++){
             const weekStart = currentWeekStart;
-            const weekEnd = addDays(weekStart, 6);
+            const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
             if (weekEnd < firstAttendanceDate) break;
             
             const startDayEth = ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' });
@@ -286,7 +287,8 @@ export default function EmployeeProfilePage() {
     const startDate = new Date(selectedPeriod);
     let interval;
     if (employee.paymentMethod === 'Weekly') {
-      interval = { start: startDate, end: addDays(startDate, 6) };
+      const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
+      interval = { start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 0 }) };
     } else { // monthly
       const ethDate = toEthiopian(startDate);
       const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);

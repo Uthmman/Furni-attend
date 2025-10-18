@@ -18,7 +18,8 @@ import {
   isWithinInterval,
   getDay,
   eachDayOfInterval,
-  startOfWeek
+  startOfWeek,
+  endOfWeek,
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import type { Employee, AttendanceRecord, PayrollEntry } from "@/lib/types";
@@ -26,7 +27,7 @@ import { useFirestore, useUser, errorEmitter, useMemoFirebase } from '@/firebase
 import { collection, getDocs, FirestoreError } from 'firebase/firestore';
 import { ExpenseChart } from './expense-chart';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCollection } from '@/firebase/firestore/use-collection';
+import { useCollection } from '@/firebase';
 import { PayrollList } from './payroll-list';
 
 const getDateFromRecord = (date: string | Timestamp): Date => {
@@ -174,7 +175,7 @@ export default function PayrollPage() {
         const wOptions = [];
         let currentWeekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
         for(let i=0; i < 12; i++){
-            const weekEnd = addDays(currentWeekStart, 6);
+            const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
             if (weekEnd < earliestAttendance) break;
             const startDayEth = ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' });
             const endDayEth = ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -198,7 +199,7 @@ export default function PayrollPage() {
 
     // Weekly calculation
     const weekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
-    const weekEnd = addDays(weekStart, 6);
+    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
     const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
 
     // Monthly calculation
@@ -309,8 +310,8 @@ export default function PayrollPage() {
   const weeklyExpenseHistoryData = useMemo(() => {
     if (!employees || !allAttendance || !selectedWeek) return { weekly: [], totalWeekly: 0 };
 
-    const weekStart = selectedWeek;
-    const weekEnd = addDays(weekStart, 6);
+    const weekStart = startOfWeek(selectedWeek, { weekStartsOn: 0 });
+    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
     const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
     let totalWeeklyExpense = 0;
