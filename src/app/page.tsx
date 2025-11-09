@@ -204,7 +204,7 @@ export default function DashboardPage() {
 
     const actualMonthly = employees.reduce((acc, emp) => {
         if (emp.paymentMethod !== 'Monthly') return acc;
-        const hourlyRate = emp.hourlyRate || (emp.monthlyRate ? emp.monthlyRate / 26 / 8 : 0);
+        const hourlyRate = emp.hourlyRate || (emp.monthlyRate ? emp.monthlyRate / 24 / 8 : 0);
         if (!hourlyRate) return acc;
 
         const recordsInMonth = allAttendance.filter(r => 

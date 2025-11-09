@@ -248,7 +248,7 @@ export default function PayrollPage() {
     const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethToday.year}`;
 
     employees.forEach(employee => {
-        const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+        const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
         if (!hourlyRate) return;
 
         let period: { start: Date, end: Date };
@@ -328,7 +328,7 @@ export default function PayrollPage() {
         const dayStr = format(day, 'yyyy-MM-dd');
 
         employees.filter(e => e.paymentMethod === 'Monthly').forEach(employee => {
-            const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+            const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
             if (!hourlyRate) return;
 
             const record = allAttendance.find(r => 
@@ -412,7 +412,7 @@ export default function PayrollPage() {
         const dayStr = format(day, 'yyyy-MM-dd');
 
         employees.forEach(employee => {
-            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
             if (!hourlyRate) return;
 
             const record = allAttendance.find(r => 

@@ -93,7 +93,9 @@ const calculateHoursWorked = (record: AttendanceRecord): number => {
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
   if (!isValid(date)) return "Invalid Date";
   try {
-      return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+      const customOptions: Intl.DateTimeFormatOptions = { ...options };
+        if (customOptions.era) delete customOptions.era;
+      return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", customOptions).format(date);
   } catch (e) {
       console.error("Error formatting Ethiopian date:", e);
       return "Invalid Date";
@@ -226,7 +228,7 @@ export default function EmployeeProfilePage() {
     if (!employee) return 0;
     return employee.hourlyRate ||
         (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
-        (employee.monthlyRate ? employee.monthlyRate / 26 / 8 : 0);
+        (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
   }, [employee]);
 
   const firstAttendanceDate = useMemo(() => {
