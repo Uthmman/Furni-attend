@@ -114,28 +114,16 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (employees) {
-        const isSaturday = getDay(selectedDate) === 6;
-
         const dailyAttendance: DailyAttendance[] = employees.map((emp) => {
             const record = attendanceRecords?.find((r) => r.employeeId === emp.id);
-
-            let afternoonStatus: AttendanceStatus = record?.afternoonStatus || "Absent";
-            let afternoonEntry = record?.afternoonEntry || "";
-            
-            if (isSaturday && emp.paymentMethod === 'Monthly' && record?.afternoonStatus !== 'Absent') {
-                afternoonStatus = record?.afternoonStatus || "Present";
-            }
-             if (isSaturday && emp.paymentMethod === 'Monthly' && !record) {
-                afternoonStatus = "Present";
-            }
 
             return {
                 employeeId: emp.id,
                 employeeName: emp.name,
                 morningStatus: record?.morningStatus || "Absent",
-                afternoonStatus: afternoonStatus,
+                afternoonStatus: record?.afternoonStatus || "Absent",
                 morningEntry: record?.morningEntry || "",
-                afternoonEntry: afternoonEntry,
+                afternoonEntry: record?.afternoonEntry || "",
                 overtimeHours: record?.overtimeHours || 0,
             };
         });
@@ -467,7 +455,6 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("afternoonStatus", value)
                   }
-                   disabled={isSaturday && selectedEmployeeDetails?.paymentMethod === 'Monthly'}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -491,7 +478,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("afternoonEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || (isSaturday && selectedEmployeeDetails?.paymentMethod === 'Monthly')}
+                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent'}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -531,3 +518,6 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+
+    
