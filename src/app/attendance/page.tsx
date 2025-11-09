@@ -75,18 +75,6 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
   }
 };
 
-const CalendarCaption = ({ date }: { date: Date }) => {
-    return (
-      <div className="flex flex-col items-center">
-        <p>{format(date, 'MMMM yyyy')}</p>
-        <p className="text-sm text-muted-foreground">
-          {ethiopianDateFormatter(date, { month: 'long', year: 'numeric' })}
-        </p>
-      </div>
-    );
-};
-
-
 export default function AttendancePage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
@@ -298,11 +286,6 @@ export default function AttendancePage() {
       return <div>Loading...</div>
   }
   
-  const caption = useCallback(
-    () => <CalendarCaption date={selectedDate} />,
-    [selectedDate]
-  );
-  
   const isSaturday = getDay(selectedDate) === 6;
 
   return (
@@ -322,12 +305,9 @@ export default function AttendancePage() {
                 mode="single"
                 selected={selectedDate}
                 onSelect={handleDateSelect}
-                captionLayout="dropdown-buttons"
+                captionLayout="buttons"
                 fromYear={2015}
                 toYear={2035}
-                components={{
-                    Caption: caption,
-                }}
               />
             </CardContent>
           </Card>
@@ -484,4 +464,5 @@ export default function AttendancePage() {
   );
 }
 
+    
     
