@@ -35,6 +35,9 @@ import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
 import { collection, doc, setDoc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
+import { useDayPicker, type CaptionProps, useNavigation } from "react-day-picker";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
 
 type DailyAttendance = {
   employeeId: string;
@@ -288,6 +291,70 @@ export default function AttendancePage() {
   
   const isSaturday = getDay(selectedDate) === 6;
 
+  const CalendarCaption = useCallback(
+    (props: CaptionProps) => {
+      const { fromYear, toYear } = useDayPicker();
+      const { goToMonth, nextMonth, previousMonth } = useNavigation();
+
+      const years = Array.from(
+        { length: (toYear ?? 0) - (fromYear ?? 0) + 1 },
+        (_, i) => (fromYear ?? 0) + i
+      );
+
+      return (
+        <div className="flex justify-between items-center w-full px-2">
+           <Button variant="outline" size="icon" className="h-7 w-7" disabled={!previousMonth} onClick={() => previousMonth && goToMonth(previousMonth)}>
+                <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="flex gap-2">
+                <Select
+                    value={props.displayMonth.getMonth().toString()}
+                    onValueChange={(value) => {
+                        const newDate = new Date(props.displayMonth);
+                        newDate.setMonth(parseInt(value));
+                        goToMonth(newDate);
+                    }}
+                >
+                    <SelectTrigger className="w-auto border-none focus:ring-0">
+                         <SelectValue asChild>
+                            <span className="font-medium text-base">{format(props.displayMonth, 'MMMM')}</span>
+                        </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                        {Array.from({length: 12}, (_, i) => (
+                           <SelectItem key={i} value={i.toString()}>{format(new Date(2000, i, 1), 'MMMM')}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+                 <Select
+                    value={props.displayMonth.getFullYear().toString()}
+                    onValueChange={(value) => {
+                        const newDate = new Date(props.displayMonth);
+                        newDate.setFullYear(parseInt(value));
+                        goToMonth(newDate);
+                    }}
+                >
+                    <SelectTrigger className="w-auto border-none focus:ring-0">
+                        <SelectValue asChild>
+                           <span className="font-medium text-base">{props.displayMonth.getFullYear()}</span>
+                        </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                        {years.map(year => (
+                           <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+            </div>
+            <Button variant="outline" size="icon" className="h-7 w-7" disabled={!nextMonth} onClick={() => nextMonth && goToMonth(nextMonth)}>
+                <ChevronRight className="h-4 w-4" />
+            </Button>
+        </div>
+      );
+    },
+    []
+  );
+
   return (
     <div className="flex flex-col gap-6">
        <div className="flex items-center justify-between">
@@ -305,7 +372,8 @@ export default function AttendancePage() {
                 mode="single"
                 selected={selectedDate}
                 onSelect={handleDateSelect}
-                captionLayout="buttons"
+                components={{ Caption: CalendarCaption }}
+                captionLayout="dropdown-buttons"
                 fromYear={2015}
                 toYear={2035}
               />
@@ -463,6 +531,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
-    
