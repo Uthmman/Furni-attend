@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { AttendanceRecord, Employee, AttendanceStatus } from "@/lib/types";
-import { format, isValid } from "date-fns";
+import { format, isValid, getDay } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
 import { collection, doc, setDoc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
@@ -123,21 +123,34 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (employees) {
-       const dailyAttendance: DailyAttendance[] = employees.map((emp) => {
-        const record = attendanceRecords?.find((r) => r.employeeId === emp.id);
-        return {
-          employeeId: emp.id,
-          employeeName: emp.name,
-          morningStatus: record?.morningStatus || "Absent",
-          afternoonStatus: record?.afternoonStatus || "Absent",
-          morningEntry: record?.morningEntry || "",
-          afternoonEntry: record?.afternoonEntry || "",
-          overtimeHours: record?.overtimeHours || 0,
-        };
-      });
-      setAttendance(dailyAttendance);
+        const isSaturday = getDay(selectedDate) === 6;
+
+        const dailyAttendance: DailyAttendance[] = employees.map((emp) => {
+            const record = attendanceRecords?.find((r) => r.employeeId === emp.id);
+
+            let afternoonStatus: AttendanceStatus = record?.afternoonStatus || "Absent";
+            let afternoonEntry = record?.afternoonEntry || "";
+            
+            if (isSaturday && emp.paymentMethod === 'Monthly' && record?.afternoonStatus !== 'Absent') {
+                afternoonStatus = record?.afternoonStatus || "Present";
+            }
+             if (isSaturday && emp.paymentMethod === 'Monthly' && !record) {
+                afternoonStatus = "Present";
+            }
+
+            return {
+                employeeId: emp.id,
+                employeeName: emp.name,
+                morningStatus: record?.morningStatus || "Absent",
+                afternoonStatus: afternoonStatus,
+                morningEntry: record?.morningEntry || "",
+                afternoonEntry: afternoonEntry,
+                overtimeHours: record?.overtimeHours || 0,
+            };
+        });
+        setAttendance(dailyAttendance);
     }
-  }, [employees, attendanceRecords]);
+  }, [employees, attendanceRecords, selectedDate]);
 
 
   const handleDateSelect = (date: Date | undefined) => {
@@ -200,8 +213,8 @@ export default function AttendancePage() {
     };
     
     const batch = writeBatch(firestore);
-    batch.set(recordRef, record);
-    batch.set(employeeAttendanceRef, record);
+    batch.set(recordRef, record, { merge: true });
+    batch.set(employeeAttendanceRef, record, { merge: true });
 
     batch.commit()
       .then(() => {
@@ -236,7 +249,7 @@ export default function AttendancePage() {
     if (!selectedEmployeeDetails) return 0;
     return selectedEmployeeDetails.hourlyRate ||
         (selectedEmployeeDetails.dailyRate ? selectedEmployeeDetails.dailyRate / 8 : 0) ||
-        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 26 / 8 : 0);
+        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 24 / 8 : 0);
   }, [selectedEmployeeDetails]);
   
   const overtimePay: number = useMemo(() => {
@@ -263,8 +276,8 @@ export default function AttendancePage() {
             afternoonEntry: att.afternoonEntry || "",
             overtimeHours: att.overtimeHours || 0,
         };
-        batch.set(recordRef, record);
-        batch.set(employeeAttendanceRef, record);
+        batch.set(recordRef, record, { merge: true });
+        batch.set(employeeAttendanceRef, record, { merge: true });
     });
 
     batch.commit()
@@ -289,6 +302,8 @@ export default function AttendancePage() {
     () => <CalendarCaption date={selectedDate} />,
     [selectedDate]
   );
+  
+  const isSaturday = getDay(selectedDate) === 6;
 
   return (
     <div className="flex flex-col gap-6">
@@ -404,6 +419,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("afternoonStatus", value)
                   }
+                   disabled={isSaturday && selectedEmployeeDetails?.paymentMethod === 'Monthly'}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -427,7 +443,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("afternoonEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent'}
+                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || (isSaturday && selectedEmployeeDetails?.paymentMethod === 'Monthly')}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -467,3 +483,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    

@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -20,6 +19,7 @@ import {
   startOfWeek,
   endOfWeek,
   parse,
+  getDay
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import type { Employee, AttendanceRecord, PayrollEntry } from "@/lib/types";
@@ -82,8 +82,28 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
     return addDays(today, Math.round(dayDiff));
 };
 
-const calculateHoursWorked = (record: AttendanceRecord): number => {
-    if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) return 0;
+const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
+    if (!record) return 0;
+
+    const recordDate = getDateFromRecord(record.date);
+    const isSaturday = getDay(recordDate) === 6;
+
+    if (isMonthlyEmployee && isSaturday && record.afternoonStatus !== 'Absent') {
+        let totalHours = 0;
+         if (record.morningStatus !== 'Absent' && record.morningEntry) {
+            const morningStartTime = parse("08:00", "HH:mm", new Date());
+            const morningEndTime = parse("12:30", "HH:mm", new Date());
+            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+            if(morningEntryTime < morningEndTime) {
+                const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
+                totalHours += morningWorkMs / (1000 * 60 * 60);
+            }
+        }
+        totalHours += 3.5; // Add Saturday afternoon hours
+        return Math.max(0, totalHours);
+    }
+    
+    if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
     const morningEndTime = parse("12:30", "HH:mm", new Date());
@@ -111,11 +131,22 @@ const calculateHoursWorked = (record: AttendanceRecord): number => {
     return Math.max(0, totalHours);
 };
 
-const calculateExpectedHours = (record: AttendanceRecord): number => {
+const calculateExpectedHours = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
     if (!record) return 0;
+    const isSaturday = getDay(getDateFromRecord(record.date)) === 6;
+
     let expected = 0;
-    if (record.morningStatus !== 'Absent') expected += 4.5;
-    if (record.afternoonStatus !== 'Absent') expected += 3.5;
+    if (record.morningStatus !== 'Absent') {
+        expected += 4.5;
+    }
+    if (record.afternoonStatus !== 'Absent') {
+        expected += 3.5;
+    }
+
+    if (isMonthlyEmployee && isSaturday && record.afternoonStatus !== 'Absent' && !record.afternoonEntry) {
+        // If it's a Saturday afternoon for a monthly employee and they are marked present without an entry, we assume they get the full 3.5 hours
+    }
+
     return expected;
 }
 
@@ -214,7 +245,7 @@ export default function PayrollPage() {
         const wOptions = [];
         let currentWeekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
         for(let i=0; i < 12; i++){
-            const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
+            const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 }); // Saturday
             if (weekEnd < earliestAttendance) break;
             const startDayEth = ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' });
             const endDayEth = ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -254,18 +285,15 @@ export default function PayrollPage() {
         let period: { start: Date, end: Date };
         let periodLabel: string;
         let targetList: PayrollEntry[];
-        let baseAmountForPeriod: number;
 
         if (employee.paymentMethod === 'Weekly') {
             period = { start: weekStart, end: weekEnd };
             periodLabel = weekPeriodLabel;
             targetList = weekly;
-            baseAmountForPeriod = (employee.dailyRate || 0) * 6;
         } else {
             period = { start: monthStart, end: monthEnd };
             periodLabel = monthPeriodLabel;
             targetList = monthly;
-            baseAmountForPeriod = employee.monthlyRate || 0;
         }
         
         const relevantRecords = allAttendance.filter(r => 
@@ -274,21 +302,24 @@ export default function PayrollPage() {
             isWithinInterval(getDateFromRecord(r.date), period)
         );
 
-        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
+        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r, employee.paymentMethod === 'Monthly'), 0);
         const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-        const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r), 0);
+        const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r, employee.paymentMethod === 'Monthly'), 0);
 
         const finalAmount = (totalHours + overtimeHours) * hourlyRate;
         const overtimeAmount = overtimeHours * hourlyRate;
-
+        
         const lateHours = Math.max(0, expectedHours - totalHours);
         const lateDeduction = lateHours * hourlyRate;
         
-        const baseAmount = (expectedHours - overtimeHours) * hourlyRate;
+        const baseAmount = employee.paymentMethod === 'Weekly' 
+            ? (employee.dailyRate || 0) * 6
+            : (expectedHours - overtimeHours) * hourlyRate;
+
 
         const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
 
-        if (finalAmount > 0) {
+        if (finalAmount > 0 || daysWorked > 0) {
             targetList.push({
                 employeeId: employee.id,
                 employeeName: employee.name,
@@ -337,7 +368,7 @@ export default function PayrollPage() {
             );
             
             if (record) {
-                const hoursWorked = calculateHoursWorked(record);
+                const hoursWorked = calculateHoursWorked(record, true);
                 const overtime = record.overtimeHours || 0;
                 dailyMonthlyExpense += (hoursWorked + overtime) * hourlyRate;
             }
@@ -421,7 +452,7 @@ export default function PayrollPage() {
             );
             
             if (record) {
-                const hoursWorked = calculateHoursWorked(record);
+                const hoursWorked = calculateHoursWorked(record, employee.paymentMethod === 'Monthly');
                 const overtime = record.overtimeHours || 0;
                 dailyTotalExpense += (hoursWorked + overtime) * hourlyRate;
             }
@@ -525,3 +556,5 @@ export default function PayrollPage() {
     </div>
   );
 }
+
+    

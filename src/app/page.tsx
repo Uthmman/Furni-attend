@@ -6,7 +6,7 @@ import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
 import { Users, UserCheck, Wallet, Calendar } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter } from "@/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent } from '@/components/ui/card';
@@ -51,8 +51,17 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
     return addDays(today, Math.round(dayDiff));
 };
 
-const calculateHoursWorked = (record: AttendanceRecord): number => {
-    if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) return 0;
+const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
+    if (!record) return 0;
+
+    const isSaturday = getDay(new Date(record.date as string)) === 6;
+
+    if (isMonthlyEmployee && isSaturday && record.afternoonStatus !== 'Absent') {
+        // Automatically give 3.5 hours for Saturday afternoon for monthly employees if they are not absent
+        return 3.5;
+    }
+
+    if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
     const morningEndTime = parse("12:30", "HH:mm", new Date());
@@ -214,7 +223,7 @@ export default function DashboardPage() {
         );
 
         const hoursWorked = recordsInMonth.reduce((sum, r) => {
-            return sum + calculateHoursWorked(r) + (r.overtimeHours || 0);
+            return sum + calculateHoursWorked(r, true) + (r.overtimeHours || 0);
         }, 0);
 
         return acc + (hoursWorked * hourlyRate);
@@ -279,3 +288,5 @@ export default function DashboardPage() {
     </div>
   );
 }
+
+    
