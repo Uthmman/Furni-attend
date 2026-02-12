@@ -202,28 +202,32 @@ export default function EmployeeProfilePage() {
   const { data: employee, loading: employeeLoading } = useDoc(employeeDocRef);
   
   useEffect(() => {
-    const fetchAllAttendance = async () => {
+    const fetchAllAttendance = () => {
         if (!firestore || !employeeId) {
           setAttendanceLoading(false);
           return;
         }
 
         setAttendanceLoading(true);
-        try {
-            const attendanceSnap = await getDocs(collection(firestore, 'employees', employeeId as string, 'attendance'));
-            const records = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
-            setAllAttendance(records);
-        } catch (e) {
-            console.error("Failed to fetch all attendance records:", e);
-            if (e instanceof FirestoreError) {
-                errorEmitter.emit('permission-error', new FirestorePermissionError({
-                    path: `employees/${employeeId}/attendance`,
-                    operation: 'list'
-                }))
-            }
-        } finally {
-            setAttendanceLoading(false);
-        }
+        const attendanceColRef = collection(firestore, 'employees', employeeId as string, 'attendance');
+
+        getDocs(attendanceColRef)
+            .then(attendanceSnap => {
+                const records = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
+                setAllAttendance(records);
+            })
+            .catch(error => {
+                if (error instanceof FirestoreError) {
+                    const permissionError = new FirestorePermissionError({
+                        path: attendanceColRef.path,
+                        operation: 'list'
+                    });
+                    errorEmitter.emit('permission-error', permissionError);
+                }
+            })
+            .finally(() => {
+                setAttendanceLoading(false);
+            });
     };
 
     if (!isUserLoading && employeeId) {
