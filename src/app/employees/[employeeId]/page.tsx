@@ -356,8 +356,16 @@ export default function EmployeeProfilePage() {
         
         let totalHoursAbsent = 0;
         const minutesLate = filteredAttendance.reduce((acc, r) => {
-            if (r.morningStatus === 'Absent') totalHoursAbsent += 4.5;
-            if (r.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
+            const recordDate = getDateFromRecord(r.date);
+            if (r.morningStatus === 'Absent') {
+                totalHoursAbsent += 4.5;
+            }
+            // Only count afternoon absence on weekdays (Mon-Fri)
+            if (getDay(recordDate) !== 6 && getDay(recordDate) !== 0) {
+                if (r.afternoonStatus === 'Absent') {
+                    totalHoursAbsent += 3.5;
+                }
+            }
             return acc + calculateMinutesLate(r);
         }, 0);
 

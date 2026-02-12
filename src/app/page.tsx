@@ -287,8 +287,16 @@ export default function DashboardPage() {
         
         let totalHoursAbsent = 0;
         const minutesLate = recordsInMonth.reduce((sum, r) => {
-            if (r.morningStatus === 'Absent') totalHoursAbsent += 4.5;
-            if (r.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
+            const recordDate = getDateFromRecord(r.date);
+            if (r.morningStatus === 'Absent') {
+                totalHoursAbsent += 4.5;
+            }
+            // Only count afternoon absence on weekdays (Mon-Fri)
+            if (getDay(recordDate) !== 6 && getDay(recordDate) !== 0) {
+                if (r.afternoonStatus === 'Absent') {
+                    totalHoursAbsent += 3.5;
+                }
+            }
             return sum + calculateMinutesLate(r);
         }, 0);
 
