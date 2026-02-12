@@ -252,7 +252,7 @@ export default function DashboardPage() {
         const baseSalary = emp.monthlyRate || 0;
         if (baseSalary === 0) return acc;
         
-        const dailyRate = baseSalary / 24;
+        const dailyRate = baseSalary / 23.625;
         const minuteRate = dailyRate / 480;
 
         const recordsInMonth = allAttendance.filter(r => 

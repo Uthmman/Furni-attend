@@ -1,4 +1,5 @@
 
+
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -354,7 +355,7 @@ export default function PayrollPage() {
             periodLabel = monthPeriodLabel;
             targetList = monthly;
             
-            const dailyRate = baseSalary / 24;
+            const dailyRate = baseSalary / 23.625;
             const minuteRate = dailyRate / 480;
 
             const relevantRecords = allAttendance.filter(r => 
@@ -414,7 +415,7 @@ export default function PayrollPage() {
             const baseSalary = employee.monthlyRate || 0;
             if (baseSalary === 0) return;
 
-            const dailyRate = baseSalary / 24;
+            const dailyRate = baseSalary / 23.625;
             const minuteRate = dailyRate / 480;
 
             const record = allAttendance.find(r => 
@@ -437,7 +438,7 @@ export default function PayrollPage() {
             }
 
             // This daily calculation seems off for a historical chart, let's use the actual hours worked * hourly rate
-             const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
+             const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 23.625 / 8 : 0);
              if (!hourlyRate) return;
 
              if (record) {
@@ -516,7 +517,7 @@ export default function PayrollPage() {
         const dayStr = format(day, 'yyyy-MM-dd');
 
         employees.forEach(employee => {
-            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
+            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 23.625 / 8 : 0);
             if (!hourlyRate) return;
 
             const record = allAttendance.find(r => 

@@ -257,7 +257,7 @@ export default function EmployeeProfilePage() {
     if (!employee) return 0;
     if (employee.hourlyRate) return employee.hourlyRate;
     if (employee.paymentMethod === 'Monthly' && employee.monthlyRate) {
-        const dailyRate = employee.monthlyRate / 24;
+        const dailyRate = employee.monthlyRate / 23.625;
         return dailyRate / 8;
     }
     if (employee.paymentMethod === 'Weekly' && employee.dailyRate) {
@@ -347,7 +347,7 @@ export default function EmployeeProfilePage() {
       const baseSalary = employee.monthlyRate || 0;
       if (baseSalary === 0) return { totalAmount: 0, periodLabel: selectedPeriodLabel };
 
-      const dailyRate = baseSalary / 24;
+      const dailyRate = baseSalary / 23.625;
       const minuteRate = dailyRate / 480;
 
       const daysAbsent = filteredAttendance.filter(r => r.morningStatus === 'Absent' && r.afternoonStatus === 'Absent').length;
