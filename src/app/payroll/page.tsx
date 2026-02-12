@@ -180,44 +180,42 @@ export default function PayrollPage() {
         }
 
         setAttendanceLoading(true);
-        const allAttendanceCol = collection(firestore, 'attendance');
-        
-        getDocs(allAttendanceCol)
-          .then(async (attendanceSnaps) => {
-            const allRecords: AttendanceRecord[] = [];
-            try {
-              const recordPromises = attendanceSnaps.docs.map(dayDoc => 
-                  getDocs(collection(firestore, 'attendance', dayDoc.id, 'records'))
-              );
-              const recordSnapshots = await Promise.all(recordPromises);
-              
-              recordSnapshots.forEach(dayRecords => {
-                  dayRecords.forEach(doc => {
-                      allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
-                  });
-              });
+        const allRecords: AttendanceRecord[] = [];
 
-              setAllAttendance(allRecords);
-            } catch (e) {
-                const permissionError = new FirestorePermissionError({
-                    path: `attendance/{date}/records`,
-                    operation: 'list'
-                });
-                errorEmitter.emit('permission-error', permissionError);
-            } finally {
-               setAttendanceLoading(false);
-            }
-          })
-          .catch((e) => {
-            if (e instanceof FirestoreError) {
-                const permissionError = new FirestorePermissionError({
-                    path: allAttendanceCol.path,
-                    operation: 'list'
-                });
-                errorEmitter.emit('permission-error', permissionError);
-            }
-            setAttendanceLoading(false);
+        const employeePromises = (employees || []).map(emp => {
+            const attendanceColRef = collection(firestore, 'employees', emp.id, 'attendance');
+            return getDocs(attendanceColRef).catch(error => {
+                if (error instanceof FirestoreError) {
+                    const permissionError = new FirestorePermissionError({
+                        path: attendanceColRef.path,
+                        operation: 'list'
+                    });
+                    errorEmitter.emit('permission-error', permissionError);
+                }
+                return { docs: [] as any[] }; // Return empty on error to not break Promise.all
+            });
         });
+
+        Promise.all(employeePromises)
+            .then(snapshots => {
+                snapshots.forEach(snapshot => {
+                    snapshot.docs.forEach(doc => {
+                        allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
+                    });
+                });
+                setAllAttendance(allRecords);
+            })
+            .catch(error => {
+                console.error("Error fetching all attendance records:", error);
+                 const permissionError = new FirestorePermissionError({
+                    path: 'employees/{employeeId}/attendance',
+                    operation: 'list'
+                });
+                errorEmitter.emit('permission-error', permissionError);
+            })
+            .finally(() => {
+                setAttendanceLoading(false);
+            });
     };
 
     if (!employeesLoading && !isUserLoading && employees) {
