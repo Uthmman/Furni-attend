@@ -30,6 +30,7 @@ import { ExpenseChart } from './expense-chart';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCollection } from '@/firebase';
 import { PayrollList } from './payroll-list';
+import { FirestorePermissionError } from '@/firebase/errors';
 
 const getDateFromRecord = (date: string | Timestamp): Date => {
   if (!date) return new Date();
@@ -200,32 +201,30 @@ export default function PayrollPage() {
 
         setAttendanceLoading(true);
         const allRecords: AttendanceRecord[] = [];
-        const attendanceStartDate = employees.reduce((min, e) => {
-          if (!e.attendanceStartDate) return min;
-          const d = new Date(e.attendanceStartDate);
-          return d < min ? d : min;
-        }, new Date());
-        
-        let date = attendanceStartDate;
-        const today = new Date();
-        
-        while(date <= today) {
-            const dateStr = format(date, 'yyyy-MM-dd');
-            const attColRef = collection(firestore, 'attendance', dateStr, 'records');
-             try {
-                const querySnapshot = await getDocs(attColRef);
-                querySnapshot.forEach(doc => {
-                    allRecords.push({ id: doc.id, ...doc.data(), employeeId: doc.data().employeeId } as AttendanceRecord);
-                });
-            } catch(e) {
-                 const permissionError = new FirestoreError( 'permission-denied', `Missing or insufficient permissions to read collection at path: ${attColRef.path}`);
-                 errorEmitter.emit('permission-error', permissionError as any);
-            }
-            date = addDays(date, 1);
-        }
 
-        setAllAttendance(allRecords);
-        setAttendanceLoading(false);
+        const attendancePromises = employees.map(employee => 
+            getDocs(collection(firestore, 'employees', employee.id, 'attendance'))
+        );
+
+        try {
+            const querySnapshots = await Promise.all(attendancePromises);
+            querySnapshots.forEach(snapshot => {
+                snapshot.forEach(doc => {
+                    allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
+                });
+            });
+            setAllAttendance(allRecords);
+        } catch (e) {
+            console.error("Failed to fetch all attendance records:", e);
+            if (e instanceof FirestoreError) {
+                errorEmitter.emit('permission-error', new FirestorePermissionError({
+                    path: 'employees/{employeeId}/attendance',
+                    operation: 'list'
+                }))
+            }
+        } finally {
+            setAttendanceLoading(false);
+        }
     };
 
     if (!employeesLoading && !isUserLoading && employees) {
@@ -630,3 +629,5 @@ export default function PayrollPage() {
     </div>
   );
 }
+
+    

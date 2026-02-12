@@ -38,7 +38,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Phone, Trash2, Edit, Calendar } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, doc, deleteDoc, getDocs } from "firebase/firestore";
+import { collection, doc, deleteDoc } from "firebase/firestore";
 import type { AttendanceRecord } from "@/lib/types";
 import { EmployeeForm } from "../employee-form";
 import {
@@ -190,9 +190,6 @@ export default function EmployeeProfilePage() {
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
   const [isFormOpen, setIsFormOpen] = useState(false);
 
-  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
-  const [attendanceLoading, setAttendanceLoading] = useState(true);
-
   const employeeDocRef = useMemoFirebase(() => {
     if (!firestore || !employeeId || !user) return null;
     return doc(firestore, 'employees', employeeId as string);
@@ -200,46 +197,11 @@ export default function EmployeeProfilePage() {
   
   const { data: employee, loading: employeeLoading } = useDoc(employeeDocRef);
   
-  useEffect(() => {
-    const fetchAllAttendance = async () => {
-        if (!firestore || !employee?.attendanceStartDate) {
-            setAttendanceLoading(false);
-            return;
-        }
-        setAttendanceLoading(true);
-
-        const allRecords: AttendanceRecord[] = [];
-        let date = new Date(employee.attendanceStartDate);
-        const today = new Date();
-
-        while (date <= today) {
-            const dateStr = format(date, "yyyy-MM-dd");
-            const attColRef = collection(firestore, 'attendance', dateStr, 'records');
-            try {
-                const querySnapshot = await getDocs(attColRef);
-                querySnapshot.forEach(docSnap => {
-                    if(docSnap.data().employeeId === employeeId) {
-                        allRecords.push({ id: `${dateStr}-${docSnap.id}`, ...docSnap.data() } as AttendanceRecord);
-                    }
-                });
-            } catch(e) {
-                 const permissionError = new FirestorePermissionError({
-                    path: attColRef.path,
-                    operation: 'list',
-                });
-                errorEmitter.emit('permission-error', permissionError);
-            }
-            date = addDays(date, 1);
-        }
-        
-        setAllAttendance(allRecords);
-        setAttendanceLoading(false);
-    };
-
-    if (!isUserLoading && employee) {
-        fetchAllAttendance();
-    }
-  }, [firestore, employeeId, isUserLoading, employee]);
+  const attendanceCollectionRef = useMemoFirebase(() => {
+      if (!firestore || !employeeId) return null;
+      return collection(firestore, 'employees', employeeId as string, 'attendance');
+  }, [firestore, employeeId]);
+  const { data: allAttendance, loading: attendanceLoading } = useCollection<AttendanceRecord>(attendanceCollectionRef);
 
 
   const employeeAttendance = useMemo(() => 
@@ -635,3 +597,5 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
+
+    
