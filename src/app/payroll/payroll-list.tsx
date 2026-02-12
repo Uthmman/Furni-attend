@@ -29,10 +29,20 @@ interface PayrollListProps {
 }
 
 const generateSmsSummary = (entry: PayrollEntry): string => {
+    if (entry.paymentMethod === 'Monthly') {
+        return `Hi ${entry.employeeName}, your payroll for ${entry.period}:\n` +
+               `Base Salary: ETB ${(entry.baseSalary || 0).toFixed(2)}\n` +
+               `Late Deduction: -ETB ${(entry.lateDeduction || 0).toFixed(2)}\n` +
+               `Absence Deduction: -ETB ${(entry.absenceDeduction || 0).toFixed(2)}\n` +
+               `Net Salary: ETB ${entry.amount.toFixed(2)}\n` +
+               `Thank you.`;
+    }
+    
+    // Summary for weekly employees
     return `Hi ${entry.employeeName}, your payroll for ${entry.period}:\n` +
-           `Base: ETB ${entry.baseAmount.toFixed(2)}\n` +
-           `Overtime: ETB ${entry.overtimeAmount.toFixed(2)}\n` +
-           `Late: -ETB ${entry.lateDeduction.toFixed(2)}\n` +
+           `Base: ETB ${(entry.baseAmount || 0).toFixed(2)}\n` +
+           `Overtime: ETB ${(entry.overtimeAmount || 0).toFixed(2)}\n` +
+           `Late: -ETB ${(entry.lateDeduction || 0).toFixed(2)}\n` +
            `Total: ETB ${entry.amount.toFixed(2)}\n` +
            `Thank you.`;
 };
@@ -84,7 +94,11 @@ export function PayrollList({ title, payrollData }: PayrollListProps) {
                                 <TableRow key={entry.employeeId}>
                                     <TableCell>
                                         <div className="font-medium">{entry.employeeName}</div>
-                                        <div className="text-sm text-muted-foreground">{entry.workingDays} day(s) worked</div>
+                                        <div className="text-sm text-muted-foreground">
+                                            {entry.paymentMethod === 'Weekly' ? 
+                                                `${entry.workingDays || 0} day(s) worked` : 
+                                                `${entry.daysAbsent || 0} day(s) absent`}
+                                        </div>
                                     </TableCell>
                                     <TableCell className="text-right font-bold">{entry.amount.toFixed(2)}</TableCell>
                                     <TableCell>
@@ -111,5 +125,3 @@ export function PayrollList({ title, payrollData }: PayrollListProps) {
         </Card>
     );
 }
-
-    

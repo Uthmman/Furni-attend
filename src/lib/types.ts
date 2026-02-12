@@ -34,13 +34,21 @@ export interface PayrollEntry {
   employeeName: string;
   paymentMethod: "Weekly" | "Monthly";
   period: string;
-  amount: number;
+  amount: number; // Net Salary for both
   status: "Paid" | "Unpaid";
+
+  // For weekly, these fields are used
   workingDays?: number;
-  expectedHours: number;
-  totalHours: number;
-  overtimeHours: number;
-  baseAmount: number;
-  overtimeAmount: number;
-  lateDeduction: number;
+  expectedHours?: number;
+  totalHours?: number;
+  baseAmount?: number; // Calculated weekly base
+  overtimeAmount?: number;
+
+  // For monthly, these are used.
+  baseSalary?: number;
+  daysAbsent?: number;
+  minutesLate?: number;
+  absenceDeduction?: number;
+  lateDeduction?: number; 
+  overtimeHours?: number; // weekly and monthly
 };

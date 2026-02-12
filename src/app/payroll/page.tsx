@@ -88,18 +88,20 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
     const recordDate = getDateFromRecord(record.date);
     const isSaturday = getDay(recordDate) === 6;
 
-    if (isMonthlyEmployee && isSaturday && record.afternoonStatus !== 'Absent') {
+    if (isMonthlyEmployee && isSaturday) {
         let totalHours = 0;
          if (record.morningStatus !== 'Absent' && record.morningEntry) {
             const morningStartTime = parse("08:00", "HH:mm", new Date());
             const morningEndTime = parse("12:30", "HH:mm", new Date());
             const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-            if(morningEntryTime < morningEndTime) {
+            if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
                 const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
                 totalHours += morningWorkMs / (1000 * 60 * 60);
             }
         }
-        totalHours += 3.5; // Add Saturday afternoon hours
+        if (record.afternoonStatus !== 'Absent') {
+          totalHours += 3.5;
+        }
         return Math.max(0, totalHours);
     }
     
@@ -114,7 +116,7 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
 
     if (record.morningStatus !== 'Absent' && record.morningEntry) {
         const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-        if(morningEntryTime < morningEndTime) {
+        if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
             const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
             totalHours += morningWorkMs / (1000 * 60 * 60);
         }
@@ -122,7 +124,7 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
     
     if (record.afternoonStatus !== 'Absent' && record.afternoonEntry) {
         const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-        if(afternoonEntryTime < afternoonEndTime) {
+        if(isValid(afternoonEntryTime) && afternoonEntryTime < afternoonEndTime) {
             const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
             totalHours += afternoonWorkMs / (1000 * 60 * 60);
         }
@@ -140,15 +142,32 @@ const calculateExpectedHours = (record: AttendanceRecord, isMonthlyEmployee: boo
         expected += 4.5;
     }
     if (record.afternoonStatus !== 'Absent') {
-        expected += 3.5;
-    }
-
-    if (isMonthlyEmployee && isSaturday && record.afternoonStatus !== 'Absent' && !record.afternoonEntry) {
-        // If it's a Saturday afternoon for a monthly employee and they are marked present without an entry, we assume they get the full 3.5 hours
+        if(isSaturday) expected += 3.5;
+        else expected += 3.5;
     }
 
     return expected;
 }
+
+const calculateMinutesLate = (record: AttendanceRecord): number => {
+    if (!record) return 0;
+    let minutesLate = 0;
+    if (record.morningStatus === 'Late' && record.morningEntry) {
+        const morningStartTime = parse("08:00", "HH:mm", new Date());
+        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+        if (isValid(morningEntryTime) && morningEntryTime > morningStartTime) {
+            minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / (1000 * 60);
+        }
+    }
+    if (record.afternoonStatus === 'Late' && record.afternoonEntry) {
+        const afternoonStartTime = parse("13:30", "HH:mm", new Date());
+        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+        if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) {
+            minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
+        }
+    }
+    return Math.round(minutesLate);
+};
 
 
 export default function PayrollPage() {
@@ -279,62 +298,95 @@ export default function PayrollPage() {
     const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethToday.year}`;
 
     employees.forEach(employee => {
-        const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
-        if (!hourlyRate) return;
-
         let period: { start: Date, end: Date };
         let periodLabel: string;
         let targetList: PayrollEntry[];
-
+        
         if (employee.paymentMethod === 'Weekly') {
+            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
+            if (!hourlyRate) return;
+
             period = { start: weekStart, end: weekEnd };
             periodLabel = weekPeriodLabel;
             targetList = weekly;
-        } else {
+
+             const relevantRecords = allAttendance.filter(r => 
+                r.employeeId === employee.id &&
+                isValid(getDateFromRecord(r.date)) &&
+                isWithinInterval(getDateFromRecord(r.date), period)
+            );
+
+            const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r, false), 0);
+            const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+            const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r, false), 0);
+
+            const finalAmount = (totalHours + overtimeHours) * hourlyRate;
+            const overtimeAmount = overtimeHours * hourlyRate;
+            
+            const lateHours = Math.max(0, expectedHours - totalHours);
+            const lateDeduction = lateHours * hourlyRate;
+            
+            const baseAmount = employee.dailyRate ? employee.dailyRate * 6 : (expectedHours - overtimeHours) * hourlyRate;
+            const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
+
+            if (finalAmount > 0 || daysWorked > 0) {
+                targetList.push({
+                    employeeId: employee.id,
+                    employeeName: employee.name,
+                    paymentMethod: employee.paymentMethod,
+                    period: periodLabel,
+                    amount: finalAmount,
+                    status: 'Unpaid',
+                    workingDays: daysWorked,
+                    totalHours: totalHours,
+                    overtimeHours: overtimeHours,
+                    baseAmount: baseAmount > 0 ? baseAmount : 0,
+                    overtimeAmount: overtimeAmount,
+                    lateDeduction: lateDeduction,
+                });
+            }
+
+        } else { // Monthly
+            const baseSalary = employee.monthlyRate || 0;
+            if (baseSalary === 0) return;
+
             period = { start: monthStart, end: monthEnd };
             periodLabel = monthPeriodLabel;
             targetList = monthly;
-        }
-        
-        const relevantRecords = allAttendance.filter(r => 
-            r.employeeId === employee.id &&
-            isValid(getDateFromRecord(r.date)) &&
-            isWithinInterval(getDateFromRecord(r.date), period)
-        );
+            
+            const dailyRate = baseSalary / 24;
+            const minuteRate = dailyRate / 480;
 
-        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r, employee.paymentMethod === 'Monthly'), 0);
-        const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-        const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r, employee.paymentMethod === 'Monthly'), 0);
+            const relevantRecords = allAttendance.filter(r => 
+                r.employeeId === employee.id &&
+                isValid(getDateFromRecord(r.date)) &&
+                isWithinInterval(getDateFromRecord(r.date), period)
+            );
 
-        const finalAmount = (totalHours + overtimeHours) * hourlyRate;
-        const overtimeAmount = overtimeHours * hourlyRate;
-        
-        const lateHours = Math.max(0, expectedHours - totalHours);
-        const lateDeduction = lateHours * hourlyRate;
-        
-        const baseAmount = employee.paymentMethod === 'Weekly' 
-            ? (employee.dailyRate || 0) * 6
-            : (expectedHours - overtimeHours) * hourlyRate;
+            const daysAbsent = relevantRecords.filter(r => r.morningStatus === 'Absent' && r.afternoonStatus === 'Absent').length;
+            const minutesLate = relevantRecords.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
 
+            const absenceDeduction = daysAbsent * dailyRate;
+            const lateDeduction = minutesLate * minuteRate;
+            
+            const netSalary = baseSalary - (absenceDeduction + lateDeduction);
 
-        const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
-
-        if (finalAmount > 0 || daysWorked > 0) {
-            targetList.push({
-                employeeId: employee.id,
-                employeeName: employee.name,
-                paymentMethod: employee.paymentMethod,
-                period: periodLabel,
-                amount: finalAmount,
-                status: 'Unpaid',
-                workingDays: daysWorked,
-                expectedHours: expectedHours,
-                totalHours: totalHours,
-                overtimeHours: overtimeHours,
-                baseAmount: baseAmount > 0 ? baseAmount : 0,
-                overtimeAmount: overtimeAmount,
-                lateDeduction: lateDeduction,
-            });
+            if (netSalary > 0 || relevantRecords.length > 0) {
+                targetList.push({
+                    employeeId: employee.id,
+                    employeeName: employee.name,
+                    paymentMethod: employee.paymentMethod,
+                    period: periodLabel,
+                    amount: netSalary,
+                    status: 'Unpaid',
+                    baseSalary: baseSalary,
+                    baseAmount: baseSalary,
+                    daysAbsent: daysAbsent,
+                    minutesLate: minutesLate,
+                    absenceDeduction: absenceDeduction,
+                    lateDeduction: lateDeduction,
+                });
+            }
         }
     });
 
@@ -359,19 +411,40 @@ export default function PayrollPage() {
         const dayStr = format(day, 'yyyy-MM-dd');
 
         employees.filter(e => e.paymentMethod === 'Monthly').forEach(employee => {
-            const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
-            if (!hourlyRate) return;
+            const baseSalary = employee.monthlyRate || 0;
+            if (baseSalary === 0) return;
+
+            const dailyRate = baseSalary / 24;
+            const minuteRate = dailyRate / 480;
 
             const record = allAttendance.find(r => 
                 r.employeeId === employee.id && 
                 format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr
             );
             
+            let dayPay = dailyRate;
+
             if (record) {
+                const minutesLate = calculateMinutesLate(record);
+                const lateDeduction = minutesLate * minuteRate;
+                if(record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') {
+                    dayPay = 0;
+                } else {
+                    dayPay = dailyRate - lateDeduction;
+                }
+            } else {
+                 dayPay = 0; // Assume absent if no record
+            }
+
+            // This daily calculation seems off for a historical chart, let's use the actual hours worked * hourly rate
+             const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
+             if (!hourlyRate) return;
+
+             if (record) {
                 const hoursWorked = calculateHoursWorked(record, true);
                 const overtime = record.overtimeHours || 0;
                 dailyMonthlyExpense += (hoursWorked + overtime) * hourlyRate;
-            }
+             }
         });
         
         totalMonthlyExpense += dailyMonthlyExpense;
@@ -556,5 +629,3 @@ export default function PayrollPage() {
     </div>
   );
 }
-
-    

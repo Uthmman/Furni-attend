@@ -54,13 +54,27 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
 const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
     if (!record) return 0;
 
-    const isSaturday = getDay(new Date(record.date as string)) === 6;
+    const recordDate = new Date(record.date as string);
+    const isSaturday = getDay(recordDate) === 6;
 
-    if (isMonthlyEmployee && isSaturday && record.afternoonStatus !== 'Absent') {
-        // Automatically give 3.5 hours for Saturday afternoon for monthly employees if they are not absent
-        return 3.5;
+    if (isMonthlyEmployee && isSaturday) {
+        let totalHours = 0;
+         if (record.morningStatus !== 'Absent' && record.morningEntry) {
+            const morningStartTime = parse("08:00", "HH:mm", new Date());
+            const morningEndTime = parse("12:30", "HH:mm", new Date());
+            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+            if(morningEntryTime < morningEndTime) {
+                const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
+                totalHours += morningWorkMs / (1000 * 60 * 60);
+            }
+        }
+        // Saturday afternoon is half day
+        if (record.afternoonStatus !== 'Absent') {
+            totalHours += 3.5;
+        }
+        return Math.max(0, totalHours);
     }
-
+    
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
@@ -88,6 +102,27 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
 
     return Math.max(0, totalHours);
 };
+
+const calculateMinutesLate = (record: AttendanceRecord): number => {
+    if (!record) return 0;
+    let minutesLate = 0;
+    if (record.morningStatus === 'Late' && record.morningEntry) {
+        const morningStartTime = parse("08:00", "HH:mm", new Date());
+        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+        if (morningEntryTime > morningStartTime) {
+            minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / (1000 * 60);
+        }
+    }
+    if (record.afternoonStatus === 'Late' && record.afternoonEntry) {
+        const afternoonStartTime = parse("13:30", "HH:mm", new Date());
+        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+        if (afternoonEntryTime > afternoonStartTime) {
+            minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
+        }
+    }
+    return Math.round(minutesLate);
+};
+
 
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
@@ -213,20 +248,28 @@ export default function DashboardPage() {
 
     const actualMonthly = employees.reduce((acc, emp) => {
         if (emp.paymentMethod !== 'Monthly') return acc;
-        const hourlyRate = emp.hourlyRate || (emp.monthlyRate ? emp.monthlyRate / 24 / 8 : 0);
-        if (!hourlyRate) return acc;
+        
+        const baseSalary = emp.monthlyRate || 0;
+        if (baseSalary === 0) return acc;
+        
+        const dailyRate = baseSalary / 24;
+        const minuteRate = dailyRate / 480;
 
         const recordsInMonth = allAttendance.filter(r => 
             r.employeeId === emp.id &&
             isValid(new Date(r.date as string)) &&
             isWithinInterval(new Date(r.date as string), { start: monthStart, end: today })
         );
+        
+        const daysAbsent = recordsInMonth.filter(r => r.morningStatus === 'Absent' && r.afternoonStatus === 'Absent').length;
+        const minutesLate = recordsInMonth.reduce((sum, r) => sum + calculateMinutesLate(r), 0);
+        
+        const absenceDeduction = daysAbsent * dailyRate;
+        const lateDeduction = minutesLate * minuteRate;
+        
+        const netSalary = baseSalary - (absenceDeduction + lateDeduction);
 
-        const hoursWorked = recordsInMonth.reduce((sum, r) => {
-            return sum + calculateHoursWorked(r, true) + (r.overtimeHours || 0);
-        }, 0);
-
-        return acc + (hoursWorked * hourlyRate);
+        return acc + netSalary;
     }, 0);
 
 
@@ -288,5 +331,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    

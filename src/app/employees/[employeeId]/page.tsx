@@ -10,6 +10,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription
 } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -71,19 +72,23 @@ const calculateHoursWorked = (record: AttendanceRecord): number => {
     let totalHours = 0;
 
     if (record.morningStatus !== 'Absent' && record.morningEntry) {
-        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-        if(morningEntryTime < morningEndTime) {
-            const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
-            totalHours += morningWorkMs / (1000 * 60 * 60);
-        }
+        try {
+            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+            if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
+                const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
+                totalHours += morningWorkMs / (1000 * 60 * 60);
+            }
+        } catch(e){}
     }
     
     if (record.afternoonStatus !== 'Absent' && record.afternoonEntry) {
-        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-        if(afternoonEntryTime < afternoonEndTime) {
-            const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
-            totalHours += afternoonWorkMs / (1000 * 60 * 60);
-        }
+        try {
+            const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+            if(isValid(afternoonEntryTime) && afternoonEntryTime < afternoonEndTime) {
+                const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
+                totalHours += afternoonWorkMs / (1000 * 60 * 60);
+            }
+        } catch(e){}
     }
 
     return Math.max(0, totalHours);
@@ -145,6 +150,30 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
     const ethDays = (ethYear - ethToday.year) * 365.25 + (ethMonth - ethToday.month) * 30 + (ethDay - ethToday.day);
     
     return addDays(today, Math.round(ethDays));
+};
+
+const calculateMinutesLate = (record: AttendanceRecord): number => {
+    if (!record) return 0;
+    let minutesLate = 0;
+    if (record.morningStatus === 'Late' && record.morningEntry) {
+        const morningStartTime = parse("08:00", "HH:mm", new Date());
+        try {
+            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+            if (isValid(morningEntryTime) && morningEntryTime > morningStartTime) {
+                minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / (1000 * 60);
+            }
+        } catch(e) {}
+    }
+    if (record.afternoonStatus === 'Late' && record.afternoonEntry) {
+        const afternoonStartTime = parse("13:30", "HH:mm", new Date());
+        try {
+            const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+            if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) {
+                minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
+            }
+        } catch(e) {}
+    }
+    return Math.round(minutesLate);
 };
 
 
@@ -226,9 +255,15 @@ export default function EmployeeProfilePage() {
 
   const hourlyRate = useMemo(() => {
     if (!employee) return 0;
-    return employee.hourlyRate ||
-        (employee.dailyRate ? employee.dailyRate / 8 : 0) ||
-        (employee.monthlyRate ? employee.monthlyRate / 24 / 8 : 0);
+    if (employee.hourlyRate) return employee.hourlyRate;
+    if (employee.paymentMethod === 'Monthly' && employee.monthlyRate) {
+        const dailyRate = employee.monthlyRate / 24;
+        return dailyRate / 8;
+    }
+    if (employee.paymentMethod === 'Weekly' && employee.dailyRate) {
+        return employee.dailyRate / 8;
+    }
+    return 0;
   }, [employee]);
 
   const firstAttendanceDate = useMemo(() => {
@@ -304,30 +339,59 @@ export default function EmployeeProfilePage() {
   }, [employeeAttendance, selectedPeriod, employee]);
 
   const payrollData = useMemo(() => {
-    if (!employee) return { hours: 0, amount: 0, daysWorked: 0, overtimePay: 0, totalAmount: 0 };
+    if (!employee || filteredAttendance.length === 0) return { totalAmount: 0, periodLabel: "" };
 
-    const totalOvertimeHours = filteredAttendance.reduce((acc, record) => {
-        return acc + (record.overtimeHours || 0);
-    }, 0);
-    
-    const totalHours = filteredAttendance.reduce((acc, record) => {
-        return acc + calculateHoursWorked(record);
-    }, 0);
+    const selectedPeriodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || "";
 
-    const baseAmount = totalHours * (hourlyRate || 0);
-    const overtimePay = totalOvertimeHours * (hourlyRate || 0);
-    const totalAmount = baseAmount + overtimePay;
-    
-    const daysWorked = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size
+    if (employee.paymentMethod === 'Monthly') {
+      const baseSalary = employee.monthlyRate || 0;
+      if (baseSalary === 0) return { totalAmount: 0, periodLabel: selectedPeriodLabel };
 
-    return {
-      hours: totalHours,
-      amount: baseAmount,
-      daysWorked: daysWorked,
-      overtimePay: overtimePay,
-      totalAmount: totalAmount
-    };
-  }, [employee, filteredAttendance, hourlyRate]);
+      const dailyRate = baseSalary / 24;
+      const minuteRate = dailyRate / 480;
+
+      const daysAbsent = filteredAttendance.filter(r => r.morningStatus === 'Absent' && r.afternoonStatus === 'Absent').length;
+      const minutesLate = filteredAttendance.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
+
+      const absenceDeduction = daysAbsent * dailyRate;
+      const lateDeduction = minutesLate * minuteRate;
+      
+      const netSalary = baseSalary - (absenceDeduction + lateDeduction);
+
+      return {
+          totalAmount: netSalary,
+          baseSalary: baseSalary,
+          lateDeduction: lateDeduction,
+          absenceDeduction: absenceDeduction,
+          daysAbsent: daysAbsent,
+          minutesLate: minutesLate,
+          periodLabel: selectedPeriodLabel,
+      };
+
+    } else { // Weekly logic
+      const totalOvertimeHours = filteredAttendance.reduce((acc, record) => {
+          return acc + (record.overtimeHours || 0);
+      }, 0);
+      
+      const totalHours = filteredAttendance.reduce((acc, record) => {
+          return acc + calculateHoursWorked(record);
+      }, 0);
+
+      const baseAmount = totalHours * (hourlyRate || 0);
+      const overtimePay = totalOvertimeHours * (hourlyRate || 0);
+      const totalAmount = baseAmount + overtimePay;
+      
+      const daysWorked = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size
+
+      return {
+        hours: totalHours,
+        daysWorked: daysWorked,
+        overtimePay: overtimePay,
+        totalAmount: totalAmount,
+        periodLabel: selectedPeriodLabel,
+      };
+    }
+  }, [employee, filteredAttendance, hourlyRate, periodOptions, selectedPeriod]);
 
   const handleDelete = async () => {
     if (!employeeId || !firestore) return;
@@ -454,26 +518,50 @@ export default function EmployeeProfilePage() {
            <Card>
                 <CardHeader>
                     <CardTitle>Payroll Summary</CardTitle>
+                    <CardDescription>{payrollData.periodLabel}</CardDescription>
                 </CardHeader>
                 <CardContent className="grid gap-4">
-                     <div>
-                        <p className="font-semibold">Total Days Worked</p>
-                        <p className="text-2xl font-bold">{payrollData.daysWorked.toFixed(0)}</p>
-                    </div>
-                    <div>
-                        <p className="font-semibold">Total Hours Worked</p>
-                        <p className="text-2xl font-bold">{payrollData.hours.toFixed(2)}</p>
-                    </div>
-                    {payrollData.overtimePay > 0 && (
-                        <div>
-                            <p className="font-semibold">Overtime Pay</p>
-                            <p className="text-2xl font-bold">ETB {payrollData.overtimePay.toFixed(2)}</p>
-                        </div>
+                     {employee.paymentMethod === 'Monthly' ? (
+                        <>
+                            <div>
+                                <p className="font-semibold">Base Salary</p>
+                                <p className="text-2xl font-bold">ETB {(payrollData.baseSalary || 0).toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <p className="font-semibold">Late Deduction ({payrollData.minutesLate || 0} mins)</p>
+                                <p className="text-xl font-bold text-destructive">- ETB {(payrollData.lateDeduction || 0).toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <p className="font-semibold">Absence Deduction ({payrollData.daysAbsent || 0} days)</p>
+                                <p className="text-xl font-bold text-destructive">- ETB {(payrollData.absenceDeduction || 0).toFixed(2)}</p>
+                            </div>
+                            <div>
+                                <p className="font-semibold">Net Salary</p>
+                                <p className="text-2xl font-bold text-primary">ETB {(payrollData.totalAmount || 0).toFixed(2)}</p>
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div>
+                                <p className="font-semibold">Total Days Worked</p>
+                                <p className="text-2xl font-bold">{(payrollData.daysWorked || 0).toFixed(0)}</p>
+                            </div>
+                            <div>
+                                <p className="font-semibold">Total Hours Worked</p>
+                                <p className="text-2xl font-bold">{(payrollData.hours || 0).toFixed(2)}</p>
+                            </div>
+                            {(payrollData.overtimePay || 0) > 0 && (
+                                <div>
+                                    <p className="font-semibold">Overtime Pay</p>
+                                    <p className="text-2xl font-bold">ETB {(payrollData.overtimePay || 0).toFixed(2)}</p>
+                                </div>
+                            )}
+                            <div>
+                                <p className="font-semibold">Calculated Payroll</p>
+                                <p className="text-2xl font-bold text-primary">ETB {(payrollData.totalAmount || 0).toFixed(2)}</p>
+                            </div>
+                        </>
                     )}
-                    <div>
-                        <p className="font-semibold">Calculated Payroll</p>
-                        <p className="text-2xl font-bold text-primary">ETB {payrollData.totalAmount.toFixed(2)}</p>
-                    </div>
                 </CardContent>
             </Card>
         </div>
@@ -547,8 +635,3 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
-
-
-    
-
-    
