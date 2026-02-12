@@ -32,9 +32,9 @@ const generateSmsSummary = (entry: PayrollEntry): string => {
     if (entry.paymentMethod === 'Monthly') {
         return `Hi ${entry.employeeName}, your payroll for ${entry.period}:\n` +
                `Base Salary: ETB ${(entry.baseSalary || 0).toFixed(2)}\n` +
-               `Late Deduction: -ETB ${(entry.lateDeduction || 0).toFixed(2)}\n` +
-               `Absence Deduction: -ETB ${(entry.absenceDeduction || 0).toFixed(2)}\n` +
-               `Net Salary: ETB ${entry.amount.toFixed(2)}\n` +
+               `Late: -ETB ${(entry.lateDeduction || 0).toFixed(2)}\n` +
+               `Absence: -ETB ${(entry.absenceDeduction || 0).toFixed(2)}\n` +
+               `Net Salary: ETB **${entry.amount.toFixed(2)}**\n` +
                `Thank you.`;
     }
     
@@ -43,7 +43,7 @@ const generateSmsSummary = (entry: PayrollEntry): string => {
            `Base: ETB ${(entry.baseAmount || 0).toFixed(2)}\n` +
            `Overtime: ETB ${(entry.overtimeAmount || 0).toFixed(2)}\n` +
            `Late: -ETB ${(entry.lateDeduction || 0).toFixed(2)}\n` +
-           `Total: ETB ${entry.amount.toFixed(2)}\n` +
+           `Total: ETB **${entry.amount.toFixed(2)}**\n` +
            `Thank you.`;
 };
 
@@ -97,7 +97,7 @@ export function PayrollList({ title, payrollData }: PayrollListProps) {
                                         <div className="text-sm text-muted-foreground">
                                             {entry.paymentMethod === 'Weekly' ? 
                                                 `${entry.workingDays || 0} day(s) worked` : 
-                                                `${entry.daysAbsent || 0} day(s) absent`}
+                                                `${(entry.hoursAbsent || 0).toFixed(1)} hour(s) absent`}
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right font-bold">{entry.amount.toFixed(2)}</TableCell>

@@ -6,11 +6,19 @@ import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
 import { Users, UserCheck, Wallet, Calendar } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter } from "@/firebase";
 import { collection, getDocs, FirestoreError } from "firebase/firestore";
 import { Card, CardContent } from '@/components/ui/card';
 import { FirestorePermissionError } from '@/firebase/errors';
+
+const getDateFromRecord = (date: string | any): Date => {
+  if (date?.toDate) {
+    return date.toDate();
+  }
+  return new Date(date);
+}
+
 
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
   if (!isValid(date)) return "Invalid Date";
@@ -53,30 +61,7 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
 };
 
 const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
-    if (!record) return 0;
-
-    const recordDate = new Date(record.date as string);
-    const isSaturday = getDay(recordDate) === 6;
-
-    if (isMonthlyEmployee && isSaturday) {
-        let totalHours = 0;
-         if (record.morningStatus !== 'Absent' && record.morningEntry) {
-            const morningStartTime = parse("08:00", "HH:mm", new Date());
-            const morningEndTime = parse("12:30", "HH:mm", new Date());
-            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-            if(morningEntryTime < morningEndTime) {
-                const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
-                totalHours += morningWorkMs / (1000 * 60 * 60);
-            }
-        }
-        // Saturday afternoon is half day
-        if (record.afternoonStatus !== 'Absent') {
-            totalHours += 3.5;
-        }
-        return Math.max(0, totalHours);
-    }
-    
-    if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
+    if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) return 0;
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
     const morningEndTime = parse("12:30", "HH:mm", new Date());
@@ -87,7 +72,7 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
 
     if (record.morningStatus !== 'Absent' && record.morningEntry) {
         const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-        if(morningEntryTime < morningEndTime) {
+        if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
             const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
             totalHours += morningWorkMs / (1000 * 60 * 60);
         }
@@ -95,7 +80,7 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
     
     if (record.afternoonStatus !== 'Absent' && record.afternoonEntry) {
         const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-        if(afternoonEntryTime < afternoonEndTime) {
+        if(isValid(afternoonEntryTime) && afternoonEntryTime < afternoonEndTime) {
             const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
             totalHours += afternoonWorkMs / (1000 * 60 * 60);
         }
@@ -110,14 +95,14 @@ const calculateMinutesLate = (record: AttendanceRecord): number => {
     if (record.morningStatus === 'Late' && record.morningEntry) {
         const morningStartTime = parse("08:00", "HH:mm", new Date());
         const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-        if (morningEntryTime > morningStartTime) {
+        if (isValid(morningEntryTime) && morningEntryTime > morningStartTime) {
             minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / (1000 * 60);
         }
     }
     if (record.afternoonStatus === 'Late' && record.afternoonEntry) {
         const afternoonStartTime = parse("13:30", "HH:mm", new Date());
         const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-        if (afternoonEntryTime > afternoonStartTime) {
+        if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) {
             minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
         }
     }
@@ -161,23 +146,27 @@ export default function DashboardPage() {
         setAttendanceLoading(true);
         const allRecords: AttendanceRecord[] = [];
 
-        const attendancePromises = employees.map(employee => 
-            getDocs(collection(firestore, 'employees', employee.id, 'attendance'))
-        );
-
         try {
-            const querySnapshots = await Promise.all(attendancePromises);
-            querySnapshots.forEach(snapshot => {
-                snapshot.forEach(doc => {
+            const allAttendanceCol = collection(firestore, 'attendance');
+            const attendanceSnaps = await getDocs(allAttendanceCol);
+
+            const recordPromises = attendanceSnaps.docs.map(dayDoc => 
+                getDocs(collection(firestore, 'attendance', dayDoc.id, 'records'))
+            );
+            const recordSnapshots = await Promise.all(recordPromises);
+            
+            recordSnapshots.forEach(dayRecords => {
+                dayRecords.forEach(doc => {
                     allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
                 });
             });
+
             setAllAttendance(allRecords);
         } catch (e) {
             console.error("Failed to fetch all attendance records:", e);
             if (e instanceof FirestoreError) {
                 errorEmitter.emit('permission-error', new FirestorePermissionError({
-                    path: 'employees/{employeeId}/attendance',
+                    path: 'attendance',
                     operation: 'list'
                 }))
             }
@@ -253,21 +242,44 @@ export default function DashboardPage() {
         if (baseSalary === 0) return acc;
         
         const dailyRate = baseSalary / 23.625;
-        const minuteRate = dailyRate / 480;
+        const hourlyRate = dailyRate / 8;
+        const minuteRate = hourlyRate / 60;
 
+        const period = { start: monthStart, end: today };
         const recordsInMonth = allAttendance.filter(r => 
             r.employeeId === emp.id &&
-            isValid(new Date(r.date as string)) &&
-            isWithinInterval(new Date(r.date as string), { start: monthStart, end: today })
+            isValid(getDateFromRecord(r.date)) &&
+            isWithinInterval(getDateFromRecord(r.date), period)
         );
         
-        const daysAbsent = recordsInMonth.filter(r => r.morningStatus === 'Absent' && r.afternoonStatus === 'Absent').length;
-        const minutesLate = recordsInMonth.reduce((sum, r) => sum + calculateMinutesLate(r), 0);
+        let totalHoursAbsent = 0;
+        const minutesLate = recordsInMonth.reduce((sum, r) => {
+            if (r.morningStatus === 'Absent') totalHoursAbsent += 4.5;
+            if (r.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
+            return sum + calculateMinutesLate(r);
+        }, 0);
+
+        const periodDays = eachDayOfInterval(period);
+        const employeeStartDate = new Date(emp.attendanceStartDate || 0);
+        const recordedDates = new Set(recordsInMonth.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+
+        periodDays.forEach(day => {
+            if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
+                const dayStr = format(day, 'yyyy-MM-dd');
+                if (!recordedDates.has(dayStr)) {
+                    if (getDay(day) === 6) { // Saturday
+                        totalHoursAbsent += 4.5;
+                    } else {
+                        totalHoursAbsent += 8;
+                    }
+                }
+            }
+        });
         
-        const absenceDeduction = daysAbsent * dailyRate;
+        const absenceDeduction = totalHoursAbsent * hourlyRate;
         const lateDeduction = minutesLate * minuteRate;
         
-        const netSalary = baseSalary - (absenceDeduction + lateDeduction);
+        const netSalary = baseSalary - absenceDeduction - lateDeduction;
 
         return acc + netSalary;
     }, 0);
@@ -331,5 +343,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
-    

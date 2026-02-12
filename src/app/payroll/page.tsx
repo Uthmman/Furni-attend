@@ -86,26 +86,6 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
 
 const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
     if (!record) return 0;
-
-    const recordDate = getDateFromRecord(record.date);
-    const isSaturday = getDay(recordDate) === 6;
-
-    if (isMonthlyEmployee && isSaturday) {
-        let totalHours = 0;
-         if (record.morningStatus !== 'Absent' && record.morningEntry) {
-            const morningStartTime = parse("08:00", "HH:mm", new Date());
-            const morningEndTime = parse("12:30", "HH:mm", new Date());
-            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-            if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
-                const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
-                totalHours += morningWorkMs / (1000 * 60 * 60);
-            }
-        }
-        if (record.afternoonStatus !== 'Absent') {
-          totalHours += 3.5;
-        }
-        return Math.max(0, totalHours);
-    }
     
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
@@ -144,7 +124,7 @@ const calculateExpectedHours = (record: AttendanceRecord, isMonthlyEmployee: boo
         expected += 4.5;
     }
     if (record.afternoonStatus !== 'Absent') {
-        if(isSaturday) expected += 3.5;
+        if(isSaturday && isMonthlyEmployee) expected += 3.5;
         else expected += 3.5;
     }
 
@@ -202,23 +182,27 @@ export default function PayrollPage() {
         setAttendanceLoading(true);
         const allRecords: AttendanceRecord[] = [];
 
-        const attendancePromises = employees.map(employee => 
-            getDocs(collection(firestore, 'employees', employee.id, 'attendance'))
-        );
-
         try {
-            const querySnapshots = await Promise.all(attendancePromises);
-            querySnapshots.forEach(snapshot => {
-                snapshot.forEach(doc => {
+            const allAttendanceCol = collection(firestore, 'attendance');
+            const attendanceSnaps = await getDocs(allAttendanceCol);
+
+            const recordPromises = attendanceSnaps.docs.map(dayDoc => 
+                getDocs(collection(firestore, 'attendance', dayDoc.id, 'records'))
+            );
+            const recordSnapshots = await Promise.all(recordPromises);
+            
+            recordSnapshots.forEach(dayRecords => {
+                dayRecords.forEach(doc => {
                     allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
                 });
             });
+
             setAllAttendance(allRecords);
         } catch (e) {
             console.error("Failed to fetch all attendance records:", e);
             if (e instanceof FirestoreError) {
                 errorEmitter.emit('permission-error', new FirestorePermissionError({
-                    path: 'employees/{employeeId}/attendance',
+                    path: 'attendance',
                     operation: 'list'
                 }))
             }
@@ -319,13 +303,10 @@ export default function PayrollPage() {
             const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r, false), 0);
             const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
             const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r, false), 0);
-
             const finalAmount = (totalHours + overtimeHours) * hourlyRate;
             const overtimeAmount = overtimeHours * hourlyRate;
-            
             const lateHours = Math.max(0, expectedHours - totalHours);
             const lateDeduction = lateHours * hourlyRate;
-            
             const baseAmount = employee.dailyRate ? employee.dailyRate * 6 : (expectedHours - overtimeHours) * hourlyRate;
             const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
 
@@ -355,7 +336,8 @@ export default function PayrollPage() {
             targetList = monthly;
             
             const dailyRate = baseSalary / 23.625;
-            const minuteRate = dailyRate / 480;
+            const hourlyRate = dailyRate / 8;
+            const minuteRate = hourlyRate / 60;
 
             const relevantRecords = allAttendance.filter(r => 
                 r.employeeId === employee.id &&
@@ -363,10 +345,31 @@ export default function PayrollPage() {
                 isWithinInterval(getDateFromRecord(r.date), period)
             );
 
-            const daysAbsent = relevantRecords.filter(r => r.morningStatus === 'Absent' && r.afternoonStatus === 'Absent').length;
-            const minutesLate = relevantRecords.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
+            let totalHoursAbsent = 0;
+            const minutesLate = relevantRecords.reduce((acc, r) => {
+                if (r.morningStatus === 'Absent') totalHoursAbsent += 4.5;
+                if (r.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
+                return acc + calculateMinutesLate(r);
+            }, 0);
 
-            const absenceDeduction = daysAbsent * dailyRate;
+            const periodDays = eachDayOfInterval(period);
+            const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+            const recordedDates = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+
+            periodDays.forEach(day => {
+                if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
+                    const dayStr = format(day, 'yyyy-MM-dd');
+                    if (!recordedDates.has(dayStr)) {
+                        if (getDay(day) === 6) { // Saturday
+                            totalHoursAbsent += 4.5;
+                        } else {
+                            totalHoursAbsent += 8;
+                        }
+                    }
+                }
+            });
+
+            const absenceDeduction = totalHoursAbsent * hourlyRate;
             const lateDeduction = minutesLate * minuteRate;
             
             const netSalary = baseSalary - (absenceDeduction + lateDeduction);
@@ -381,7 +384,7 @@ export default function PayrollPage() {
                     status: 'Unpaid',
                     baseSalary: baseSalary,
                     baseAmount: baseSalary,
-                    daysAbsent: daysAbsent,
+                    hoursAbsent: totalHoursAbsent,
                     minutesLate: minutesLate,
                     absenceDeduction: absenceDeduction,
                     lateDeduction: lateDeduction,
@@ -414,31 +417,13 @@ export default function PayrollPage() {
             const baseSalary = employee.monthlyRate || 0;
             if (baseSalary === 0) return;
 
-            const dailyRate = baseSalary / 23.625;
-            const minuteRate = dailyRate / 480;
+             const hourlyRate = employee.hourlyRate || (baseSalary / 23.625 / 8);
+             if (!hourlyRate) return;
 
-            const record = allAttendance.find(r => 
+             const record = allAttendance.find(r => 
                 r.employeeId === employee.id && 
                 format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr
-            );
-            
-            let dayPay = dailyRate;
-
-            if (record) {
-                const minutesLate = calculateMinutesLate(record);
-                const lateDeduction = minutesLate * minuteRate;
-                if(record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') {
-                    dayPay = 0;
-                } else {
-                    dayPay = dailyRate - lateDeduction;
-                }
-            } else {
-                 dayPay = 0; // Assume absent if no record
-            }
-
-            // This daily calculation seems off for a historical chart, let's use the actual hours worked * hourly rate
-             const hourlyRate = employee.hourlyRate || (employee.monthlyRate ? employee.monthlyRate / 23.625 / 8 : 0);
-             if (!hourlyRate) return;
+             );
 
              if (record) {
                 const hoursWorked = calculateHoursWorked(record, true);
@@ -629,5 +614,3 @@ export default function PayrollPage() {
     </div>
   );
 }
-
-    

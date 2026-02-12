@@ -30,6 +30,8 @@ import {
   addDays,
   startOfWeek,
   endOfWeek,
+  getDay,
+  eachDayOfInterval,
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,7 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Phone, Trash2, Edit, Calendar } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, doc, deleteDoc } from "firebase/firestore";
+import { collection, doc, deleteDoc, getDocs, FirestoreError } from "firebase/firestore";
 import type { AttendanceRecord } from "@/lib/types";
 import { EmployeeForm } from "../employee-form";
 import {
@@ -186,6 +188,8 @@ export default function EmployeeProfilePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
 
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -197,11 +201,35 @@ export default function EmployeeProfilePage() {
   
   const { data: employee, loading: employeeLoading } = useDoc(employeeDocRef);
   
-  const attendanceCollectionRef = useMemoFirebase(() => {
-      if (!firestore || !employeeId) return null;
-      return collection(firestore, 'employees', employeeId as string, 'attendance');
-  }, [firestore, employeeId]);
-  const { data: allAttendance, loading: attendanceLoading } = useCollection<AttendanceRecord>(attendanceCollectionRef);
+  useEffect(() => {
+    const fetchAllAttendance = async () => {
+        if (!firestore || !employeeId) {
+          setAttendanceLoading(false);
+          return;
+        }
+
+        setAttendanceLoading(true);
+        try {
+            const attendanceSnap = await getDocs(collection(firestore, 'employees', employeeId as string, 'attendance'));
+            const records = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
+            setAllAttendance(records);
+        } catch (e) {
+            console.error("Failed to fetch all attendance records:", e);
+            if (e instanceof FirestoreError) {
+                errorEmitter.emit('permission-error', new FirestorePermissionError({
+                    path: `employees/${employeeId}/attendance`,
+                    operation: 'list'
+                }))
+            }
+        } finally {
+            setAttendanceLoading(false);
+        }
+    };
+
+    if (!isUserLoading && employeeId) {
+      fetchAllAttendance();
+    }
+  }, [firestore, employeeId, isUserLoading]);
 
 
   const employeeAttendance = useMemo(() => 
@@ -219,8 +247,7 @@ export default function EmployeeProfilePage() {
     if (!employee) return 0;
     if (employee.hourlyRate) return employee.hourlyRate;
     if (employee.paymentMethod === 'Monthly' && employee.monthlyRate) {
-        const dailyRate = employee.monthlyRate / 23.625;
-        return dailyRate / 8;
+        return employee.monthlyRate / 23.625 / 8;
     }
     if (employee.paymentMethod === 'Weekly' && employee.dailyRate) {
         return employee.dailyRate / 8;
@@ -301,7 +328,7 @@ export default function EmployeeProfilePage() {
   }, [employeeAttendance, selectedPeriod, employee]);
 
   const payrollData = useMemo(() => {
-    if (!employee || filteredAttendance.length === 0) return { totalAmount: 0, periodLabel: "" };
+    if (!employee || filteredAttendance.length === 0 || !selectedPeriod) return { totalAmount: 0, periodLabel: "" };
 
     const selectedPeriodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || "";
 
@@ -309,13 +336,39 @@ export default function EmployeeProfilePage() {
       const baseSalary = employee.monthlyRate || 0;
       if (baseSalary === 0) return { totalAmount: 0, periodLabel: selectedPeriodLabel };
 
-      const dailyRate = baseSalary / 23.625;
-      const minuteRate = dailyRate / 480;
+        const dailyRate = baseSalary / 23.625;
+        const hourlyRateCalc = dailyRate / 8;
+        const minuteRate = hourlyRateCalc / 60;
+        
+        let totalHoursAbsent = 0;
+        const minutesLate = filteredAttendance.reduce((acc, r) => {
+            if (r.morningStatus === 'Absent') totalHoursAbsent += 4.5;
+            if (r.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
+            return acc + calculateMinutesLate(r);
+        }, 0);
 
-      const daysAbsent = filteredAttendance.filter(r => r.morningStatus === 'Absent' && r.afternoonStatus === 'Absent').length;
-      const minutesLate = filteredAttendance.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
+        const startDate = new Date(selectedPeriod);
+        const ethDate = toEthiopian(startDate);
+        const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
+        const interval = { start: startDate, end: addDays(startDate, daysInMonth - 1) };
+        const periodDays = eachDayOfInterval(interval);
+        const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+        const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
 
-      const absenceDeduction = daysAbsent * dailyRate;
+        periodDays.forEach(day => {
+            if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
+                const dayStr = format(day, 'yyyy-MM-dd');
+                if (!recordedDates.has(dayStr)) {
+                    if (getDay(day) === 6) { // Saturday
+                        totalHoursAbsent += 4.5; 
+                    } else {
+                        totalHoursAbsent += 8;
+                    }
+                }
+            }
+        });
+
+      const absenceDeduction = totalHoursAbsent * hourlyRateCalc;
       const lateDeduction = minutesLate * minuteRate;
       
       const netSalary = baseSalary - (absenceDeduction + lateDeduction);
@@ -325,7 +378,7 @@ export default function EmployeeProfilePage() {
           baseSalary: baseSalary,
           lateDeduction: lateDeduction,
           absenceDeduction: absenceDeduction,
-          daysAbsent: daysAbsent,
+          hoursAbsent: totalHoursAbsent,
           minutesLate: minutesLate,
           periodLabel: selectedPeriodLabel,
       };
@@ -494,7 +547,7 @@ export default function EmployeeProfilePage() {
                                 <p className="text-xl font-bold text-destructive">- ETB {(payrollData.lateDeduction || 0).toFixed(2)}</p>
                             </div>
                             <div>
-                                <p className="font-semibold">Absence Deduction ({payrollData.daysAbsent || 0} days)</p>
+                                <p className="font-semibold">Absence Deduction ({(payrollData.hoursAbsent || 0).toFixed(1)} hrs)</p>
                                 <p className="text-xl font-bold text-destructive">- ETB {(payrollData.absenceDeduction || 0).toFixed(2)}</p>
                             </div>
                             <div>
@@ -597,5 +650,3 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
-
-    

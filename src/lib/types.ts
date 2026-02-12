@@ -46,7 +46,7 @@ export interface PayrollEntry {
 
   // For monthly, these are used.
   baseSalary?: number;
-  daysAbsent?: number;
+  hoursAbsent?: number;
   minutesLate?: number;
   absenceDeduction?: number;
   lateDeduction?: number; 
