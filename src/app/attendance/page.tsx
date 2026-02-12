@@ -91,6 +91,7 @@ export default function AttendancePage() {
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
   
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const isSaturday = getDay(selectedDate) === 6;
   
   const formattedDate = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   
@@ -116,12 +117,19 @@ export default function AttendancePage() {
     if (employees) {
         const dailyAttendance: DailyAttendance[] = employees.map((emp) => {
             const record = attendanceRecords?.find((r) => r.employeeId === emp.id);
+            const isMonthly = emp.paymentMethod === 'Monthly';
+            
+            let afternoonStatus: AttendanceStatus = record?.afternoonStatus || "Absent";
+
+            if (isMonthly && isSaturday) {
+                afternoonStatus = "Present";
+            }
 
             return {
                 employeeId: emp.id,
                 employeeName: emp.name,
                 morningStatus: record?.morningStatus || "Absent",
-                afternoonStatus: record?.afternoonStatus || "Absent",
+                afternoonStatus: afternoonStatus,
                 morningEntry: record?.morningEntry || "",
                 afternoonEntry: record?.afternoonEntry || "",
                 overtimeHours: record?.overtimeHours || 0,
@@ -129,7 +137,7 @@ export default function AttendancePage() {
         });
         setAttendance(dailyAttendance);
     }
-  }, [employees, attendanceRecords, selectedDate]);
+  }, [employees, attendanceRecords, selectedDate, isSaturday]);
 
 
   const handleDateSelect = (date: Date | undefined) => {
@@ -224,6 +232,11 @@ export default function AttendancePage() {
       return undefined;
   }, [selectedEmployeeAttendance, employees, isUserLoading]);
 
+  const isMonthlySaturday = useMemo(() => {
+    if (!selectedEmployeeDetails) return false;
+    return selectedEmployeeDetails.paymentMethod === 'Monthly' && isSaturday;
+  }, [selectedEmployeeDetails, isSaturday]);
+
   const hourlyRate: number = useMemo(() => {
     if (!selectedEmployeeDetails) return 0;
     return selectedEmployeeDetails.hourlyRate ||
@@ -277,8 +290,6 @@ export default function AttendancePage() {
       return <div>Loading...</div>
   }
   
-  const isSaturday = getDay(selectedDate) === 6;
-
   const CalendarCaption = useCallback(
     (props: CaptionProps) => {
       const { fromYear, toYear } = useDayPicker();
@@ -455,6 +466,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("afternoonStatus", value)
                   }
+                  disabled={isMonthlySaturday}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -478,7 +490,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("afternoonEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent'}
+                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || isMonthlySaturday}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -519,5 +531,7 @@ export default function AttendancePage() {
   );
 }
 
+
+    
 
     
