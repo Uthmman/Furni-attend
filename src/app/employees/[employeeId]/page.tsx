@@ -63,8 +63,25 @@ const getInitials = (name: string) => {
   return names.map((n) => n[0]).join("").toUpperCase();
 };
 
+const getDateFromRecord = (date: string | Timestamp): Date => {
+  if (date instanceof Timestamp) {
+    return date.toDate();
+  }
+  return new Date(date);
+}
+
 const calculateHoursWorked = (record: AttendanceRecord): number => {
-    if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) return 0;
+    if (!record) return 0;
+    const recordDate = getDateFromRecord(record.date);
+
+    if (getDay(recordDate) === 0) { // Is Sunday
+        if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') {
+            return 8;
+        }
+        return 0;
+    }
+
+    if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
     const morningEndTime = parse("12:30", "HH:mm", new Date());
@@ -108,13 +125,6 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
       return "Invalid Date";
   }
 };
-
-const getDateFromRecord = (date: string | Timestamp): Date => {
-  if (date instanceof Timestamp) {
-    return date.toDate();
-  }
-  return new Date(date);
-}
 
 const getEthiopianMonthDays = (year: number, month: number): number => {
     if (month < 1 || month > 13) return 0;
@@ -392,9 +402,29 @@ export default function EmployeeProfilePage() {
           return acc + (record.overtimeHours || 0);
       }, 0);
       
-      const totalHours = filteredAttendance.reduce((acc, record) => {
+      let totalHours = filteredAttendance.reduce((acc, record) => {
           return acc + calculateHoursWorked(record);
       }, 0);
+      
+      if (selectedPeriod && employee.paymentMethod === 'Weekly') {
+          const startDate = new Date(selectedPeriod);
+          const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
+          const interval = { start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 0 }) };
+
+          const periodDays = eachDayOfInterval(interval);
+          const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+          const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+
+          periodDays.forEach(day => {
+              if (day >= employeeStartDate && getDay(day) === 0) { // Is Sunday
+                  const dayStr = format(day, 'yyyy-MM-dd');
+                  if (!recordedDates.has(dayStr)) {
+                      totalHours += 8;
+                  }
+              }
+          });
+      }
+
 
       const baseAmount = totalHours * (hourlyRate || 0);
       const overtimePay = totalOvertimeHours * (hourlyRate || 0);

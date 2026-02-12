@@ -61,7 +61,18 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
 };
 
 const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
-    if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) return 0;
+    if (!record) return 0;
+    const recordDate = getDateFromRecord(record.date);
+
+    if (getDay(recordDate) === 0) { // Is Sunday
+        if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') {
+            return 8;
+        }
+        return 0;
+    }
+
+    if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
+
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
     const morningEndTime = parse("12:30", "HH:mm", new Date());
@@ -221,14 +232,29 @@ export default function DashboardPage() {
         const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
         if (!hourlyRate) return acc;
 
+        const period = { start: weekStart, end: today };
         const recordsInWeek = allAttendance.filter(r => 
             r.employeeId === emp.id &&
             isValid(new Date(r.date as string)) &&
-            isWithinInterval(new Date(r.date as string), { start: weekStart, end: today })
+            isWithinInterval(new Date(r.date as string), period)
         );
-        const hoursWorked = recordsInWeek.reduce((sum, r) => {
+        let hoursWorked = recordsInWeek.reduce((sum, r) => {
             return sum + calculateHoursWorked(r) + (r.overtimeHours || 0);
         }, 0);
+
+        const periodDays = eachDayOfInterval(period);
+        const recordedDates = new Set(recordsInWeek.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        const employeeStartDate = new Date(emp.attendanceStartDate || 0);
+
+        periodDays.forEach(day => {
+            if (day >= employeeStartDate && getDay(day) === 0) { 
+                const dayStr = format(day, 'yyyy-MM-dd');
+                if (!recordedDates.has(dayStr)) {
+                    hoursWorked += 8;
+                }
+            }
+        });
+
         return acc + (hoursWorked * hourlyRate);
     }, 0);
 

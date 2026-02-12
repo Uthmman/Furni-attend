@@ -86,6 +86,14 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
 
 const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
     if (!record) return 0;
+    const recordDate = getDateFromRecord(record.date);
+
+    if (getDay(recordDate) === 0) { // Is Sunday
+        if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') {
+            return 8;
+        }
+        return 0;
+    }
     
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
@@ -307,8 +315,22 @@ export default function PayrollPage() {
                 isWithinInterval(getDateFromRecord(r.date), period)
             );
 
-            const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r, false), 0);
+            let totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r, false), 0);
             const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+            
+            const periodDays = eachDayOfInterval(period);
+            const recordedDates = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+            const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+
+            periodDays.forEach(day => {
+                if (day >= employeeStartDate && getDay(day) === 0) { // Is Sunday
+                    const dayStr = format(day, 'yyyy-MM-dd');
+                    if (!recordedDates.has(dayStr)) {
+                        totalHours += 8;
+                    }
+                }
+            });
+
             const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r, false), 0);
             const finalAmount = (totalHours + overtimeHours) * hourlyRate;
             const overtimeAmount = overtimeHours * hourlyRate;
@@ -477,6 +499,8 @@ export default function PayrollPage() {
                 const hoursWorked = calculateHoursWorked(record);
                 const overtime = record.overtimeHours || 0;
                 dailyWeeklyExpense += (hoursWorked + overtime) * hourlyRate;
+            } else if (getDay(day) === 0) { // Unrecorded Sunday
+                dailyWeeklyExpense += 8 * hourlyRate;
             }
         });
         
@@ -520,6 +544,8 @@ export default function PayrollPage() {
                 const hoursWorked = calculateHoursWorked(record, employee.paymentMethod === 'Monthly');
                 const overtime = record.overtimeHours || 0;
                 dailyTotalExpense += (hoursWorked + overtime) * hourlyRate;
+            } else if (employee.paymentMethod === 'Weekly' && getDay(day) === 0) { // Unrecorded Sunday for weekly
+                dailyTotalExpense += 8 * hourlyRate;
             }
         });
         
