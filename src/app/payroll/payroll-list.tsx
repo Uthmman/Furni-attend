@@ -101,18 +101,12 @@ export function PayrollList({ title, payrollData }: PayrollListProps) {
                                                     <>
                                                         {(entry.hoursAbsent || 0) > 0 && (
                                                             <div className="text-destructive flex items-center">
-                                                                {(entry.hoursAbsent || 0).toFixed(1)} hrs absent 
-                                                                {entry.absentDates && entry.absentDates.length > 0 && (
-                                                                    <span className="text-xs ml-1">({entry.absentDates.join(', ')})</span>
-                                                                )}
+                                                                {(entry.hoursAbsent || 0).toFixed(1)} hrs absent
                                                             </div>
                                                         )}
                                                          {(entry.minutesLate || 0) > 0 && (
                                                             <div className="text-destructive flex items-center">
                                                                 {(entry.minutesLate || 0).toFixed(0)} mins late
-                                                                {entry.lateDates && entry.lateDates.length > 0 && (
-                                                                    <span className="text-xs ml-1">({entry.lateDates.join(', ')})</span>
-                                                                )}
                                                             </div>
                                                         )}
                                                         {(entry.hoursAbsent || 0) === 0 && (entry.minutesLate || 0) === 0 && (
