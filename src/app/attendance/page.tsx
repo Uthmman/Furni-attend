@@ -35,8 +35,9 @@ import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
 import { collection, doc, setDoc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { useDayPicker, type CaptionProps, useNavigation } from "react-day-picker";
+import { useDayPicker, type CaptionProps, useNavigation, type DayContentProps } from "react-day-picker";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 
 type DailyAttendance = {
@@ -132,13 +133,10 @@ export default function AttendancePage() {
 
             if (isPastOrToday && isMonthly) {
                 if (isSunday) {
-                    // If a record exists for Sunday, respect it, otherwise default to Present
-                    if (!record) {
-                        morningStatus = "Present";
-                        afternoonStatus = "Present";
-                        morningEntry = "08:00";
-                        afternoonEntry = "13:30";
-                    }
+                    morningStatus = "Present";
+                    afternoonStatus = "Present";
+                    morningEntry = "08:00";
+                    afternoonEntry = "13:30";
                 }
                 if (isSaturday) {
                      if (!record?.afternoonStatus) {
@@ -390,6 +388,16 @@ export default function AttendancePage() {
     []
   );
 
+  const GregorianDayCell = (props: DayContentProps) => {
+    const { date, activeModifiers } = props;
+    return (
+        <div className="flex flex-col h-full w-full items-center justify-center p-1 leading-none">
+            <span className={cn("text-xs", activeModifiers.selected ? 'opacity-80' : 'text-muted-foreground')}>{format(date, 'Eee')}</span>
+            <span className="font-bold text-lg">{format(date, 'd')}</span>
+        </div>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6">
        <div className="flex items-center justify-between">
@@ -407,7 +415,7 @@ export default function AttendancePage() {
                 mode="single"
                 selected={selectedDate}
                 onSelect={handleDateSelect}
-                components={{ Caption: CalendarCaption }}
+                components={{ Caption: CalendarCaption, Day: GregorianDayCell }}
                 captionLayout="dropdown-buttons"
                 fromYear={2015}
                 toYear={2035}
@@ -506,7 +514,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("afternoonStatus", value)
                   }
-                  disabled={(isMonthlySaturday || isPresetSunday) && selectedEmployeeDetails?.paymentMethod === 'Monthly'}
+                  disabled={(isMonthlySaturday || (isPresetSunday && selectedEmployeeDetails?.paymentMethod === 'Monthly'))}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
