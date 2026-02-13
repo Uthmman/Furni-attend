@@ -118,17 +118,26 @@ export default function AttendancePage() {
     if (employees) {
         const dailyAttendance: DailyAttendance[] = employees.map((emp) => {
             const record = attendanceRecords?.find((r) => r.employeeId === emp.id);
-            const isMonthly = emp.paymentMethod === 'Monthly';
             
             let morningStatus: AttendanceStatus = record?.morningStatus || "Absent";
             let afternoonStatus: AttendanceStatus = record?.afternoonStatus || "Absent";
+            let morningEntry = record?.morningEntry || "";
+            let afternoonEntry = record?.afternoonEntry || "";
 
-            if (isSunday) {
-                morningStatus = "Present";
-                afternoonStatus = "Present";
-            }
-            if (isMonthly && isSaturday) {
-                afternoonStatus = "Present";
+            const isMonthly = emp.paymentMethod === 'Monthly';
+            const isPastOrToday = !isAfter(startOfDay(selectedDate), startOfDay(new Date()));
+
+            if (isPastOrToday && isMonthly) {
+                if (isSunday) {
+                    morningStatus = "Present";
+                    afternoonStatus = "Present";
+                    morningEntry = "08:00";
+                    afternoonEntry = "13:30";
+                }
+                if (isSaturday) {
+                    afternoonStatus = "Present";
+                    if(!afternoonEntry) afternoonEntry = "13:30";
+                }
             }
 
             return {
@@ -136,8 +145,8 @@ export default function AttendancePage() {
                 employeeName: emp.name,
                 morningStatus: morningStatus,
                 afternoonStatus: afternoonStatus,
-                morningEntry: record?.morningEntry || "",
-                afternoonEntry: record?.afternoonEntry || "",
+                morningEntry: morningEntry,
+                afternoonEntry: afternoonEntry,
                 overtimeHours: record?.overtimeHours || 0,
             };
         });
@@ -240,12 +249,15 @@ export default function AttendancePage() {
 
   const isMonthlySaturday = useMemo(() => {
     if (!selectedEmployeeDetails) return false;
-    return selectedEmployeeDetails.paymentMethod === 'Monthly' && isSaturday;
-  }, [selectedEmployeeDetails, isSaturday]);
+    const isPastOrToday = !isAfter(startOfDay(selectedDate), startOfDay(new Date()));
+    return selectedEmployeeDetails.paymentMethod === 'Monthly' && isSaturday && isPastOrToday;
+  }, [selectedEmployeeDetails, isSaturday, selectedDate]);
 
   const isPresetSunday = useMemo(() => {
-    return isSunday;
-  }, [isSunday]);
+    if (!selectedEmployeeDetails) return false;
+    const isPastOrToday = !isAfter(startOfDay(selectedDate), startOfDay(new Date()));
+    return isSunday && selectedEmployeeDetails.paymentMethod === 'Monthly' && isPastOrToday;
+  }, [isSunday, selectedEmployeeDetails, selectedDate]);
 
   const hourlyRate: number = useMemo(() => {
     if (!selectedEmployeeDetails) return 0;
@@ -541,5 +553,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
