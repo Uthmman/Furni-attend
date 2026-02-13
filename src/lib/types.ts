@@ -51,4 +51,6 @@ export interface PayrollEntry {
   absenceDeduction?: number;
   lateDeduction?: number; 
   overtimeHours?: number; // weekly and monthly
+  absentDates?: string[];
+  lateDates?: string[];
 };

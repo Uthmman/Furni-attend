@@ -354,19 +354,35 @@ export default function EmployeeProfilePage() {
         const hourlyRateCalc = dailyRate / 8;
         const minuteRate = hourlyRateCalc / 60;
         
+        const absentDates: string[] = [];
+        const lateDates: string[] = [];
         let totalHoursAbsent = 0;
         const minutesLate = filteredAttendance.reduce((acc, r) => {
             const recordDate = getDateFromRecord(r.date);
+            const formattedDate = format(recordDate, 'MMM d');
+            let isAbsent = false;
+
             if (r.morningStatus === 'Absent') {
                 totalHoursAbsent += 4.5;
+                isAbsent = true;
             }
             // Only count afternoon absence on weekdays (Mon-Fri)
             if (getDay(recordDate) !== 6 && getDay(recordDate) !== 0) {
                 if (r.afternoonStatus === 'Absent') {
                     totalHoursAbsent += 3.5;
+                    isAbsent = true;
                 }
             }
-            return acc + calculateMinutesLate(r);
+
+            if(isAbsent && !absentDates.includes(formattedDate)) {
+                absentDates.push(formattedDate);
+            }
+            
+            const currentMinutesLate = calculateMinutesLate(r);
+            if (currentMinutesLate > 0 && !lateDates.includes(formattedDate)) {
+                lateDates.push(formattedDate);
+            }
+            return acc + currentMinutesLate;
         }, 0);
 
         const startDate = new Date(selectedPeriod);
@@ -381,10 +397,14 @@ export default function EmployeeProfilePage() {
             if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
+                    const formattedDate = format(day, 'MMM d');
                     if (getDay(day) === 6) { // Saturday
-                        totalHoursAbsent += 4.5; 
+                        totalHoursAbsent += 4.5;
                     } else {
                         totalHoursAbsent += 8;
+                    }
+                     if(!absentDates.includes(formattedDate)) {
+                        absentDates.push(formattedDate);
                     }
                 }
             }
@@ -403,6 +423,8 @@ export default function EmployeeProfilePage() {
           hoursAbsent: totalHoursAbsent,
           minutesLate: minutesLate,
           periodLabel: selectedPeriodLabel,
+          absentDates: absentDates,
+          lateDates: lateDates,
       };
 
     } else { // Weekly logic
@@ -586,10 +608,16 @@ export default function EmployeeProfilePage() {
                             </div>
                             <div>
                                 <p className="font-semibold">Late Deduction ({payrollData.minutesLate || 0} mins)</p>
+                                {payrollData.lateDates && payrollData.lateDates.length > 0 && (
+                                    <p className="text-xs text-muted-foreground">{payrollData.lateDates.join(', ')}</p>
+                                )}
                                 <p className="text-xl font-bold text-destructive">- ETB {(payrollData.lateDeduction || 0).toFixed(2)}</p>
                             </div>
                             <div>
                                 <p className="font-semibold">Absence Deduction ({(payrollData.hoursAbsent || 0).toFixed(1)} hrs)</p>
+                                {payrollData.absentDates && payrollData.absentDates.length > 0 && (
+                                    <p className="text-xs text-muted-foreground">{payrollData.absentDates.join(', ')}</p>
+                                )}
                                 <p className="text-xl font-bold text-destructive">- ETB {(payrollData.absenceDeduction || 0).toFixed(2)}</p>
                             </div>
                             <div>

@@ -374,19 +374,37 @@ export default function PayrollPage() {
                 isWithinInterval(getDateFromRecord(r.date), period)
             );
 
+            const absentDates: string[] = [];
+            const lateDates: string[] = [];
             let totalHoursAbsent = 0;
+
             const minutesLate = relevantRecords.reduce((acc, r) => {
                 const recordDate = getDateFromRecord(r.date);
+                const formattedDate = format(recordDate, 'MMM d');
+                let isAbsent = false;
+
                 if (r.morningStatus === 'Absent') {
                     totalHoursAbsent += 4.5;
+                    isAbsent = true;
                 }
                 // Only count afternoon absence on weekdays (Mon-Fri)
                 if (getDay(recordDate) !== 6 && getDay(recordDate) !== 0) {
                     if (r.afternoonStatus === 'Absent') {
                         totalHoursAbsent += 3.5;
+                        isAbsent = true;
                     }
                 }
-                return acc + calculateMinutesLate(r);
+
+                if(isAbsent && !absentDates.includes(formattedDate)){
+                    absentDates.push(formattedDate);
+                }
+                
+                const currentMinutesLate = calculateMinutesLate(r);
+                if (currentMinutesLate > 0 && !lateDates.includes(formattedDate)) {
+                    lateDates.push(formattedDate);
+                }
+
+                return acc + currentMinutesLate;
             }, 0);
 
             const periodDays = eachDayOfInterval(period);
@@ -397,10 +415,14 @@ export default function PayrollPage() {
                 if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
                     const dayStr = format(day, 'yyyy-MM-dd');
                     if (!recordedDates.has(dayStr)) {
+                        const formattedDate = format(day, 'MMM d');
                         if (getDay(day) === 6) { // Saturday
                             totalHoursAbsent += 4.5;
                         } else {
                             totalHoursAbsent += 8;
+                        }
+                        if(!absentDates.includes(formattedDate)){
+                           absentDates.push(formattedDate);
                         }
                     }
                 }
@@ -425,6 +447,8 @@ export default function PayrollPage() {
                     minutesLate: minutesLate,
                     absenceDeduction: absenceDeduction,
                     lateDeduction: lateDeduction,
+                    absentDates: absentDates,
+                    lateDates: lateDates,
                 });
             }
         }

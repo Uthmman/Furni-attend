@@ -94,10 +94,33 @@ export function PayrollList({ title, payrollData }: PayrollListProps) {
                                 <TableRow key={entry.employeeId}>
                                     <TableCell>
                                         <div className="font-medium">{entry.employeeName}</div>
-                                        <div className="text-sm text-muted-foreground">
+                                         <div className="text-sm text-muted-foreground">
                                             {entry.paymentMethod === 'Weekly' ? 
                                                 `${entry.workingDays || 0} day(s) worked` : 
-                                                `${(entry.hoursAbsent || 0).toFixed(1)} hour(s) absent`}
+                                                (
+                                                    <>
+                                                        {(entry.hoursAbsent || 0) > 0 && (
+                                                            <div className="text-destructive flex items-center">
+                                                                {(entry.hoursAbsent || 0).toFixed(1)} hrs absent 
+                                                                {entry.absentDates && entry.absentDates.length > 0 && (
+                                                                    <span className="text-xs ml-1">({entry.absentDates.join(', ')})</span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                         {(entry.minutesLate || 0) > 0 && (
+                                                            <div className="text-destructive flex items-center">
+                                                                {(entry.minutesLate || 0).toFixed(0)} mins late
+                                                                {entry.lateDates && entry.lateDates.length > 0 && (
+                                                                    <span className="text-xs ml-1">({entry.lateDates.join(', ')})</span>
+                                                                )}
+                                                            </div>
+                                                        )}
+                                                        {(entry.hoursAbsent || 0) === 0 && (entry.minutesLate || 0) === 0 && (
+                                                            <div>No absences or lates</div>
+                                                        )}
+                                                    </>
+                                                )
+                                            }
                                         </div>
                                     </TableCell>
                                     <TableCell className="text-right font-bold">{entry.amount.toFixed(2)}</TableCell>
