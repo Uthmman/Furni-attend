@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import type { AttendanceRecord, Employee, AttendanceStatus } from "@/lib/types";
-import { format, isValid, getDay } from "date-fns";
+import { format, isValid, getDay, isAfter, startOfDay } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
 import { collection, doc, setDoc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
@@ -92,6 +92,7 @@ export default function AttendancePage() {
   
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const isSaturday = getDay(selectedDate) === 6;
+  const isSunday = getDay(selectedDate) === 0;
   
   const formattedDate = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   
@@ -115,20 +116,33 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (employees) {
+        const today = startOfDay(new Date());
+        const isFutureDate = isAfter(startOfDay(selectedDate), today);
+
         const dailyAttendance: DailyAttendance[] = employees.map((emp) => {
             const record = attendanceRecords?.find((r) => r.employeeId === emp.id);
             const isMonthly = emp.paymentMethod === 'Monthly';
             
-            let afternoonStatus: AttendanceStatus = record?.afternoonStatus || "Absent";
+            let morningStatus: AttendanceStatus = "Absent";
+            let afternoonStatus: AttendanceStatus = "Absent";
 
-            if (isMonthly && isSaturday) {
-                afternoonStatus = "Present";
+            if (record) { // If a record exists, use it
+                morningStatus = record.morningStatus;
+                afternoonStatus = record.afternoonStatus;
+            } else if (!isFutureDate) { // If no record, default based on day
+                if (isSunday) {
+                    morningStatus = "Present";
+                    afternoonStatus = "Present";
+                }
+                if (isMonthly && isSaturday) {
+                    afternoonStatus = "Present";
+                }
             }
 
             return {
                 employeeId: emp.id,
                 employeeName: emp.name,
-                morningStatus: record?.morningStatus || "Absent",
+                morningStatus: morningStatus,
                 afternoonStatus: afternoonStatus,
                 morningEntry: record?.morningEntry || "",
                 afternoonEntry: record?.afternoonEntry || "",
@@ -137,7 +151,7 @@ export default function AttendancePage() {
         });
         setAttendance(dailyAttendance);
     }
-  }, [employees, attendanceRecords, selectedDate, isSaturday]);
+  }, [employees, attendanceRecords, selectedDate, isSaturday, isSunday]);
 
 
   const handleDateSelect = (date: Date | undefined) => {
@@ -234,14 +248,22 @@ export default function AttendancePage() {
 
   const isMonthlySaturday = useMemo(() => {
     if (!selectedEmployeeDetails) return false;
-    return selectedEmployeeDetails.paymentMethod === 'Monthly' && isSaturday;
-  }, [selectedEmployeeDetails, isSaturday]);
+    const today = startOfDay(new Date());
+    const isFutureDate = isAfter(startOfDay(selectedDate), today);
+    return selectedEmployeeDetails.paymentMethod === 'Monthly' && isSaturday && !isFutureDate;
+  }, [selectedEmployeeDetails, isSaturday, selectedDate]);
+
+  const isPresetSunday = useMemo(() => {
+    const today = startOfDay(new Date());
+    const isFutureDate = isAfter(startOfDay(selectedDate), today);
+    return isSunday && !isFutureDate;
+  }, [isSunday, selectedDate]);
 
   const hourlyRate: number = useMemo(() => {
     if (!selectedEmployeeDetails) return 0;
     return selectedEmployeeDetails.hourlyRate ||
         (selectedEmployeeDetails.dailyRate ? selectedEmployeeDetails.dailyRate / 8 : 0) ||
-        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 24 / 8 : 0);
+        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 23.625 / 8 : 0);
   }, [selectedEmployeeDetails]);
   
   const overtimePay: number = useMemo(() => {
@@ -431,6 +453,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("morningStatus", value)
                   }
+                  disabled={isPresetSunday}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -454,7 +477,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("morningEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent'}
+                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent' || isPresetSunday}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -466,7 +489,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("afternoonStatus", value)
                   }
-                  disabled={isMonthlySaturday}
+                  disabled={isMonthlySaturday || isPresetSunday}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -490,7 +513,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("afternoonEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || isMonthlySaturday}
+                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || isMonthlySaturday || isPresetSunday}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -531,6 +554,8 @@ export default function AttendancePage() {
   );
 }
 
+
+    
 
     
 
