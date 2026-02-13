@@ -16,7 +16,7 @@ export interface Employee extends DocumentData {
   attendanceStartDate?: string;
 }
 
-export type AttendanceStatus = "Present" | "Absent" | "Late";
+export type AttendanceStatus = "Present" | "Absent" | "Late" | "Permission";
 
 export interface AttendanceRecord extends DocumentData {
   id?: string; // id is the doc id, so it's not in the data
@@ -53,4 +53,5 @@ export interface PayrollEntry {
   overtimeHours?: number; // weekly and monthly
   absentDates?: string[];
   lateDates?: string[];
+  permissionDaysUsed?: number;
 };

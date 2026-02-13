@@ -7,10 +7,9 @@ import { StatCard } from "@/components/stat-card";
 import { Users, UserCheck, Wallet, Calendar } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval } from "date-fns";
-import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter } from "@/firebase";
-import { collection, getDocs, FirestoreError } from "firebase/firestore";
+import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
+import { collection } from "firebase/firestore";
 import { Card, CardContent } from '@/components/ui/card';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
@@ -125,8 +124,6 @@ export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
-  const [attendanceLoading, setAttendanceLoading] = useState(true);
   
   const employeesCollectionRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -134,6 +131,46 @@ export default function DashboardPage() {
   }, [firestore, user]);
   
   const { data: employees, loading: employeesLoading } = useCollection<Employee>(employeesCollectionRef);
+  
+  const allAttendanceColRef = useMemoFirebase(() => {
+      if (!firestore || !employees || employees.length === 0 || !user) return null;
+      // This is a simplified approach for demonstration. In a real app, you'd likely query per-employee.
+      const allRefs = employees.map(emp => collection(firestore, 'employees', emp.id, 'attendance'));
+      return allRefs; // This isn't a valid query, so we'll handle it in useEffect
+  }, [firestore, employees, user]);
+
+  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
+
+   useEffect(() => {
+    if (!firestore || !employees || isUserLoading) {
+      if(!employees) setAttendanceLoading(false);
+      return;
+    };
+    
+    setAttendanceLoading(true);
+    const fetchAllAttendance = async () => {
+      const allRecords: AttendanceRecord[] = [];
+      for (const emp of employees) {
+        const attendanceColRef = collection(firestore, 'employees', emp.id, 'attendance');
+        const { data: records } = await new Promise<any>(resolve => {
+            const { data: records, isLoading } = useCollection(attendanceColRef);
+            if (!isLoading) resolve({data: records});
+        });
+        if (records) {
+            allRecords.push(...records.map((r: any) => ({...r, employeeId: emp.id})));
+        }
+      }
+      const attendanceQuery = collection(firestore, 'attendance');
+      const { data: attendanceData } = useCollection(attendanceQuery);
+      if(attendanceData) allRecords.push(...attendanceData as any[]);
+      
+      setAllAttendance(allRecords);
+      setAttendanceLoading(false);
+    };
+
+    fetchAllAttendance();
+  }, [firestore, employees, isUserLoading]);
   
   const todayAttendanceCollectionRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -146,58 +183,6 @@ export default function DashboardPage() {
   useEffect(() => {
     setTitle("Dashboard");
   }, [setTitle]);
-
-  useEffect(() => {
-    const fetchAllAttendance = () => {
-        if (!firestore || !employees || employees.length === 0) {
-          setAttendanceLoading(false);
-          return;
-        }
-
-        setAttendanceLoading(true);
-        const allRecords: AttendanceRecord[] = [];
-
-        const employeePromises = (employees || []).map(emp => {
-            const attendanceColRef = collection(firestore, 'employees', emp.id, 'attendance');
-            return getDocs(attendanceColRef).catch(error => {
-                if (error instanceof FirestoreError) {
-                    const permissionError = new FirestorePermissionError({
-                        path: attendanceColRef.path,
-                        operation: 'list'
-                    });
-                    errorEmitter.emit('permission-error', permissionError);
-                }
-                return { docs: [] as any[] }; // Return empty on error to not break Promise.all
-            });
-        });
-
-        Promise.all(employeePromises)
-            .then(snapshots => {
-                snapshots.forEach(snapshot => {
-                    snapshot.docs.forEach(doc => {
-                        allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
-                    });
-                });
-                setAllAttendance(allRecords);
-            })
-            .catch(error => {
-                console.error("Error fetching all attendance records:", error);
-                 const permissionError = new FirestorePermissionError({
-                    path: 'employees/{employeeId}/attendance',
-                    operation: 'list'
-                });
-                errorEmitter.emit('permission-error', permissionError);
-            })
-            .finally(() => {
-                setAttendanceLoading(false);
-            });
-    };
-
-    if (!employeesLoading && !isUserLoading && employees) {
-      fetchAllAttendance();
-    }
-  }, [firestore, employees, employeesLoading, isUserLoading]);
-
 
   const dashboardStats = useMemo(() => {
     if (!employees) return {
@@ -277,6 +262,19 @@ export default function DashboardPage() {
         const dailyRate = baseSalary / 23.625;
         const hourlyRate = dailyRate / 8;
         const minuteRate = hourlyRate / 60;
+        
+        const ethYearForPeriod = toEthiopian(monthStart).year;
+        const permissionDatesInYear = new Set<string>();
+        allAttendance.filter(r => r.employeeId === emp.id).forEach(rec => {
+            const recDate = getDateFromRecord(rec.date);
+            if (toEthiopian(recDate).year === ethYearForPeriod) {
+                if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
+                    permissionDatesInYear.add(format(recDate, 'yyyy-MM-dd'));
+                }
+            }
+        });
+        const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
+        const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
 
         const period = { start: monthStart, end: today };
         const recordsInMonth = allAttendance.filter(r => 
@@ -288,14 +286,16 @@ export default function DashboardPage() {
         let totalHoursAbsent = 0;
         const minutesLate = recordsInMonth.reduce((sum, r) => {
             const recordDate = getDateFromRecord(r.date);
-            if (r.morningStatus === 'Absent') {
+            const recordDateStr = format(recordDate, 'yyyy-MM-dd');
+
+            let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+            let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+            
+            if (morningIsUnpaidAbsence) {
                 totalHoursAbsent += 4.5;
             }
-            // Only count afternoon absence on weekdays (Mon-Fri)
-            if (getDay(recordDate) !== 6 && getDay(recordDate) !== 0) {
-                if (r.afternoonStatus === 'Absent') {
-                    totalHoursAbsent += 3.5;
-                }
+            if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) {
+                totalHoursAbsent += 3.5;
             }
             return sum + calculateMinutesLate(r);
         }, 0);

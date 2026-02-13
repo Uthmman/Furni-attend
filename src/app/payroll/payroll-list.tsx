@@ -109,6 +109,11 @@ export function PayrollList({ title, payrollData }: PayrollListProps) {
                                                                 {(entry.minutesLate || 0).toFixed(0)} mins late
                                                             </div>
                                                         )}
+                                                        {(entry.permissionDaysUsed || 0) > 0 && (
+                                                            <div className="text-primary flex items-center">
+                                                                {entry.permissionDaysUsed} of 15 permission days used
+                                                            </div>
+                                                        )}
                                                         {(entry.hoursAbsent || 0) === 0 && (entry.minutesLate || 0) === 0 && (
                                                             <div>No absences or lates</div>
                                                         )}

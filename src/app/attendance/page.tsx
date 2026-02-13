@@ -51,6 +51,8 @@ type DailyAttendance = {
 
 const getStatusVariant = (status: AttendanceStatus) => {
   switch (status) {
+    case "Permission":
+        return "default";
     case "Present":
     case "Late":
       return "secondary";
@@ -62,6 +64,7 @@ const getStatusVariant = (status: AttendanceStatus) => {
 };
 
 const getOverallStatus = (morning: AttendanceStatus, afternoon: AttendanceStatus): AttendanceStatus => {
+    if (morning === 'Permission' || afternoon === 'Permission') return 'Permission';
     if (morning === 'Absent' && afternoon === 'Absent') return 'Absent';
     if (morning === 'Late' || afternoon === 'Late') return 'Late';
     if (morning === 'Present' || afternoon === 'Present') return 'Present';
@@ -129,15 +132,26 @@ export default function AttendancePage() {
 
             if (isPastOrToday && isMonthly) {
                 if (isSunday) {
-                    morningStatus = "Present";
-                    afternoonStatus = "Present";
-                    morningEntry = "08:00";
-                    afternoonEntry = "13:30";
+                    // If a record exists for Sunday, respect it, otherwise default to Present
+                    if (!record) {
+                        morningStatus = "Present";
+                        afternoonStatus = "Present";
+                        morningEntry = "08:00";
+                        afternoonEntry = "13:30";
+                    }
                 }
                 if (isSaturday) {
-                    afternoonStatus = "Present";
-                    if(!afternoonEntry) afternoonEntry = "13:30";
+                     if (!record?.afternoonStatus) {
+                        afternoonStatus = "Present";
+                        if(!afternoonEntry) afternoonEntry = "13:30";
+                    }
                 }
+            }
+             if (isSunday && isMonthly && isPastOrToday) {
+                morningStatus = "Present";
+                afternoonStatus = "Present";
+                morningEntry = "08:00";
+                afternoonEntry = "13:30";
             }
 
             return {
@@ -177,14 +191,14 @@ export default function AttendancePage() {
        if (field === 'morningStatus') {
             if (value === 'Absent') {
                 updated.morningEntry = "";
-            } else if ((value === 'Present' || value === 'Late') && !updated.morningEntry) {
+            } else if ((value === 'Present' || value === 'Late' || value === 'Permission') && !updated.morningEntry) {
                 updated.morningEntry = "08:00";
             }
         }
         if (field === 'afternoonStatus') {
             if (value === 'Absent') {
                 updated.afternoonEntry = "";
-            } else if ((value === 'Present' || value === 'Late') && !updated.afternoonEntry) {
+            } else if ((value === 'Present' || value === 'Late' || value === 'Permission') && !updated.afternoonEntry) {
                 updated.afternoonEntry = "13:30";
             }
         }
@@ -453,7 +467,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("morningStatus", value)
                   }
-                  disabled={isPresetSunday}
+                  disabled={isPresetSunday && selectedEmployeeDetails?.paymentMethod === 'Monthly'}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -462,6 +476,9 @@ export default function AttendancePage() {
                     <SelectItem value="Present">Present</SelectItem>
                     <SelectItem value="Late">Late</SelectItem>
                     <SelectItem value="Absent">Absent</SelectItem>
+                     {selectedEmployeeDetails?.paymentMethod === 'Monthly' && (
+                      <SelectItem value="Permission">Permission</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -477,7 +494,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("morningEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent' || isPresetSunday}
+                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent' || (isPresetSunday && selectedEmployeeDetails?.paymentMethod === 'Monthly')}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -489,7 +506,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("afternoonStatus", value)
                   }
-                  disabled={isMonthlySaturday || isPresetSunday}
+                  disabled={(isMonthlySaturday || isPresetSunday) && selectedEmployeeDetails?.paymentMethod === 'Monthly'}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -498,6 +515,9 @@ export default function AttendancePage() {
                     <SelectItem value="Present">Present</SelectItem>
                     <SelectItem value="Late">Late</SelectItem>
                     <SelectItem value="Absent">Absent</SelectItem>
+                     {selectedEmployeeDetails?.paymentMethod === 'Monthly' && (
+                      <SelectItem value="Permission">Permission</SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -513,7 +533,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("afternoonEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || isMonthlySaturday || isPresetSunday}
+                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || ((isMonthlySaturday || isPresetSunday) && selectedEmployeeDetails?.paymentMethod === 'Monthly')}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">

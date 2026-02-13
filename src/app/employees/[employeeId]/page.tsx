@@ -40,7 +40,7 @@ import { Button } from "@/components/ui/button";
 import { Copy, Phone, Trash2, Edit, Calendar } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, doc, deleteDoc, getDocs, FirestoreError } from "firebase/firestore";
+import { collection, doc, deleteDoc } from "firebase/firestore";
 import type { AttendanceRecord } from "@/lib/types";
 import { EmployeeForm } from "../employee-form";
 import {
@@ -198,10 +198,7 @@ export default function EmployeeProfilePage() {
   const firestore = useFirestore();
   const { toast } = useToast();
   const { user, isUserLoading } = useUser();
-  const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
-  const [attendanceLoading, setAttendanceLoading] = useState(true);
-
-  const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
+  
   const [isFormOpen, setIsFormOpen] = useState(false);
 
   const employeeDocRef = useMemoFirebase(() => {
@@ -211,40 +208,13 @@ export default function EmployeeProfilePage() {
   
   const { data: employee, loading: employeeLoading } = useDoc(employeeDocRef);
   
-  useEffect(() => {
-    const fetchAllAttendance = () => {
-        if (!firestore || !employeeId) {
-          setAttendanceLoading(false);
-          return;
-        }
-
-        setAttendanceLoading(true);
-        const attendanceColRef = collection(firestore, 'employees', employeeId as string, 'attendance');
-
-        getDocs(attendanceColRef)
-            .then(attendanceSnap => {
-                const records = attendanceSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AttendanceRecord));
-                setAllAttendance(records);
-            })
-            .catch(error => {
-                if (error instanceof FirestoreError) {
-                    const permissionError = new FirestorePermissionError({
-                        path: attendanceColRef.path,
-                        operation: 'list'
-                    });
-                    errorEmitter.emit('permission-error', permissionError);
-                }
-            })
-            .finally(() => {
-                setAttendanceLoading(false);
-            });
-    };
-
-    if (!isUserLoading && employeeId) {
-      fetchAllAttendance();
-    }
-  }, [firestore, employeeId, isUserLoading]);
-
+  const attendanceColRef = useMemoFirebase(() => {
+      if (!firestore || !employeeId || !user) return null;
+      return collection(firestore, 'employees', employeeId as string, 'attendance');
+  }, [firestore, employeeId, user]);
+  const { data: allAttendance, isLoading: attendanceLoading } = useCollection<AttendanceRecord>(attendanceColRef);
+  
+  const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
 
   const employeeAttendance = useMemo(() => 
     (allAttendance || []).map(r => ({...r, date: getDateFromRecord(r.date)})).sort((a, b) => b.date.getTime() - a.date.getTime()),
@@ -354,6 +324,20 @@ export default function EmployeeProfilePage() {
         const hourlyRateCalc = dailyRate / 8;
         const minuteRate = hourlyRateCalc / 60;
         
+        const ethYearForPeriod = toEthiopian(new Date(selectedPeriod)).year;
+        const permissionDatesInYear = new Set<string>();
+        (allAttendance || []).forEach(rec => {
+            const recDate = getDateFromRecord(rec.date);
+            if (toEthiopian(recDate).year === ethYearForPeriod) {
+                if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
+                    permissionDatesInYear.add(format(recDate, 'yyyy-MM-dd'));
+                }
+            }
+        });
+        const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
+        const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
+
+
         const absentDates: string[] = [];
         const lateDates: string[] = [];
         let totalHoursAbsent = 0;
@@ -361,17 +345,19 @@ export default function EmployeeProfilePage() {
             const recordDate = getDateFromRecord(r.date);
             const formattedDate = format(recordDate, 'MMM d');
             let isAbsent = false;
+            
+            const recordDateStr = format(recordDate, 'yyyy-MM-dd');
 
-            if (r.morningStatus === 'Absent') {
+            let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+            let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+
+            if (morningIsUnpaidAbsence) {
                 totalHoursAbsent += 4.5;
                 isAbsent = true;
             }
-            // Only count afternoon absence on weekdays (Mon-Fri)
-            if (getDay(recordDate) !== 6 && getDay(recordDate) !== 0) {
-                if (r.afternoonStatus === 'Absent') {
-                    totalHoursAbsent += 3.5;
-                    isAbsent = true;
-                }
+            if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) {
+                totalHoursAbsent += 3.5;
+                isAbsent = true;
             }
 
             if(isAbsent && !absentDates.includes(formattedDate)) {
@@ -470,7 +456,7 @@ export default function EmployeeProfilePage() {
         periodLabel: selectedPeriodLabel,
       };
     }
-  }, [employee, filteredAttendance, hourlyRate, periodOptions, selectedPeriod]);
+  }, [employee, allAttendance, filteredAttendance, hourlyRate, periodOptions, selectedPeriod]);
 
   const handleDelete = async () => {
     if (!employeeId || !firestore) return;
@@ -608,16 +594,10 @@ export default function EmployeeProfilePage() {
                             </div>
                             <div>
                                 <p className="font-semibold">Late Deduction ({payrollData.minutesLate || 0} mins)</p>
-                                {payrollData.lateDates && payrollData.lateDates.length > 0 && (
-                                    <p className="text-xs text-muted-foreground">{payrollData.lateDates.join(', ')}</p>
-                                )}
                                 <p className="text-xl font-bold text-destructive">- ETB {(payrollData.lateDeduction || 0).toFixed(2)}</p>
                             </div>
                             <div>
                                 <p className="font-semibold">Absence Deduction ({(payrollData.hoursAbsent || 0).toFixed(1)} hrs)</p>
-                                {payrollData.absentDates && payrollData.absentDates.length > 0 && (
-                                    <p className="text-xs text-muted-foreground">{payrollData.absentDates.join(', ')}</p>
-                                )}
                                 <p className="text-xl font-bold text-destructive">- ETB {(payrollData.absenceDeduction || 0).toFixed(2)}</p>
                             </div>
                             <div>
@@ -689,13 +669,13 @@ export default function EmployeeProfilePage() {
                                 </div>
                             </TableCell>
                             <TableCell>
-                                <Badge variant={record.morningStatus === 'Absent' ? 'destructive' : 'secondary'}>
+                                <Badge variant={record.morningStatus === 'Absent' ? 'destructive' : record.morningStatus === 'Permission' ? 'default' : 'secondary'}>
                                     {record.morningStatus}
                                 </Badge>
                                 <p className="text-xs text-muted-foreground">{record.morningEntry || 'N/A'}</p>
                             </TableCell>
                             <TableCell>
-                                <Badge variant={record.afternoonStatus === 'Absent' ? 'destructive' : 'secondary'}>
+                                <Badge variant={record.afternoonStatus === 'Absent' ? 'destructive' : record.afternoonStatus === 'Permission' ? 'default' : 'secondary'}>
                                     {record.afternoonStatus}
                                 </Badge>
                                 <p className="text-xs text-muted-foreground">{record.afternoonEntry || 'N/A'}</p>

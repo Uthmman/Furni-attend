@@ -24,13 +24,12 @@ import {
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import type { Employee, AttendanceRecord, PayrollEntry } from "@/lib/types";
-import { useFirestore, useUser, errorEmitter, useMemoFirebase } from '@/firebase';
-import { collection, getDocs, FirestoreError } from 'firebase/firestore';
+import { useFirestore, useUser, useMemoFirebase } from '@/firebase';
+import { collection } from 'firebase/firestore';
 import { ExpenseChart } from './expense-chart';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useCollection } from '@/firebase';
 import { PayrollList } from './payroll-list';
-import { FirestorePermissionError } from '@/firebase/errors';
 
 const getDateFromRecord = (date: string | Timestamp): Date => {
   if (!date) return new Date();
@@ -181,7 +180,7 @@ export default function PayrollPage() {
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
   
   useEffect(() => {
-    const fetchAllAttendance = () => {
+    const fetchAllAttendance = async () => {
         if (!firestore || !employees || employees.length === 0) {
           setAttendanceLoading(false);
           return;
@@ -189,41 +188,16 @@ export default function PayrollPage() {
 
         setAttendanceLoading(true);
         const allRecords: AttendanceRecord[] = [];
-
-        const employeePromises = (employees || []).map(emp => {
+        
+        for (const emp of employees) {
             const attendanceColRef = collection(firestore, 'employees', emp.id, 'attendance');
-            return getDocs(attendanceColRef).catch(error => {
-                if (error instanceof FirestoreError) {
-                    const permissionError = new FirestorePermissionError({
-                        path: attendanceColRef.path,
-                        operation: 'list'
-                    });
-                    errorEmitter.emit('permission-error', permissionError);
-                }
-                return { docs: [] as any[] }; // Return empty on error to not break Promise.all
+            const querySnapshot = await getDocs(attendanceColRef);
+            querySnapshot.forEach(doc => {
+                allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
             });
-        });
-
-        Promise.all(employeePromises)
-            .then(snapshots => {
-                snapshots.forEach(snapshot => {
-                    snapshot.docs.forEach(doc => {
-                        allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
-                    });
-                });
-                setAllAttendance(allRecords);
-            })
-            .catch(error => {
-                console.error("Error fetching all attendance records:", error);
-                 const permissionError = new FirestorePermissionError({
-                    path: 'employees/{employeeId}/attendance',
-                    operation: 'list'
-                });
-                errorEmitter.emit('permission-error', permissionError);
-            })
-            .finally(() => {
-                setAttendanceLoading(false);
-            });
+        }
+        setAllAttendance(allRecords);
+        setAttendanceLoading(false);
     };
 
     if (!employeesLoading && !isUserLoading && employees) {
@@ -355,7 +329,21 @@ export default function PayrollPage() {
             const baseSalary = employee.monthlyRate || 0;
             if (baseSalary === 0) return;
 
-            const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
+            const ethYearForPeriod = ethToday.year;
+            const allEmployeeRecords = allAttendance.filter(r => r.employeeId === employee.id);
+            const permissionDatesInYear = new Set<string>();
+            allEmployeeRecords.forEach(rec => {
+                const recDate = getDateFromRecord(rec.date);
+                if (toEthiopian(recDate).year === ethYearForPeriod) {
+                    if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
+                        permissionDatesInYear.add(format(recDate, 'yyyy-MM-dd'));
+                    }
+                }
+            });
+            const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
+            const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
+            const permissionDaysUsedInYear = sortedPermissionDates.length;
+            
             const daysInMonth = getEthiopianMonthDays(ethToday.year, ethToday.month);
             const monthEnd = addDays(monthStart, daysInMonth - 1);
             
@@ -378,39 +366,30 @@ export default function PayrollPage() {
             let projectedHoursAbsent = 0;
             let displayHoursAbsent = 0;
             let displayMinutesLate = 0;
-            const displayAbsentDates: string[] = [];
-            const displayLateDates: string[] = [];
             
             // -- Process recorded attendance --
             allRecordsForMonth.forEach(r => {
                 const recordDate = getDateFromRecord(r.date);
-                const formattedDate = format(recordDate, 'MMM d');
-                let isAbsentThisRecord = false;
                 let hoursAbsentThisRecord = 0;
 
-                if (r.morningStatus === 'Absent') {
+                const recordDateStr = format(recordDate, 'yyyy-MM-dd');
+                const morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+                const afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+
+                if (morningIsUnpaidAbsence) {
                     hoursAbsentThisRecord += 4.5;
-                    isAbsentThisRecord = true;
                 }
-                if (getDay(recordDate) !== 6 && r.afternoonStatus === 'Absent') {
+                if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) {
                     hoursAbsentThisRecord += 3.5;
-                    isAbsentThisRecord = true;
                 }
                 
                 projectedHoursAbsent += hoursAbsentThisRecord;
 
                 if (recordDate <= today) {
                     displayHoursAbsent += hoursAbsentThisRecord;
-                    if (isAbsentThisRecord && !displayAbsentDates.includes(formattedDate)) {
-                        displayAbsentDates.push(formattedDate);
-                    }
-
                     const currentMinutesLate = calculateMinutesLate(r);
                     if (currentMinutesLate > 0) {
                         displayMinutesLate += currentMinutesLate;
-                        if (!displayLateDates.includes(formattedDate)) {
-                            displayLateDates.push(formattedDate);
-                        }
                     }
                 }
             });
@@ -423,7 +402,6 @@ export default function PayrollPage() {
                 if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
                     const dayStr = format(day, 'yyyy-MM-dd');
                     if (!recordedDatesForMonth.has(dayStr)) {
-                        const formattedDate = format(day, 'MMM d');
                         let hoursAbsentForDay = 0;
                         if (getDay(day) === 6) { 
                             hoursAbsentForDay = 4.5;
@@ -435,9 +413,6 @@ export default function PayrollPage() {
                         
                         if (day <= today) {
                             displayHoursAbsent += hoursAbsentForDay;
-                            if(!displayAbsentDates.includes(formattedDate)){
-                               displayAbsentDates.push(formattedDate);
-                            }
                         }
                     }
                 }
@@ -451,7 +426,6 @@ export default function PayrollPage() {
 
             const displayAbsenceDeduction = displayHoursAbsent * hourlyRate;
             
-            // Check if there's anything to report
             const recordsForDisplay = allRecordsForMonth.filter(r => getDateFromRecord(r.date) <= today);
             if (netSalary > 0 || recordsForDisplay.length > 0 || displayHoursAbsent > 0) {
                  targetList.push({
@@ -463,12 +437,11 @@ export default function PayrollPage() {
                     status: 'Unpaid',
                     baseSalary: baseSalary,
                     baseAmount: baseSalary,
-                    hoursAbsent: displayHoursAbsent, // For display
-                    minutesLate: displayMinutesLate, // For display
-                    absenceDeduction: displayAbsenceDeduction, // For display
-                    lateDeduction: lateDeduction, // For display
-                    absentDates: displayAbsentDates, // For display
-                    lateDates: displayLateDates, // For display
+                    hoursAbsent: displayHoursAbsent,
+                    minutesLate: displayMinutesLate,
+                    absenceDeduction: displayAbsenceDeduction,
+                    lateDeduction: lateDeduction,
+                    permissionDaysUsed: Math.min(15, permissionDaysUsedInYear),
                 });
             }
         }
@@ -551,8 +524,10 @@ export default function PayrollPage() {
                 const hoursWorked = calculateHoursWorked(record);
                 const overtime = record.overtimeHours || 0;
                 dailyWeeklyExpense += (hoursWorked + overtime) * hourlyRate;
-            } else if (getDay(day) === 0) { // Unrecorded Sunday
-                dailyWeeklyExpense += 8 * hourlyRate;
+            } else if (getDay(day) === 0) { // Unrecorded Sunday for weekly
+                if (new Date(employee.attendanceStartDate || 0) <= day) {
+                    dailyWeeklyExpense += 8 * hourlyRate;
+                }
             }
         });
         
@@ -597,7 +572,9 @@ export default function PayrollPage() {
                 const overtime = record.overtimeHours || 0;
                 dailyTotalExpense += (hoursWorked + overtime) * hourlyRate;
             } else if (employee.paymentMethod === 'Weekly' && getDay(day) === 0) { // Unrecorded Sunday for weekly
-                dailyTotalExpense += 8 * hourlyRate;
+                if (new Date(employee.attendanceStartDate || 0) <= day) {
+                    dailyTotalExpense += 8 * hourlyRate;
+                }
             }
         });
         
