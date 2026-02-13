@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useDayPicker, type CaptionProps, useNavigation, type DayContentProps } from "react-day-picker";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { buttonVariants } from "@/components/ui/button";
 
 
 type DailyAttendance = {
@@ -133,23 +134,18 @@ export default function AttendancePage() {
 
             if (isPastOrToday && isMonthly) {
                 if (isSunday) {
+                    // Unconditionally set Sunday to present, overriding any record
                     morningStatus = "Present";
                     afternoonStatus = "Present";
                     morningEntry = "08:00";
                     afternoonEntry = "13:30";
-                }
-                if (isSaturday) {
-                     if (!record?.afternoonStatus) {
+                } else if (isSaturday) {
+                     // Set Saturday afternoon to present if no record exists for it
+                    if (!record?.afternoonStatus) {
                         afternoonStatus = "Present";
                         if(!afternoonEntry) afternoonEntry = "13:30";
                     }
                 }
-            }
-             if (isSunday && isMonthly && isPastOrToday) {
-                morningStatus = "Present";
-                afternoonStatus = "Present";
-                morningEntry = "08:00";
-                afternoonEntry = "13:30";
             }
 
             return {
@@ -268,8 +264,11 @@ export default function AttendancePage() {
   const isPresetSunday = useMemo(() => {
     if (!selectedEmployeeDetails) return false;
     const isPastOrToday = !isAfter(startOfDay(selectedDate), startOfDay(new Date()));
+    // This logic is now stricter for Sundays
     return isSunday && selectedEmployeeDetails.paymentMethod === 'Monthly' && isPastOrToday;
   }, [isSunday, selectedEmployeeDetails, selectedDate]);
+  
+  const isSundayAndShouldBeDisabled = isSunday && selectedEmployeeDetails?.paymentMethod === 'Monthly';
 
   const hourlyRate: number = useMemo(() => {
     if (!selectedEmployeeDetails) return 0;
@@ -392,7 +391,7 @@ export default function AttendancePage() {
     const { date, activeModifiers } = props;
     return (
         <div className="flex flex-col h-full w-full items-center justify-center p-1 leading-none">
-            <span className={cn("text-xs", activeModifiers.selected ? 'opacity-80' : 'text-muted-foreground')}>{format(date, 'Eee')}</span>
+            <span className={cn("text-xs", activeModifiers?.selected ? 'opacity-80' : 'text-muted-foreground')}>{format(date, 'Eee')}</span>
             <span className="font-bold text-lg">{format(date, 'd')}</span>
         </div>
     );
@@ -419,6 +418,13 @@ export default function AttendancePage() {
                 captionLayout="dropdown-buttons"
                 fromYear={2015}
                 toYear={2035}
+                classNames={{
+                  cell: "h-16 w-16 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+                  day: cn(
+                    buttonVariants({ variant: "ghost" }),
+                    "h-16 w-16 p-0 font-normal aria-selected:opacity-100"
+                  ),
+                }}
               />
             </CardContent>
           </Card>
@@ -475,7 +481,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("morningStatus", value)
                   }
-                  disabled={isPresetSunday && selectedEmployeeDetails?.paymentMethod === 'Monthly'}
+                  disabled={isSundayAndShouldBeDisabled}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -502,7 +508,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("morningEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent' || (isPresetSunday && selectedEmployeeDetails?.paymentMethod === 'Monthly')}
+                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent' || isSundayAndShouldBeDisabled}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
@@ -514,7 +520,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("afternoonStatus", value)
                   }
-                  disabled={(isMonthlySaturday || (isPresetSunday && selectedEmployeeDetails?.paymentMethod === 'Monthly'))}
+                  disabled={(isMonthlySaturday || isSundayAndShouldBeDisabled)}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -541,7 +547,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("afternoonEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || ((isMonthlySaturday || isPresetSunday) && selectedEmployeeDetails?.paymentMethod === 'Monthly')}
+                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || ((isMonthlySaturday || isSundayAndShouldBeDisabled))}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
