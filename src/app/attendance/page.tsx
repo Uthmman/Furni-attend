@@ -4,7 +4,6 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import {
   Card,
   CardContent,
@@ -33,12 +32,9 @@ import type { AttendanceRecord, Employee, AttendanceStatus } from "@/lib/types";
 import { format, isValid, getDay, isAfter, startOfDay } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
-import { collection, doc, setDoc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
+import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { useDayPicker, type CaptionProps, useNavigation, type DayContentProps } from "react-day-picker";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { buttonVariants } from "@/components/ui/button";
+import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
 
 
 type DailyAttendance = {
@@ -323,79 +319,6 @@ export default function AttendancePage() {
       return <div>Loading...</div>
   }
   
-  const CalendarCaption = useCallback(
-    (props: CaptionProps) => {
-      const { fromYear, toYear } = useDayPicker();
-      const { goToMonth, nextMonth, previousMonth } = useNavigation();
-
-      const years = Array.from(
-        { length: (toYear ?? 0) - (fromYear ?? 0) + 1 },
-        (_, i) => (fromYear ?? 0) + i
-      );
-
-      return (
-        <div className="flex justify-between items-center w-full px-2">
-           <Button variant="outline" size="icon" className="h-7 w-7" disabled={!previousMonth} onClick={() => previousMonth && goToMonth(previousMonth)}>
-                <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <div className="flex gap-2">
-                <Select
-                    value={props.displayMonth.getMonth().toString()}
-                    onValueChange={(value) => {
-                        const newDate = new Date(props.displayMonth);
-                        newDate.setMonth(parseInt(value));
-                        goToMonth(newDate);
-                    }}
-                >
-                    <SelectTrigger className="w-auto border-none focus:ring-0">
-                         <SelectValue asChild>
-                            <span className="font-medium text-base">{format(props.displayMonth, 'MMMM')}</span>
-                        </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                        {Array.from({length: 12}, (_, i) => (
-                           <SelectItem key={i} value={i.toString()}>{format(new Date(2000, i, 1), 'MMMM')}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-                 <Select
-                    value={props.displayMonth.getFullYear().toString()}
-                    onValueChange={(value) => {
-                        const newDate = new Date(props.displayMonth);
-                        newDate.setFullYear(parseInt(value));
-                        goToMonth(newDate);
-                    }}
-                >
-                    <SelectTrigger className="w-auto border-none focus:ring-0">
-                        <SelectValue asChild>
-                           <span className="font-medium text-base">{props.displayMonth.getFullYear()}</span>
-                        </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                        {years.map(year => (
-                           <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-                        ))}
-                    </SelectContent>
-                </Select>
-            </div>
-            <Button variant="outline" size="icon" className="h-7 w-7" disabled={!nextMonth} onClick={() => nextMonth && goToMonth(nextMonth)}>
-                <ChevronRight className="h-4 w-4" />
-            </Button>
-        </div>
-      );
-    },
-    []
-  );
-
-  const GregorianDayCell = (props: DayContentProps) => {
-    const { date, activeModifiers } = props;
-    return (
-        <div className="flex flex-col h-full w-full items-center justify-center p-1 leading-none">
-            <span className={cn("text-xs", activeModifiers?.selected ? 'opacity-80' : 'text-muted-foreground')}>{format(date, 'Eee')}</span>
-            <span className="font-bold text-lg">{format(date, 'd')}</span>
-        </div>
-    );
-  };
 
   return (
     <div className="flex flex-col gap-6">
@@ -406,25 +329,10 @@ export default function AttendancePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <Card>
-            <CardHeader>
-              <CardTitle>Select Date</CardTitle>
-            </CardHeader>
             <CardContent className="flex justify-center">
-              <Calendar
-                mode="single"
-                selected={selectedDate}
-                onSelect={handleDateSelect}
-                components={{ Caption: CalendarCaption, Day: GregorianDayCell }}
-                captionLayout="dropdown-buttons"
-                fromYear={2015}
-                toYear={2035}
-                classNames={{
-                  cell: "h-16 w-16 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
-                  day: cn(
-                    buttonVariants({ variant: "ghost" }),
-                    "h-16 w-16 p-0 font-normal aria-selected:opacity-100"
-                  ),
-                }}
+              <HorizontalDatePicker 
+                selectedDate={selectedDate}
+                onDateSelect={handleDateSelect}
               />
             </CardContent>
           </Card>
