@@ -22,7 +22,7 @@ import {
   parse,
   getDay
 } from "date-fns";
-import { Timestamp } from "firebase/firestore";
+import { Timestamp, getDocs } from "firebase/firestore";
 import type { Employee, AttendanceRecord, PayrollEntry } from "@/lib/types";
 import { useFirestore, useUser, useMemoFirebase } from '@/firebase';
 import { collection } from 'firebase/firestore';
