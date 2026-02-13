@@ -116,27 +116,19 @@ export default function AttendancePage() {
 
   useEffect(() => {
     if (employees) {
-        const today = startOfDay(new Date());
-        const isFutureDate = isAfter(startOfDay(selectedDate), today);
-
         const dailyAttendance: DailyAttendance[] = employees.map((emp) => {
             const record = attendanceRecords?.find((r) => r.employeeId === emp.id);
             const isMonthly = emp.paymentMethod === 'Monthly';
             
-            let morningStatus: AttendanceStatus = "Absent";
-            let afternoonStatus: AttendanceStatus = "Absent";
+            let morningStatus: AttendanceStatus = record?.morningStatus || "Absent";
+            let afternoonStatus: AttendanceStatus = record?.afternoonStatus || "Absent";
 
-            if (record) { // If a record exists, use it
-                morningStatus = record.morningStatus;
-                afternoonStatus = record.afternoonStatus;
-            } else if (!isFutureDate) { // If no record, default based on day
-                if (isSunday) {
-                    morningStatus = "Present";
-                    afternoonStatus = "Present";
-                }
-                if (isMonthly && isSaturday) {
-                    afternoonStatus = "Present";
-                }
+            if (isSunday) {
+                morningStatus = "Present";
+                afternoonStatus = "Present";
+            }
+            if (isMonthly && isSaturday) {
+                afternoonStatus = "Present";
             }
 
             return {
@@ -248,16 +240,12 @@ export default function AttendancePage() {
 
   const isMonthlySaturday = useMemo(() => {
     if (!selectedEmployeeDetails) return false;
-    const today = startOfDay(new Date());
-    const isFutureDate = isAfter(startOfDay(selectedDate), today);
-    return selectedEmployeeDetails.paymentMethod === 'Monthly' && isSaturday && !isFutureDate;
-  }, [selectedEmployeeDetails, isSaturday, selectedDate]);
+    return selectedEmployeeDetails.paymentMethod === 'Monthly' && isSaturday;
+  }, [selectedEmployeeDetails, isSaturday]);
 
   const isPresetSunday = useMemo(() => {
-    const today = startOfDay(new Date());
-    const isFutureDate = isAfter(startOfDay(selectedDate), today);
-    return isSunday && !isFutureDate;
-  }, [isSunday, selectedDate]);
+    return isSunday;
+  }, [isSunday]);
 
   const hourlyRate: number = useMemo(() => {
     if (!selectedEmployeeDetails) return 0;
@@ -553,10 +541,5 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-
-    
-
-    
 
     
