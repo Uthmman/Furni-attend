@@ -8,7 +8,7 @@ import { Users, UserCheck, Wallet, Calendar } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent } from '@/components/ui/card';
 
 const getDateFromRecord = (date: string | any): Date => {
@@ -132,44 +132,41 @@ export default function DashboardPage() {
   
   const { data: employees, loading: employeesLoading } = useCollection<Employee>(employeesCollectionRef);
   
-  const allAttendanceColRef = useMemoFirebase(() => {
-      if (!firestore || !employees || employees.length === 0 || !user) return null;
-      // This is a simplified approach for demonstration. In a real app, you'd likely query per-employee.
-      const allRefs = employees.map(emp => collection(firestore, 'employees', emp.id, 'attendance'));
-      return allRefs; // This isn't a valid query, so we'll handle it in useEffect
-  }, [firestore, employees, user]);
-
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
 
-   useEffect(() => {
-    if (!firestore || !employees || isUserLoading) {
-      if(!employees) setAttendanceLoading(false);
-      return;
+  useEffect(() => {
+    const fetchAllAttendance = async () => {
+      if (!firestore || !employees || employees.length === 0) {
+        setAttendanceLoading(false);
+        return;
+      }
+      setAttendanceLoading(true);
+      try {
+        const recordsPromises = employees.map(async (emp) => {
+          const attendanceColRef = collection(firestore, 'employees', emp.id, 'attendance');
+          const querySnapshot = await getDocs(attendanceColRef);
+          return querySnapshot.docs.map(doc => ({
+            ...doc.data(),
+            id: doc.id,
+            employeeId: emp.id
+          } as AttendanceRecord));
+        });
+        
+        const allRecordsArrays = await Promise.all(recordsPromises);
+        const allRecords = allRecordsArrays.flat();
+        setAllAttendance(allRecords);
+
+      } catch (error) {
+        console.error("Error fetching attendance data:", error);
+      } finally {
+        setAttendanceLoading(false);
+      }
     };
     
-    setAttendanceLoading(true);
-    const fetchAllAttendance = async () => {
-      const allRecords: AttendanceRecord[] = [];
-      for (const emp of employees) {
-        const attendanceColRef = collection(firestore, 'employees', emp.id, 'attendance');
-        const { data: records } = await new Promise<any>(resolve => {
-            const { data: records, isLoading } = useCollection(attendanceColRef);
-            if (!isLoading) resolve({data: records});
-        });
-        if (records) {
-            allRecords.push(...records.map((r: any) => ({...r, employeeId: emp.id})));
-        }
-      }
-      const attendanceQuery = collection(firestore, 'attendance');
-      const { data: attendanceData } = useCollection(attendanceQuery);
-      if(attendanceData) allRecords.push(...attendanceData as any[]);
-      
-      setAllAttendance(allRecords);
-      setAttendanceLoading(false);
-    };
-
-    fetchAllAttendance();
+    if (!isUserLoading && employees) {
+      fetchAllAttendance();
+    }
   }, [firestore, employees, isUserLoading]);
   
   const todayAttendanceCollectionRef = useMemoFirebase(() => {
@@ -232,7 +229,7 @@ export default function DashboardPage() {
         const employeeStartDate = new Date(emp.attendanceStartDate || 0);
 
         periodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) === 0) { 
+            if (day >= employeeStartDate && getDay(day) === 0 && emp.paymentMethod !== 'Monthly') { 
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
                     hoursWorked += 8;
