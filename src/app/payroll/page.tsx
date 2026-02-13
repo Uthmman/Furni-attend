@@ -292,12 +292,9 @@ export default function PayrollPage() {
 
     // Monthly calculation
     const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
-    const daysInMonth = getEthiopianMonthDays(ethToday.year, ethToday.month);
-    const monthEnd = addDays(monthStart, daysInMonth - 1);
     const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethToday.year}`;
 
     employees.forEach(employee => {
-        let period: { start: Date, end: Date };
         let periodLabel: string;
         let targetList: PayrollEntry[];
         
@@ -305,7 +302,7 @@ export default function PayrollPage() {
             const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
             if (!hourlyRate) return;
 
-            period = { start: weekStart, end: weekEnd };
+            const period = { start: weekStart, end: weekEnd };
             periodLabel = weekPeriodLabel;
             targetList = weekly;
 
@@ -360,7 +357,7 @@ export default function PayrollPage() {
             const baseSalary = employee.monthlyRate || 0;
             if (baseSalary === 0) return;
 
-            period = { start: monthStart, end: monthEnd };
+            const period = { start: monthStart, end: today };
             periodLabel = monthPeriodLabel;
             targetList = monthly;
             
@@ -387,12 +384,10 @@ export default function PayrollPage() {
                     totalHoursAbsent += 4.5;
                     isAbsent = true;
                 }
-                // Only count afternoon absence on weekdays (Mon-Fri)
-                if (getDay(recordDate) !== 6 && getDay(recordDate) !== 0) {
-                    if (r.afternoonStatus === 'Absent') {
-                        totalHoursAbsent += 3.5;
-                        isAbsent = true;
-                    }
+                
+                if (getDay(recordDate) !== 6 && r.afternoonStatus === 'Absent') {
+                    totalHoursAbsent += 3.5;
+                    isAbsent = true;
                 }
 
                 if(isAbsent && !absentDates.includes(formattedDate)){
@@ -416,7 +411,7 @@ export default function PayrollPage() {
                     const dayStr = format(day, 'yyyy-MM-dd');
                     if (!recordedDates.has(dayStr)) {
                         const formattedDate = format(day, 'MMM d');
-                        if (getDay(day) === 6) { // Saturday
+                        if (getDay(day) === 6) { 
                             totalHoursAbsent += 4.5;
                         } else {
                             totalHoursAbsent += 8;
