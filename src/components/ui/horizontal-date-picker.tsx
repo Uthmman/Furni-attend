@@ -118,28 +118,32 @@ export function HorizontalDatePicker({
             <ChevronRight className="h-5 w-5" />
         </Button>
       </div>
-      <div className="overflow-hidden" ref={emblaRef}>
-        <div className="flex items-start gap-3 pb-2 -ml-2 pl-4">
-          {daysInMonth.map((day, index) => {
-            const isActive = isSameDay(day, selectedDate);
-            return (
-              <div key={index} className="flex-shrink-0 basis-[4.5rem]">
-                  <button
-                    onClick={() => handleDateClick(day)}
-                    className={cn(
-                      'flex flex-col items-center justify-center p-2 rounded-lg w-16 h-20 transition-colors',
-                      isActive
-                        ? 'bg-primary text-primary-foreground font-bold shadow-lg'
-                        : 'bg-card text-card-foreground hover:bg-accent'
-                    )}
-                  >
-                    <span className={cn("text-xs uppercase", isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{format(day, 'Eee')}</span>
-                    <span className="text-2xl font-bold">{format(day, 'd')}</span>
-                  </button>
-              </div>
-            );
-          })}
+      <div className="relative">
+        <div className="absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-card to-transparent pointer-events-none" />
+        <div className="overflow-hidden" ref={emblaRef}>
+          <div className="flex items-start gap-3 pb-2 -ml-2 pl-4">
+            {daysInMonth.map((day, index) => {
+              const isActive = isSameDay(day, selectedDate);
+              return (
+                <div key={index} className="flex-shrink-0 basis-[4.5rem]">
+                    <button
+                      onClick={() => handleDateClick(day)}
+                      className={cn(
+                        'flex flex-col items-center justify-center p-2 rounded-lg w-16 h-20 transition-colors',
+                        isActive
+                          ? 'bg-primary text-primary-foreground font-bold shadow-lg'
+                          : 'bg-card text-card-foreground hover:bg-accent'
+                      )}
+                    >
+                      <span className={cn("text-xs uppercase", isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{format(day, 'Eee')}</span>
+                      <span className="text-2xl font-bold">{format(day, 'd')}</span>
+                    </button>
+                </div>
+              );
+            })}
+          </div>
         </div>
+        <div className="absolute inset-y-0 right-0 z-10 w-10 bg-gradient-to-l from-card to-transparent pointer-events-none" />
       </div>
     </div>
   );
