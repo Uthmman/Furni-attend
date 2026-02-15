@@ -32,10 +32,11 @@ export function HorizontalDatePicker({
   onDateSelect,
 }: HorizontalDatePickerProps) {
   const [emblaRef, emblaApi] = useEmblaCarousel({
-    align: 'start',
-    containScroll: 'trimSnaps',
+    align: 'center',
+    containScroll: false,
   });
   const [currentMonth, setCurrentMonth] = React.useState(startOfMonth(selectedDate));
+  const [tweenValues, setTweenValues] = React.useState<number[]>([]);
 
   const daysInMonth = React.useMemo(() => {
     return eachDayOfInterval({
@@ -44,32 +45,65 @@ export function HorizontalDatePicker({
     });
   }, [currentMonth]);
 
-  const handleDateClick = (date: Date) => {
-    onDateSelect(date);
-  };
+  const onSelect = React.useCallback(() => {
+    if (!emblaApi) return;
+    const selectedIndex = emblaApi.selectedScrollSnap();
+    // Only update if the selected date is different
+    if (!isSameDay(daysInMonth[selectedIndex], selectedDate)) {
+      onDateSelect(daysInMonth[selectedIndex]);
+    }
+  }, [emblaApi, daysInMonth, onDateSelect, selectedDate]);
+
+  const onScroll = React.useCallback(() => {
+    if (!emblaApi) return;
+
+    const scrollProgress = emblaApi.scrollProgress();
+    const snaps = emblaApi.scrollSnaps();
+
+    const values = snaps.map((snap) => {
+      const diff = snap - scrollProgress;
+      const progress = 1 - Math.pow(Math.abs(diff), 2) * 3;
+      return Math.max(0, progress);
+    });
+    setTweenValues(values);
+  }, [emblaApi]);
+
+  React.useEffect(() => {
+    if (!emblaApi) return;
+
+    onScroll();
+    emblaApi.on('scroll', onScroll);
+    emblaApi.on('select', onSelect);
+
+    return () => {
+      emblaApi.off('scroll', onScroll);
+      emblaApi.off('select', onSelect);
+    };
+  }, [emblaApi, onScroll, onSelect]);
 
   React.useEffect(() => {
     if (emblaApi) {
-        const selectedDayIndex = daysInMonth.findIndex((day) =>
-            isSameDay(day, selectedDate)
-        );
-        if (selectedDayIndex !== -1) {
-            // Instantly snap to the selected date if it's far, otherwise slide
-            const isFar = Math.abs(emblaApi.selectedScrollSnap() - selectedDayIndex) > 5;
-            emblaApi.scrollTo(selectedDayIndex, !isFar);
-        }
-
-        if (!isSameDay(startOfMonth(selectedDate), currentMonth)) {
-            setCurrentMonth(startOfMonth(selectedDate));
-        }
+      const selectedDayIndex = daysInMonth.findIndex((day) =>
+        isSameDay(day, selectedDate)
+      );
+      if (selectedDayIndex !== -1 && selectedDayIndex !== emblaApi.selectedScrollSnap()) {
+        emblaApi.scrollTo(selectedDayIndex);
+      }
+      if (!isSameDay(startOfMonth(selectedDate), currentMonth)) {
+        setCurrentMonth(startOfMonth(selectedDate));
+      }
     }
   }, [selectedDate, emblaApi, daysInMonth, currentMonth]);
 
-
+  const handleDateClick = (index: number) => {
+    if (emblaApi) {
+      emblaApi.scrollTo(index);
+    }
+  };
+  
   const handleMonthChange = (date: Date | undefined) => {
     if (date) {
         onDateSelect(date);
-        setCurrentMonth(startOfMonth(date));
     }
   };
   
@@ -121,19 +155,27 @@ export function HorizontalDatePicker({
       <div className="relative">
         <div className="absolute inset-y-0 left-0 z-10 w-10 bg-gradient-to-r from-card to-transparent pointer-events-none" />
         <div className="overflow-hidden" ref={emblaRef}>
-          <div className="flex items-start gap-3 pb-2 -ml-2 pl-4">
+          <div className="flex items-center gap-3 pb-2 -ml-2 pl-4 h-24">
             {daysInMonth.map((day, index) => {
               const isActive = isSameDay(day, selectedDate);
+              const scale = tweenValues[index] ? tweenValues[index] * 0.25 + 0.75 : 0.75;
+              const opacity = tweenValues[index] ? tweenValues[index] * 0.7 + 0.3 : 0.3;
+
               return (
-                <div key={index} className="flex-shrink-0 basis-[4.5rem]">
+                <div 
+                    key={index}
+                    className="flex-shrink-0 basis-24 transition-transform duration-100 ease-out" 
+                    style={{ transform: `scale(${scale})` }}
+                >
                     <button
-                      onClick={() => handleDateClick(day)}
+                      onClick={() => handleDateClick(index)}
                       className={cn(
-                        'flex flex-col items-center justify-center p-2 rounded-lg w-16 h-20 transition-colors',
+                        'flex flex-col items-center justify-center p-2 rounded-lg w-16 h-20 transition-all duration-300',
                         isActive
                           ? 'bg-primary text-primary-foreground font-bold shadow-lg'
                           : 'bg-card text-card-foreground hover:bg-accent'
                       )}
+                      style={{ opacity }}
                     >
                       <span className={cn("text-xs uppercase", isActive ? 'text-primary-foreground/80' : 'text-muted-foreground')}>{format(day, 'Eee')}</span>
                       <span className="text-2xl font-bold">{format(day, 'd')}</span>
