@@ -58,7 +58,7 @@ export function HorizontalDatePicker({
     if (!emblaApi) return;
 
     const scrollProgress = emblaApi.scrollProgress();
-    const snaps = emblaApi.scrollSnaps();
+    const snaps = emblaApi.scrollSnapList();
 
     const values = snaps.map((snap) => {
       const diff = snap - scrollProgress;
