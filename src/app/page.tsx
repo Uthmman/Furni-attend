@@ -4,20 +4,25 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, Calendar } from "lucide-react";
-import type { Employee, AttendanceRecord } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval } from "date-fns";
+import { Users, UserCheck, Wallet, Calendar, UserX, Clock, Hand } from "lucide-react";
+import type { Employee, AttendanceRecord, AttendanceStatus } from "@/lib/types";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, getDocs } from "firebase/firestore";
-import { Card, CardContent } from '@/components/ui/card';
+import { collection, getDocs, Timestamp } from "firebase/firestore";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
+import { PayrollHistoryChart } from './payroll/payroll-history-chart';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Badge } from '@/components/ui/badge';
+import Link from 'next/link';
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
     return date.toDate();
   }
+  if (!date) return new Date();
   return new Date(date);
 }
-
 
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
   if (!isValid(date)) return "Invalid Date";
@@ -59,7 +64,7 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
     return addDays(today, Math.round(dayDiff));
 };
 
-const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
+const calculateHoursWorked = (record: AttendanceRecord): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
 
@@ -81,19 +86,23 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
     let totalHours = 0;
 
     if (record.morningStatus !== 'Absent' && record.morningEntry) {
-        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-        if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
-            const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
-            totalHours += morningWorkMs / (1000 * 60 * 60);
-        }
+        try {
+            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+            if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
+                const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
+                totalHours += morningWorkMs / (1000 * 60 * 60);
+            }
+        } catch(e){}
     }
     
     if (record.afternoonStatus !== 'Absent' && record.afternoonEntry) {
-        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-        if(isValid(afternoonEntryTime) && afternoonEntryTime < afternoonEndTime) {
-            const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
-            totalHours += afternoonWorkMs / (1000 * 60 * 60);
-        }
+        try {
+            const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+            if(isValid(afternoonEntryTime) && afternoonEntryTime < afternoonEndTime) {
+                const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
+                totalHours += afternoonWorkMs / (1000 * 60 * 60);
+            }
+        } catch(e){}
     }
 
     return Math.max(0, totalHours);
@@ -104,20 +113,46 @@ const calculateMinutesLate = (record: AttendanceRecord): number => {
     let minutesLate = 0;
     if (record.morningStatus === 'Late' && record.morningEntry) {
         const morningStartTime = parse("08:00", "HH:mm", new Date());
-        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-        if (isValid(morningEntryTime) && morningEntryTime > morningStartTime) {
-            minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / (1000 * 60);
-        }
+        try {
+            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+            if (isValid(morningEntryTime) && morningEntryTime > morningStartTime) {
+                minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / (1000 * 60);
+            }
+        } catch(e) {}
     }
     if (record.afternoonStatus === 'Late' && record.afternoonEntry) {
         const afternoonStartTime = parse("13:30", "HH:mm", new Date());
-        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-        if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) {
-            minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
-        }
+        try {
+            const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+            if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) {
+                minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
+            }
+        } catch(e){}
     }
     return Math.round(minutesLate);
 };
+
+const StatusListItem = ({ employee, status, time }: { employee: Employee, status: AttendanceStatus, time?: string }) => (
+    <Link href={`/employees/${employee.id}`} className="block hover:bg-accent rounded-lg -mx-2 px-2">
+        <div className="flex items-center justify-between py-2 border-b">
+            <div className="flex items-center gap-3">
+                <Avatar className="w-9 h-9">
+                    <AvatarFallback>{employee.name.split(" ").map((n) => n[0]).join("")}</AvatarFallback>
+                </Avatar>
+                <div>
+                    <p className="font-medium">{employee.name}</p>
+                    <p className="text-sm text-muted-foreground">{employee.position}</p>
+                </div>
+            </div>
+            {time ? (
+                 <div className="text-sm text-right">
+                    <Badge variant={status === 'Late' ? 'destructive' : 'secondary'} className="capitalize">{status}</Badge>
+                    <p className="text-muted-foreground mt-1">{time}</p>
+                 </div>
+            ) : <Badge variant={status === 'Permission' ? 'default' : 'destructive'} className="capitalize">{status}</Badge>}
+        </div>
+    </Link>
+);
 
 
 export default function DashboardPage() {
@@ -199,7 +234,6 @@ export default function DashboardPage() {
     const today = new Date();
     const ethToday = toEthiopian(today);
 
-    // Week calculations
     const weekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
     
     const estWeekly = employees.reduce((acc, emp) => {
@@ -240,7 +274,6 @@ export default function DashboardPage() {
         return acc + (hoursWorked * hourlyRate);
     }, 0);
 
-    // Month calculations
     const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
     
     const estMonthly = employees.reduce((acc, emp) => {
@@ -333,12 +366,173 @@ export default function DashboardPage() {
     };
   }, [employees, allAttendance, todayAttendance]);
   
+  const todayStatus = useMemo(() => {
+    if (!todayAttendance || !employees) return { absent: [], late: [], permission: [] };
+
+    const absent: Employee[] = [];
+    const late: { employee: Employee; time: string }[] = [];
+    const permission: Employee[] = [];
+
+    const today = new Date();
+    const isSunday = getDay(today) === 0;
+
+    employees.forEach(emp => {
+        const record = todayAttendance.find(r => r.employeeId === emp.id);
+
+        if (isSunday && emp.paymentMethod === 'Monthly') {
+            return; // Skip monthly employees on Sunday, as they are auto-present
+        }
+
+        if (record?.morningStatus === 'Permission' || record?.afternoonStatus === 'Permission') {
+            permission.push(emp);
+        }
+        
+        if (record?.morningStatus === 'Late' || record?.afternoonStatus === 'Late') {
+            const lateTimes = [];
+            if (record.morningStatus === 'Late' && record.morningEntry) lateTimes.push(record.morningEntry);
+            if (record.afternoonStatus === 'Late' && record.afternoonEntry) lateTimes.push(record.afternoonEntry);
+            late.push({ employee: emp, time: lateTimes.join(' & ') });
+        }
+        
+        if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) {
+             if (!record || (record.morningStatus !== 'Permission' && record.afternoonStatus !== 'Permission')) {
+                absent.push(emp);
+             }
+        } else if (record.morningStatus === 'Absent' || record.afternoonStatus === 'Absent') {
+             if (record.morningStatus !== 'Permission' && record.afternoonStatus !== 'Permission') {
+                absent.push(emp);
+             }
+        }
+    });
+
+    return { absent, late, permission };
+
+  }, [todayAttendance, employees]);
+
+  const payrollHistory = useMemo(() => {
+    if (!employees || allAttendance.length === 0) return [];
+    
+    const history = [];
+    const today = new Date();
+
+    for (let i = 5; i >= 0; i--) {
+        const monthDate = subMonths(today, i);
+        const ethDateForMonth = toEthiopian(monthDate);
+        const monthStart = toGregorian(ethDateForMonth.year, ethDateForMonth.month, 1);
+        const daysInMonth = getEthiopianMonthDays(ethDateForMonth.year, ethDateForMonth.month);
+        const monthEnd = addDays(monthStart, daysInMonth - 1);
+        
+        const interval = { start: monthStart, end: monthEnd };
+        let totalPayrollForMonth = 0;
+
+        employees.forEach(employee => {
+            const employeeAttendance = allAttendance.filter(r => 
+                r.employeeId === employee.id && isWithinInterval(getDateFromRecord(r.date), interval)
+            );
+            
+            if (employee.paymentMethod === 'Monthly') {
+                const baseSalary = employee.monthlyRate || 0;
+                if (baseSalary === 0) return;
+
+                const dailyRate = baseSalary / 23.625;
+                const hourlyRateCalc = dailyRate / 8;
+                const minuteRate = hourlyRateCalc / 60;
+                
+                const ethYearForPeriod = toEthiopian(monthStart).year;
+                const permissionDatesInYear = new Set<string>();
+                allAttendance.filter(r => r.employeeId === employee.id).forEach(rec => {
+                    const recDate = getDateFromRecord(rec.date);
+                    if (toEthiopian(recDate).year === ethYearForPeriod) {
+                        if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
+                            permissionDatesInYear.add(format(recDate, 'yyyy-MM-dd'));
+                        }
+                    }
+                });
+                const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
+                const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
+
+                let totalHoursAbsent = 0;
+                const minutesLate = employeeAttendance.reduce((acc, r) => {
+                    const recordDate = getDateFromRecord(r.date);
+                    const recordDateStr = format(recordDate, 'yyyy-MM-dd');
+
+                    let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+                    let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+
+                    if (morningIsUnpaidAbsence) totalHoursAbsent += 4.5;
+                    if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) totalHoursAbsent += 3.5;
+                    
+                    return acc + calculateMinutesLate(r);
+                }, 0);
+
+                const periodDays = eachDayOfInterval(interval);
+                const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+                const recordedDates = new Set(employeeAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+
+                periodDays.forEach(day => {
+                    if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
+                        const dayStr = format(day, 'yyyy-MM-dd');
+                        if (!recordedDates.has(dayStr)) {
+                            if (getDay(day) === 6) totalHoursAbsent += 4.5;
+                            else totalHoursAbsent += 8;
+                        }
+                    }
+                });
+
+                const absenceDeduction = totalHoursAbsent * hourlyRateCalc;
+                const lateDeduction = minutesLate * minuteRate;
+                const netSalary = baseSalary - (absenceDeduction + lateDeduction);
+                totalPayrollForMonth += netSalary > 0 ? netSalary : 0;
+
+            } else { // Weekly
+                const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
+                if (!hourlyRate) return;
+
+                const totalOvertimeHours = employeeAttendance.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+                let totalHours = employeeAttendance.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
+
+                const periodDays = eachDayOfInterval(interval);
+                const recordedDates = new Set(employeeAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+                const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+
+                periodDays.forEach(day => {
+                    if (day >= employeeStartDate && getDay(day) === 0) { // Is Sunday
+                        const dayStr = format(day, 'yyyy-MM-dd');
+                        if (!recordedDates.has(dayStr)) {
+                            totalHours += 8;
+                        }
+                    }
+                });
+                
+                const totalAmount = (totalHours + totalOvertimeHours) * hourlyRate;
+                totalPayrollForMonth += totalAmount > 0 ? totalAmount : 0;
+            }
+        });
+
+        history.push({
+            month: format(monthStart, 'MMM'),
+            total: totalPayrollForMonth,
+        });
+    }
+    return history;
+}, [employees, allAttendance]);
+
+
   const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading;
   
   const today = new Date();
 
   if (loading) {
-    return <div>Loading...</div>
+    return (
+        <div className="flex h-full w-full items-center justify-center">
+            <div
+                className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent"
+                role="status"
+            >
+                <span className="sr-only">Loading...</span>
+            </div>
+        </div>
+    );
   }
 
   return (
@@ -346,9 +540,9 @@ export default function DashboardPage() {
         <Card>
             <CardContent className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <Calendar className="h-6 w-6 text-primary" />
+                    <Calendar className="h-8 w-8 text-primary" />
                     <div>
-                        <p className="text-lg font-semibold">{format(today, 'EEEE, MMMM d, yyyy')}</p>
+                        <p className="text-xl font-semibold">{format(today, 'EEEE, MMMM d, yyyy')}</p>
                         <p className="text-sm text-muted-foreground">{ethiopianDateFormatter(today, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
                     </div>
                 </div>
@@ -363,21 +557,73 @@ export default function DashboardPage() {
         <StatCard
           title="On-site Today"
           value={`${dashboardStats.onSiteToday} / ${dashboardStats.totalEmployees}`}
-          icon={<UserCheck className="h-5 w-5 text-muted-foreground" />}
+          icon={<UserCheck className="h-5 w-s text-muted-foreground" />}
         />
          <StatCard
             title="This Week's Payroll"
-            value={`ETB ${dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+            value={`ETB ${dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
             icon={<Wallet className="h-5 w-5 text-muted-foreground" />}
-            description={`Est: ETB ${dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+            description={`Est: ETB ${dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
         />
         <StatCard
             title="This Month's Payroll"
-            value={`ETB ${dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+            value={`ETB ${dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
             icon={<Wallet className="h-5 w-5 text-muted-foreground" />}
-            description={`Est: ETB ${dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 2 })}`}
+            description={`Est: ETB ${dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`}
         />
+      </div>
+
+       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-2">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Today's Status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <Tabs defaultValue="absent">
+                        <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="absent">
+                                <UserX className="mr-2 h-4 w-4" /> Absent ({todayStatus.absent.length})
+                            </TabsTrigger>
+                            <TabsTrigger value="late">
+                                <Clock className="mr-2 h-4 w-4" /> Late ({todayStatus.late.length})
+                            </TabsTrigger>
+                            <TabsTrigger value="permission">
+                                <Hand className="mr-2 h-4 w-4" /> Permission ({todayStatus.permission.length})
+                            </TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="absent" className="mt-4">
+                            {todayStatus.absent.length > 0 ? (
+                                todayStatus.absent.map(emp => <StatusListItem key={emp.id} employee={emp} status="Absent" />)
+                            ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is absent today.</p>}
+                        </TabsContent>
+                         <TabsContent value="late" className="mt-4">
+                            {todayStatus.late.length > 0 ? (
+                                todayStatus.late.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Late" time={item.time} />)
+                            ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is late today.</p>}
+                        </TabsContent>
+                         <TabsContent value="permission" className="mt-4">
+                            {todayStatus.permission.length > 0 ? (
+                                todayStatus.permission.map(emp => <StatusListItem key={emp.id} employee={emp} status="Permission" />)
+                            ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is on leave today.</p>}
+                        </TabsContent>
+                    </Tabs>
+                </CardContent>
+            </Card>
+        </div>
+        <div className="lg:col-span-3">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Payroll History</CardTitle>
+                    <CardDescription>Total payroll expenses for the last 6 months.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <PayrollHistoryChart data={payrollHistory} />
+                </CardContent>
+            </Card>
+        </div>
       </div>
     </div>
   );
 }
+
