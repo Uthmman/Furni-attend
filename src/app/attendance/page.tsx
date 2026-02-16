@@ -130,15 +130,17 @@ export default function AttendancePage() {
 
             if (isPastOrToday && isMonthly) {
                 if (isSunday) {
-                    // Unconditionally set Sunday to present, overriding any record
+                    // Unconditionally set Sunday to present, overriding any record.
                     morningStatus = "Present";
                     afternoonStatus = "Present";
                     morningEntry = "08:00";
                     afternoonEntry = "13:30";
                 } else if (isSaturday) {
-                     // Unconditionally set Saturday afternoon to present, overriding any record
-                    afternoonStatus = "Present";
-                    afternoonEntry = "13:30";
+                    // Saturday afternoon defaults to 'Present' if there isn't an explicit record, but can be overridden.
+                    if (!record || record.afternoonStatus === undefined || record.afternoonStatus === null) {
+                         afternoonStatus = "Present";
+                         afternoonEntry = "13:30";
+                    }
                 }
             }
 
@@ -248,12 +250,6 @@ export default function AttendancePage() {
       }
       return undefined;
   }, [selectedEmployeeAttendance, employees, isUserLoading]);
-
-  const isMonthlySaturday = useMemo(() => {
-    if (!selectedEmployeeDetails) return false;
-    const isPastOrToday = !isAfter(startOfDay(selectedDate), startOfDay(new Date()));
-    return selectedEmployeeDetails.paymentMethod === 'Monthly' && isSaturday && isPastOrToday;
-  }, [selectedEmployeeDetails, isSaturday, selectedDate]);
 
   const isPresetSunday = useMemo(() => {
     if (!selectedEmployeeDetails) return false;
@@ -426,7 +422,7 @@ export default function AttendancePage() {
                   onValueChange={(value: AttendanceStatus) =>
                     handleDialogInputChange("afternoonStatus", value)
                   }
-                  disabled={(isMonthlySaturday || isSundayAndShouldBeDisabled)}
+                  disabled={isSundayAndShouldBeDisabled}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue />
@@ -453,7 +449,7 @@ export default function AttendancePage() {
                   onChange={(e) =>
                     handleDialogInputChange("afternoonEntry", e.target.value)
                   }
-                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || ((isMonthlySaturday || isSundayAndShouldBeDisabled))}
+                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || isSundayAndShouldBeDisabled}
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
