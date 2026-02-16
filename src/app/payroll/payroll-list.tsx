@@ -43,22 +43,36 @@ interface PayrollListProps {
 }
 
 const generateSmsSummary = (entry: PayrollEntry): string => {
+    let summary = `Hi ${entry.employeeName}, your payroll for ${entry.period}:\n`;
+
     if (entry.paymentMethod === 'Monthly') {
-        return `Hi ${entry.employeeName}, your payroll for ${entry.period}:\n` +
-               `Base Salary: ETB ${(entry.baseSalary || 0).toFixed(2)}\n` +
-               `Late: -ETB ${(entry.lateDeduction || 0).toFixed(2)}\n` +
-               `Absence: -ETB ${(entry.absenceDeduction || 0).toFixed(2)}\n` +
-               `Net Salary: ETB **${entry.amount.toFixed(2)}**\n` +
-               `Thank you.`;
+        summary += `Base Salary: ETB ${(entry.baseSalary || 0).toFixed(2)}\n`;
+
+        if (entry.absenceDeduction && entry.absenceDeduction > 0) {
+            summary += `Absence Deduction: -ETB ${entry.absenceDeduction.toFixed(2)}\n`;
+        }
+        
+        if (entry.lateDeduction && entry.lateDeduction > 0) {
+            summary += `Late Deduction: -ETB ${entry.lateDeduction.toFixed(2)}\n`;
+        }
+
+        summary += `Net Salary: ETB **${entry.amount.toFixed(2)}**\n`;
+    } else { // Weekly
+        summary += `Base Pay: ETB ${(entry.baseAmount || 0).toFixed(2)}\n`;
+
+        if (entry.overtimeAmount && entry.overtimeAmount > 0) {
+            summary += `Overtime: +ETB ${entry.overtimeAmount.toFixed(2)}\n`;
+        }
+
+        if (entry.lateDeduction && entry.lateDeduction > 0) {
+            summary += `Late Deduction: -ETB ${entry.lateDeduction.toFixed(2)}\n`;
+        }
+
+        summary += `Total Pay: ETB **${entry.amount.toFixed(2)}**\n`;
     }
-    
-    // Summary for weekly employees
-    return `Hi ${entry.employeeName}, your payroll for ${entry.period}:\n` +
-           `Base: ETB ${(entry.baseAmount || 0).toFixed(2)}\n` +
-           `Overtime: ETB ${(entry.overtimeAmount || 0).toFixed(2)}\n` +
-           `Late: -ETB ${(entry.lateDeduction || 0).toFixed(2)}\n` +
-           `Total: ETB **${entry.amount.toFixed(2)}**\n` +
-           `Thank you.`;
+
+    summary += `Thank you.`;
+    return summary;
 };
 
 
