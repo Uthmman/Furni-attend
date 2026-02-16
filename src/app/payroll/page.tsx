@@ -166,7 +166,7 @@ export default function PayrollPage() {
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
   
-  const [selectedMonth, setSelectedMonth] = useState<Date>(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1));
+  const [selectedMonth, setSelectedMonth] = useState<Date>(new Date());
   const [monthOptions, setMonthOptions] = useState<{label: string, value: string}[]>([]);
   
   const [selectedWeek, setSelectedWeek] = useState<Date | undefined>(undefined);
@@ -250,206 +250,171 @@ export default function PayrollPage() {
   }, [setTitle, allAttendance, employees]);
 
 
-  const { weeklyPayroll, monthlyPayroll } = useMemo(() => {
-    if (!employees || allAttendance.length === 0) return { weeklyPayroll: [], monthlyPayroll: [] };
-
+  const weeklyPayroll = useMemo(() => {
+    if (!employees || allAttendance.length === 0 || !selectedWeek) return [];
+    
     const weekly: PayrollEntry[] = [];
-    const monthly: PayrollEntry[] = [];
+    const weekStart = startOfWeek(selectedWeek, { weekStartsOn: 0 });
+    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
+    const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+    
+    employees.filter(employee => employee.paymentMethod === 'Weekly').forEach(employee => {
+        const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
+        if (!hourlyRate) return;
 
-    const today = new Date();
-    const ethToday = toEthiopian(today);
-
-    // Weekly calculation
-    const weekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
-    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 }); // Saturday
-    const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short' })}`;
-
-    // Monthly calculation
-    const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
-    const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethToday.year}`;
-
-    employees.forEach(employee => {
+        const period = { start: weekStart, end: weekEnd };
         
-        if (employee.paymentMethod === 'Weekly') {
-            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
-            if (!hourlyRate) return;
+        const relevantRecords = allAttendance.filter(r => 
+            r.employeeId === employee.id &&
+            isValid(getDateFromRecord(r.date)) &&
+            isWithinInterval(getDateFromRecord(r.date), period)
+        );
 
-            const period = { start: weekStart, end: weekEnd };
-            const periodLabel = weekPeriodLabel;
-            const targetList = weekly;
+        let totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r, false), 0);
+        const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+        
+        const periodDays = eachDayOfInterval(period);
+        const recordedDates = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        const employeeStartDate = new Date(employee.attendanceStartDate || 0);
 
-             const relevantRecords = allAttendance.filter(r => 
-                r.employeeId === employee.id &&
-                isValid(getDateFromRecord(r.date)) &&
-                isWithinInterval(getDateFromRecord(r.date), period)
-            );
-
-            let totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r, false), 0);
-            const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-            
-            const periodDays = eachDayOfInterval(period);
-            const recordedDates = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
-            const employeeStartDate = new Date(employee.attendanceStartDate || 0);
-
-            periodDays.forEach(day => {
-                if (day >= employeeStartDate && getDay(day) === 0) { // Is Sunday
-                    const dayStr = format(day, 'yyyy-MM-dd');
-                    if (!recordedDates.has(dayStr)) {
-                        totalHours += 8;
-                    }
+        periodDays.forEach(day => {
+            if (day >= employeeStartDate && getDay(day) === 0) { // Is Sunday
+                const dayStr = format(day, 'yyyy-MM-dd');
+                if (!recordedDates.has(dayStr)) {
+                    totalHours += 8;
                 }
-            });
-
-            const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r, false), 0);
-            const finalAmount = (totalHours + overtimeHours) * hourlyRate;
-            const overtimeAmount = overtimeHours * hourlyRate;
-            const lateHours = Math.max(0, expectedHours - totalHours);
-            const lateDeduction = lateHours * hourlyRate;
-            const baseAmount = employee.dailyRate ? employee.dailyRate * 6 : (expectedHours - overtimeHours) * hourlyRate;
-            const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
-
-            if (finalAmount > 0 || daysWorked > 0) {
-                targetList.push({
-                    employeeId: employee.id,
-                    employeeName: employee.name,
-                    paymentMethod: employee.paymentMethod,
-                    period: periodLabel,
-                    amount: finalAmount,
-                    status: 'Unpaid',
-                    workingDays: daysWorked,
-                    totalHours: totalHours,
-                    overtimeHours: overtimeHours,
-                    baseAmount: baseAmount > 0 ? baseAmount : 0,
-                    overtimeAmount: overtimeAmount,
-                    lateDeduction: lateDeduction,
-                });
             }
+        });
 
-        } else { // Monthly
-            const baseSalary = employee.monthlyRate || 0;
-            if (baseSalary === 0) return;
+        const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r, false), 0);
+        const finalAmount = (totalHours + overtimeHours) * hourlyRate;
+        const overtimeAmount = overtimeHours * hourlyRate;
+        const lateHours = Math.max(0, expectedHours - totalHours);
+        const lateDeduction = lateHours * hourlyRate;
+        const baseAmount = employee.dailyRate ? employee.dailyRate * 6 : (expectedHours - overtimeHours) * hourlyRate;
+        const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
 
-            const ethYearForPeriod = ethToday.year;
-            const allEmployeeRecords = allAttendance.filter(r => r.employeeId === employee.id);
-            const permissionDatesInYear = new Set<string>();
-            allEmployeeRecords.forEach(rec => {
-                const recDate = getDateFromRecord(rec.date);
-                if (toEthiopian(recDate).year === ethYearForPeriod) {
-                    if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
-                        permissionDatesInYear.add(format(recDate, 'yyyy-MM-dd'));
-                    }
-                }
+        if (finalAmount > 0 || daysWorked > 0) {
+            weekly.push({
+                employeeId: employee.id,
+                employeeName: employee.name,
+                paymentMethod: employee.paymentMethod,
+                period: weekPeriodLabel,
+                amount: finalAmount,
+                status: 'Unpaid',
+                workingDays: daysWorked,
+                totalHours: totalHours,
+                overtimeHours: overtimeHours,
+                baseAmount: baseAmount > 0 ? baseAmount : 0,
+                overtimeAmount: overtimeAmount,
+                lateDeduction: lateDeduction,
             });
-            const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
-            const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
-            const permissionDaysUsedInYear = sortedPermissionDates.length;
-            
-            const daysInMonth = getEthiopianMonthDays(ethToday.year, ethToday.month);
-            const monthEnd = addDays(monthStart, daysInMonth - 1);
-            
-            const periodLabel = monthPeriodLabel;
-            const targetList = monthly;
-            
-            const dailyRate = baseSalary / 23.625;
-            const hourlyRate = dailyRate / 8;
-            const minuteRate = hourlyRate / 60;
-
-            const calculationPeriod = { start: monthStart, end: monthEnd };
-            const allRecordsForMonth = allAttendance.filter(r => 
-                r.employeeId === employee.id &&
-                isValid(getDateFromRecord(r.date)) &&
-                isWithinInterval(getDateFromRecord(r.date), calculationPeriod)
-            );
-            const recordedDatesForMonth = new Set(allRecordsForMonth.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
-
-            // -- Initialize variables --
-            let projectedHoursAbsent = 0;
-            let displayHoursAbsent = 0;
-            let displayMinutesLate = 0;
-            
-            // -- Process recorded attendance --
-            allRecordsForMonth.forEach(r => {
-                const recordDate = getDateFromRecord(r.date);
-                let hoursAbsentThisRecord = 0;
-
-                const recordDateStr = format(recordDate, 'yyyy-MM-dd');
-                const morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
-                const afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
-
-                if (morningIsUnpaidAbsence) {
-                    hoursAbsentThisRecord += 4.5;
-                }
-                if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) {
-                    hoursAbsentThisRecord += 3.5;
-                }
-                
-                projectedHoursAbsent += hoursAbsentThisRecord;
-
-                if (recordDate <= today) {
-                    displayHoursAbsent += hoursAbsentThisRecord;
-                    const currentMinutesLate = calculateMinutesLate(r);
-                    if (currentMinutesLate > 0) {
-                        displayMinutesLate += currentMinutesLate;
-                    }
-                }
-            });
-            
-            // -- Process unrecorded days --
-            const calculationPeriodDays = eachDayOfInterval(calculationPeriod);
-            const employeeStartDate = new Date(employee.attendanceStartDate || 0);
-
-            calculationPeriodDays.forEach(day => {
-                if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
-                    const dayStr = format(day, 'yyyy-MM-dd');
-                    if (!recordedDatesForMonth.has(dayStr)) {
-                        let hoursAbsentForDay = 0;
-                        if (getDay(day) === 6) { 
-                            hoursAbsentForDay = 4.5;
-                        } else {
-                            hoursAbsentForDay = 8;
-                        }
-                        
-                        projectedHoursAbsent += hoursAbsentForDay;
-                        
-                        if (day <= today) {
-                            displayHoursAbsent += hoursAbsentForDay;
-                        }
-                    }
-                }
-            });
-
-            // -- Final Calculations --
-            const projectedAbsenceDeduction = projectedHoursAbsent * hourlyRate;
-            const lateDeduction = displayMinutesLate * minuteRate; // Lates are not projected
-            
-            const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction);
-
-            const displayAbsenceDeduction = displayHoursAbsent * hourlyRate;
-            
-            const recordsForDisplay = allRecordsForMonth.filter(r => getDateFromRecord(r.date) <= today);
-            if (netSalary > 0 || recordsForDisplay.length > 0 || displayHoursAbsent > 0) {
-                 targetList.push({
-                    employeeId: employee.id,
-                    employeeName: employee.name,
-                    paymentMethod: employee.paymentMethod,
-                    period: periodLabel,
-                    amount: netSalary, // Final projected salary
-                    status: 'Unpaid',
-                    baseSalary: baseSalary,
-                    baseAmount: baseSalary,
-                    hoursAbsent: displayHoursAbsent,
-                    minutesLate: displayMinutesLate,
-                    absenceDeduction: displayAbsenceDeduction,
-                    lateDeduction: lateDeduction,
-                    permissionDaysUsed: Math.min(15, permissionDaysUsedInYear),
-                });
-            }
         }
     });
 
-    return { weeklyPayroll: weekly, monthlyPayroll: monthly };
+    return weekly;
+  }, [employees, allAttendance, selectedWeek]);
+  
+  const monthlyPayroll = useMemo(() => {
+    if (!employees || allAttendance.length === 0 || !selectedMonth) return [];
 
-  }, [employees, allAttendance]);
+    const monthly: PayrollEntry[] = [];
+    const monthStart = selectedMonth;
+    const ethDate = toEthiopian(monthStart);
+    const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethDate.year}`;
+
+    employees.filter(employee => employee.paymentMethod === 'Monthly').forEach(employee => {
+        const baseSalary = employee.monthlyRate || 0;
+        if (baseSalary === 0) return;
+
+        const ethYearForPeriod = ethDate.year;
+        const allEmployeeRecords = allAttendance.filter(r => r.employeeId === employee.id);
+        const permissionDatesInYear = new Set<string>();
+        allEmployeeRecords.forEach(rec => {
+            const recDate = getDateFromRecord(rec.date);
+            if (toEthiopian(recDate).year === ethYearForPeriod) {
+                if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
+                    permissionDatesInYear.add(format(recDate, 'yyyy-MM-dd'));
+                }
+            }
+        });
+        const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
+        const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
+        const permissionDaysUsedInYear = sortedPermissionDates.length;
+        
+        const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
+        const monthEnd = addDays(monthStart, daysInMonth - 1);
+        
+        const dailyRate = baseSalary / 23.625;
+        const hourlyRate = dailyRate / 8;
+        const minuteRate = hourlyRate / 60;
+
+        const calculationPeriod = { start: monthStart, end: monthEnd };
+        const allRecordsForMonth = allAttendance.filter(r => 
+            r.employeeId === employee.id &&
+            isValid(getDateFromRecord(r.date)) &&
+            isWithinInterval(getDateFromRecord(r.date), calculationPeriod)
+        );
+        const recordedDatesForMonth = new Set(allRecordsForMonth.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+
+        let projectedHoursAbsent = 0;
+        let displayMinutesLate = 0;
+        
+        allRecordsForMonth.forEach(r => {
+            const recordDate = getDateFromRecord(r.date);
+            let hoursAbsentThisRecord = 0;
+
+            const recordDateStr = format(recordDate, 'yyyy-MM-dd');
+            const morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+            const afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+
+            if (morningIsUnpaidAbsence) hoursAbsentThisRecord += 4.5;
+            if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) hoursAbsentThisRecord += 3.5;
+            
+            projectedHoursAbsent += hoursAbsentThisRecord;
+            displayMinutesLate += calculateMinutesLate(r);
+        });
+        
+        const calculationPeriodDays = eachDayOfInterval(calculationPeriod);
+        const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+
+        calculationPeriodDays.forEach(day => {
+            if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
+                const dayStr = format(day, 'yyyy-MM-dd');
+                if (!recordedDatesForMonth.has(dayStr)) {
+                    projectedHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                }
+            }
+        });
+
+        const projectedAbsenceDeduction = projectedHoursAbsent * hourlyRate;
+        const lateDeduction = displayMinutesLate * minuteRate;
+        
+        const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction);
+
+        if (netSalary > 0 || allRecordsForMonth.length > 0) {
+             monthly.push({
+                employeeId: employee.id,
+                employeeName: employee.name,
+                paymentMethod: employee.paymentMethod,
+                period: monthPeriodLabel,
+                amount: netSalary,
+                status: 'Unpaid',
+                baseSalary: baseSalary,
+                baseAmount: baseSalary,
+                hoursAbsent: projectedHoursAbsent,
+                minutesLate: displayMinutesLate,
+                absenceDeduction: projectedAbsenceDeduction,
+                lateDeduction: lateDeduction,
+                permissionDaysUsed: Math.min(15, permissionDaysUsedInYear),
+            });
+        }
+    });
+
+    return monthly;
+
+  }, [employees, allAttendance, selectedMonth]);
+
 
   const monthlyExpenseHistoryData = useMemo(() => {
     if (!employees || !allAttendance || !selectedMonth) return { monthly: [], totalMonthly: 0 };
@@ -611,8 +576,20 @@ export default function PayrollPage() {
   return (
     <div className="flex flex-col gap-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <PayrollList title="Upcoming Weekly Payout" payrollData={weeklyPayroll} />
-            <PayrollList title="Upcoming Monthly Payout" payrollData={monthlyPayroll} />
+            <PayrollList 
+                title="Weekly Payout" 
+                payrollData={weeklyPayroll}
+                periodOptions={weekOptions}
+                selectedPeriod={selectedWeek?.toISOString()}
+                onPeriodChange={handleWeekSelect}
+            />
+            <PayrollList 
+                title="Monthly Payout" 
+                payrollData={monthlyPayroll} 
+                periodOptions={monthOptions}
+                selectedPeriod={selectedMonth?.toISOString()}
+                onPeriodChange={handleMonthSelect}
+            />
         </div>
 
         <Card>
