@@ -136,11 +136,9 @@ export default function AttendancePage() {
                     morningEntry = "08:00";
                     afternoonEntry = "13:30";
                 } else if (isSaturday) {
-                     // Set Saturday afternoon to present if no record exists for it
-                    if (!record?.afternoonStatus) {
-                        afternoonStatus = "Present";
-                        if(!afternoonEntry) afternoonEntry = "13:30";
-                    }
+                     // Unconditionally set Saturday afternoon to present, overriding any record
+                    afternoonStatus = "Present";
+                    afternoonEntry = "13:30";
                 }
             }
 
