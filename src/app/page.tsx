@@ -132,7 +132,7 @@ const calculateMinutesLate = (record: AttendanceRecord): number => {
     return Math.round(minutesLate);
 };
 
-const StatusListItem = ({ employee, status, time }: { employee: Employee, status: AttendanceStatus, time?: string }) => (
+const StatusListItem = ({ employee, status, detail }: { employee: Employee, status: AttendanceStatus, detail?: string }) => (
     <Link href={`/employees/${employee.id}`} className="block hover:bg-accent rounded-lg -mx-2 px-2">
         <div className="flex items-center justify-between py-2 border-b">
             <div className="flex items-center gap-3">
@@ -144,12 +144,10 @@ const StatusListItem = ({ employee, status, time }: { employee: Employee, status
                     <p className="text-sm text-muted-foreground">{employee.position}</p>
                 </div>
             </div>
-            {time ? (
-                 <div className="text-sm text-right">
-                    <Badge variant={status === 'Late' ? 'destructive' : 'secondary'} className="capitalize">{status}</Badge>
-                    <p className="text-muted-foreground mt-1">{time}</p>
-                 </div>
-            ) : <Badge variant={status === 'Permission' ? 'default' : 'destructive'} className="capitalize">{status}</Badge>}
+            <div className="text-sm text-right">
+                <Badge variant={status === 'Late' || status === 'Absent' ? 'destructive' : status === 'Permission' ? 'default' : 'secondary'} className="capitalize">{status}</Badge>
+                {detail && <p className="text-muted-foreground mt-1">{detail}</p>}
+            </div>
         </div>
     </Link>
 );
@@ -369,12 +367,13 @@ export default function DashboardPage() {
   const todayStatus = useMemo(() => {
     if (!todayAttendance || !employees) return { absent: [], late: [], permission: [] };
 
-    const absent: Employee[] = [];
+    const absent: { employee: Employee, period: string }[] = [];
     const late: { employee: Employee; time: string }[] = [];
-    const permission: Employee[] = [];
+    const permission: { employee: Employee, period: string }[] = [];
 
-    const today = new Date();
-    const isSunday = getDay(today) === 0;
+    const now = new Date();
+    const isAfternoonCheckTime = now.getHours() > 13 || (now.getHours() === 13 && now.getMinutes() >= 30);
+    const isSunday = getDay(now) === 0;
 
     employees.forEach(emp => {
         const record = todayAttendance.find(r => r.employeeId === emp.id);
@@ -382,26 +381,47 @@ export default function DashboardPage() {
         if (isSunday && emp.paymentMethod === 'Monthly') {
             return; // Skip monthly employees on Sunday, as they are auto-present
         }
+        
+        const morningIsAbsent = !record || record.morningStatus === 'Absent';
+        const afternoonIsAbsent = !record || record.afternoonStatus === 'Absent';
+        const morningHasPermission = record?.morningStatus === 'Permission';
+        const afternoonHasPermission = record?.afternoonStatus === 'Permission';
 
-        if (record?.morningStatus === 'Permission' || record?.afternoonStatus === 'Permission') {
-            permission.push(emp);
+        // Handle Permissions
+        if (morningHasPermission && afternoonHasPermission) {
+            permission.push({ employee: emp, period: 'Full Day' });
+        } else if (morningHasPermission) {
+            permission.push({ employee: emp, period: 'Morning' });
+        } else if (afternoonHasPermission) {
+            if (isAfternoonCheckTime) {
+                permission.push({ employee: emp, period: 'Afternoon' });
+            }
         }
         
+        // Handle Lates
         if (record?.morningStatus === 'Late' || record?.afternoonStatus === 'Late') {
             const lateTimes = [];
             if (record.morningStatus === 'Late' && record.morningEntry) lateTimes.push(record.morningEntry);
             if (record.afternoonStatus === 'Late' && record.afternoonEntry) lateTimes.push(record.afternoonEntry);
             late.push({ employee: emp, time: lateTimes.join(' & ') });
         }
-        
-        if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) {
-             if (!record || (record.morningStatus !== 'Permission' && record.afternoonStatus !== 'Permission')) {
-                absent.push(emp);
+
+        // Handle Absences (only if no permission)
+        const isAbsentMorning = morningIsAbsent && !morningHasPermission;
+        const isAbsentAfternoon = afternoonIsAbsent && !afternoonHasPermission;
+
+        if (isAbsentMorning && isAbsentAfternoon) {
+             if(isAfternoonCheckTime) {
+                absent.push({ employee: emp, period: 'Full Day' });
+             } else {
+                absent.push({ employee: emp, period: 'Morning' });
              }
-        } else if (record.morningStatus === 'Absent' || record.afternoonStatus === 'Absent') {
-             if (record.morningStatus !== 'Permission' && record.afternoonStatus !== 'Permission') {
-                absent.push(emp);
-             }
+        } else if (isAbsentMorning) {
+            absent.push({ employee: emp, period: 'Morning' });
+        } else if (isAbsentAfternoon) {
+            if (isAfternoonCheckTime) {
+                absent.push({ employee: emp, period: 'Afternoon' });
+            }
         }
     });
 
@@ -536,7 +556,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-8">
         <Card>
             <CardContent className="p-4 flex items-center justify-between">
                 <div className="flex items-center gap-4">
@@ -573,57 +593,53 @@ export default function DashboardPage() {
         />
       </div>
 
-       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div className="lg:col-span-2">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Today's Status</CardTitle>
-                </CardHeader>
-                <CardContent>
-                    <Tabs defaultValue="absent">
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="absent">
-                                <UserX className="mr-2 h-4 w-4" /> Absent ({todayStatus.absent.length})
-                            </TabsTrigger>
-                            <TabsTrigger value="late">
-                                <Clock className="mr-2 h-4 w-4" /> Late ({todayStatus.late.length})
-                            </TabsTrigger>
-                            <TabsTrigger value="permission">
-                                <Hand className="mr-2 h-4 w-4" /> Permission ({todayStatus.permission.length})
-                            </TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="absent" className="mt-4">
-                            {todayStatus.absent.length > 0 ? (
-                                todayStatus.absent.map(emp => <StatusListItem key={emp.id} employee={emp} status="Absent" />)
-                            ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is absent today.</p>}
-                        </TabsContent>
-                         <TabsContent value="late" className="mt-4">
-                            {todayStatus.late.length > 0 ? (
-                                todayStatus.late.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Late" time={item.time} />)
-                            ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is late today.</p>}
-                        </TabsContent>
-                         <TabsContent value="permission" className="mt-4">
-                            {todayStatus.permission.length > 0 ? (
-                                todayStatus.permission.map(emp => <StatusListItem key={emp.id} employee={emp} status="Permission" />)
-                            ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is on leave today.</p>}
-                        </TabsContent>
-                    </Tabs>
-                </CardContent>
-            </Card>
-        </div>
-        <div className="lg:col-span-3">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Payroll History</CardTitle>
-                    <CardDescription>Total payroll expenses for the last 6 months.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <PayrollHistoryChart data={payrollHistory} />
-                </CardContent>
-            </Card>
-        </div>
+       <div className="flex flex-col gap-8">
+        <Card>
+            <CardHeader>
+                <CardTitle>Today's Status</CardTitle>
+            </CardHeader>
+            <CardContent>
+                <Tabs defaultValue="absent">
+                    <TabsList className="grid w-full grid-cols-3">
+                        <TabsTrigger value="absent">
+                            <UserX className="mr-2 h-4 w-4" /> Absent ({todayStatus.absent.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="late">
+                            <Clock className="mr-2 h-4 w-4" /> Late ({todayStatus.late.length})
+                        </TabsTrigger>
+                        <TabsTrigger value="permission">
+                            <Hand className="mr-2 h-4 w-4" /> Permission ({todayStatus.permission.length})
+                        </TabsTrigger>
+                    </TabsList>
+                    <TabsContent value="absent" className="mt-4">
+                        {todayStatus.absent.length > 0 ? (
+                            todayStatus.absent.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Absent" detail={item.period} />)
+                        ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is absent today.</p>}
+                    </TabsContent>
+                     <TabsContent value="late" className="mt-4">
+                        {todayStatus.late.length > 0 ? (
+                            todayStatus.late.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Late" detail={item.time} />)
+                        ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is late today.</p>}
+                    </TabsContent>
+                     <TabsContent value="permission" className="mt-4">
+                        {todayStatus.permission.length > 0 ? (
+                            todayStatus.permission.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Permission" detail={item.period} />)
+                        ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is on leave today.</p>}
+                    </TabsContent>
+                </Tabs>
+            </CardContent>
+        </Card>
+        
+        <Card>
+            <CardHeader>
+                <CardTitle>Payroll History</CardTitle>
+                <CardDescription>Total payroll expenses for the last 6 months.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <PayrollHistoryChart data={payrollHistory} />
+            </CardContent>
+        </Card>
       </div>
     </div>
   );
 }
-
