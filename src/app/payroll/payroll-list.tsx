@@ -142,7 +142,29 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                                             <div className="font-medium">{entry.employeeName}</div>
                                             <div className="text-sm text-muted-foreground">
                                                 {entry.paymentMethod === 'Weekly' ? 
-                                                    `${entry.workingDays || 0} day(s) worked` : 
+                                                    (
+                                                        <>
+                                                            <div>{entry.workingDays || 0} day(s) worked</div>
+                                                            {(entry.overtimeHours || 0) > 0 && (
+                                                                <div className="text-primary flex items-center">
+                                                                    {(entry.overtimeHours || 0).toFixed(1)} hrs overtime
+                                                                </div>
+                                                            )}
+                                                            {(entry.hoursAbsent || 0) > 0 && (
+                                                                <div className="text-destructive flex items-center">
+                                                                    {(entry.hoursAbsent || 0).toFixed(1)} hrs absent
+                                                                </div>
+                                                            )}
+                                                            {(entry.minutesLate || 0) > 0 && (
+                                                                <div className="text-destructive flex items-center">
+                                                                    {(entry.minutesLate || 0).toFixed(0)} mins late
+                                                                </div>
+                                                            )}
+                                                            {(entry.hoursAbsent || 0) === 0 && (entry.minutesLate || 0) === 0 && (entry.overtimeHours || 0) === 0 && (
+                                                                <div>No issues</div>
+                                                            )}
+                                                        </>
+                                                    ) : 
                                                     (
                                                         <>
                                                             {(entry.hoursAbsent || 0) > 0 && (

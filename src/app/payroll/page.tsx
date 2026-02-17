@@ -122,22 +122,6 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
     return Math.max(0, totalHours);
 };
 
-const calculateExpectedHours = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
-    if (!record) return 0;
-    const isSaturday = getDay(getDateFromRecord(record.date)) === 6;
-
-    let expected = 0;
-    if (record.morningStatus !== 'Absent') {
-        expected += 4.5;
-    }
-    if (record.afternoonStatus !== 'Absent') {
-        if(isSaturday && isMonthlyEmployee) expected += 3.5;
-        else expected += 3.5;
-    }
-
-    return expected;
-}
-
 const calculateMinutesLate = (record: AttendanceRecord): number => {
     if (!record) return 0;
     let minutesLate = 0;
@@ -277,6 +261,7 @@ export default function PayrollPage() {
         const recordedDates = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
         const employeeStartDate = new Date(employee.attendanceStartDate || 0);
 
+        // Add hours for unrecorded sundays
         periodDays.forEach(day => {
             if (day >= employeeStartDate && getDay(day) === 0) { // Is Sunday
                 const dayStr = format(day, 'yyyy-MM-dd');
@@ -285,14 +270,41 @@ export default function PayrollPage() {
                 }
             }
         });
+        
+        let hoursAbsent = 0;
+        const minutesLate = relevantRecords.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
 
-        const expectedHours = relevantRecords.reduce((acc, r) => acc + calculateExpectedHours(r, false), 0);
+        periodDays.forEach(day => {
+            if (day < employeeStartDate) return;
+
+            const dayOfWeek = getDay(day);
+            let expectedHoursToday = 0;
+            if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Mon-Fri
+                expectedHoursToday = 8;
+            } else if (dayOfWeek === 6) { // Sat
+                expectedHoursToday = 4.5;
+            }
+
+            if (expectedHoursToday > 0) {
+                const dayStr = format(day, 'yyyy-MM-dd');
+                const record = relevantRecords.find(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr);
+                
+                let workedHoursToday = 0;
+                if (record) {
+                    workedHoursToday = calculateHoursWorked(record, false);
+                }
+
+                if (workedHoursToday < expectedHoursToday) {
+                    hoursAbsent += expectedHoursToday - workedHoursToday;
+                }
+            }
+        });
+
         const finalAmount = (totalHours + overtimeHours) * hourlyRate;
+        const baseAmount = totalHours * hourlyRate;
         const overtimeAmount = overtimeHours * hourlyRate;
-        const lateHours = Math.max(0, expectedHours - totalHours);
-        const lateDeduction = lateHours * hourlyRate;
-        const baseAmount = employee.dailyRate ? employee.dailyRate * 6 : (expectedHours - overtimeHours) * hourlyRate;
-        const daysWorked = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
+        
+        const daysWorked = new Set(relevantRecords.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
 
         if (finalAmount > 0 || daysWorked > 0) {
             weekly.push({
@@ -305,9 +317,10 @@ export default function PayrollPage() {
                 workingDays: daysWorked,
                 totalHours: totalHours,
                 overtimeHours: overtimeHours,
-                baseAmount: baseAmount > 0 ? baseAmount : 0,
+                baseAmount: baseAmount,
                 overtimeAmount: overtimeAmount,
-                lateDeduction: lateDeduction,
+                hoursAbsent: hoursAbsent,
+                minutesLate: minutesLate,
             });
         }
     });
