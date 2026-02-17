@@ -61,12 +61,16 @@ const generateSmsSummary = (entry: PayrollEntry): string => {
     } else { // Weekly
         summary += `Base Pay: ETB ${(entry.baseAmount || 0).toFixed(2)}\n`;
 
-        if (entry.overtimeAmount && entry.overtimeAmount > 0) {
-            summary += `Overtime: +ETB ${entry.overtimeAmount.toFixed(2)}\n`;
+        if (entry.absenceDeduction && entry.absenceDeduction > 0) {
+            summary += `Absence Deduction (${(entry.hoursAbsent || 0).toFixed(1)} hrs): -ETB ${entry.absenceDeduction.toFixed(2)}\n`;
         }
 
         if (entry.lateDeduction && entry.lateDeduction > 0) {
-            summary += `Late Deduction: -ETB ${entry.lateDeduction.toFixed(2)}\n`;
+            summary += `Late Deduction (${entry.minutesLate || 0} mins): -ETB ${entry.lateDeduction.toFixed(2)}\n`;
+        }
+
+        if (entry.overtimeAmount && entry.overtimeAmount > 0) {
+            summary += `Overtime Pay (${entry.overtimeHours || 0} hrs): +ETB ${entry.overtimeAmount.toFixed(2)}\n`;
         }
 
         summary += `Total Pay: ETB **${entry.amount.toFixed(2)}**\n`;

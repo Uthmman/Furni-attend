@@ -245,6 +245,7 @@ export default function PayrollPage() {
     employees.filter(employee => employee.paymentMethod === 'Weekly').forEach(employee => {
         const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
         if (!hourlyRate) return;
+        const minuteRate = hourlyRate / 60;
 
         const period = { start: weekStart, end: weekEnd };
         
@@ -254,59 +255,61 @@ export default function PayrollPage() {
             isWithinInterval(getDateFromRecord(r.date), period)
         );
 
-        let totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r, false), 0);
+        let expectedHours = 0;
+        let hoursAbsent = 0;
+        let minutesLate = 0;
         const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
         
         const periodDays = eachDayOfInterval(period);
-        const recordedDates = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
         const employeeStartDate = new Date(employee.attendanceStartDate || 0);
-
-        // Add hours for unrecorded sundays
-        periodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) === 0) { // Is Sunday
-                const dayStr = format(day, 'yyyy-MM-dd');
-                if (!recordedDates.has(dayStr)) {
-                    totalHours += 8;
-                }
-            }
-        });
-        
-        let hoursAbsent = 0;
-        const minutesLate = relevantRecords.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
 
         periodDays.forEach(day => {
             if (day < employeeStartDate) return;
 
             const dayOfWeek = getDay(day);
             let expectedHoursToday = 0;
-            if (dayOfWeek >= 1 && dayOfWeek <= 5) { // Mon-Fri
-                expectedHoursToday = 8;
-            } else if (dayOfWeek === 6) { // Sat
-                expectedHoursToday = 4.5;
-            }
+            
+            // Sundays are paid days for weekly.
+            if (dayOfWeek === 0) expectedHoursToday = 8;
+            else if (dayOfWeek >= 1 && dayOfWeek <= 5) expectedHoursToday = 8; // Mon-Fri
+            else if (dayOfWeek === 6) expectedHoursToday = 4.5; // Sat
 
-            if (expectedHoursToday > 0) {
-                const dayStr = format(day, 'yyyy-MM-dd');
-                const record = relevantRecords.find(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr);
-                
-                let workedHoursToday = 0;
-                if (record) {
-                    workedHoursToday = calculateHoursWorked(record, false);
-                }
+            expectedHours += expectedHoursToday;
 
-                if (workedHoursToday < expectedHoursToday) {
-                    hoursAbsent += expectedHoursToday - workedHoursToday;
+            const dayStr = format(day, 'yyyy-MM-dd');
+            const record = relevantRecords.find(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr);
+
+            if (record) {
+                minutesLate += calculateMinutesLate(record);
+
+                let hoursAbsentToday = 0;
+                if (record.morningStatus === 'Absent') {
+                    hoursAbsentToday += 4.5; // Morning session
                 }
+                if (record.afternoonStatus === 'Absent') {
+                    if (dayOfWeek !== 6) { // Not Saturday
+                        hoursAbsentToday += 3.5; // Afternoon session
+                    }
+                }
+                hoursAbsent += hoursAbsentToday;
+            } else {
+                // No record for the day, so full day is absent
+                hoursAbsent += expectedHoursToday;
             }
         });
-
-        const finalAmount = (totalHours + overtimeHours) * hourlyRate;
-        const baseAmount = totalHours * hourlyRate;
+        
+        const absenceDeduction = hoursAbsent * hourlyRate;
+        const lateDeduction = minutesLate * minuteRate;
+        const baseAmount = expectedHours * hourlyRate;
         const overtimeAmount = overtimeHours * hourlyRate;
+
+        const finalAmount = baseAmount - absenceDeduction - lateDeduction + overtimeAmount;
         
         const daysWorked = new Set(relevantRecords.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
+        
+        const totalHours = expectedHours - hoursAbsent;
 
-        if (finalAmount > 0 || daysWorked > 0) {
+        if (finalAmount > 0 || daysWorked > 0 || relevantRecords.length > 0) {
             weekly.push({
                 employeeId: employee.id,
                 employeeName: employee.name,
@@ -321,6 +324,8 @@ export default function PayrollPage() {
                 overtimeAmount: overtimeAmount,
                 hoursAbsent: hoursAbsent,
                 minutesLate: minutesLate,
+                absenceDeduction: absenceDeduction,
+                lateDeduction: lateDeduction,
             });
         }
     });
