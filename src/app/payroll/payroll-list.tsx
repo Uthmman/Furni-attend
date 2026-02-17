@@ -49,11 +49,12 @@ const generateSmsSummary = (entry: PayrollEntry): string => {
         summary += `Base Salary: ETB ${(entry.baseSalary || 0).toFixed(2)}\n`;
 
         if (entry.absenceDeduction && entry.absenceDeduction > 0) {
-            summary += `Absence Deduction: -ETB ${entry.absenceDeduction.toFixed(2)}\n`;
+            const absentDays = (entry.hoursAbsent || 0) / 8;
+            summary += `Absence Deduction (${absentDays.toFixed(1)} days): -ETB ${entry.absenceDeduction.toFixed(2)}\n`;
         }
         
         if (entry.lateDeduction && entry.lateDeduction > 0) {
-            summary += `Late Deduction: -ETB ${entry.lateDeduction.toFixed(2)}\n`;
+            summary += `Late Deduction (${entry.minutesLate || 0} mins): -ETB ${entry.lateDeduction.toFixed(2)}\n`;
         }
 
         summary += `Net Salary: ETB **${entry.amount.toFixed(2)}**\n`;
