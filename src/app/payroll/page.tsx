@@ -254,19 +254,21 @@ export default function PayrollPage() {
             isWithinInterval(getDateFromRecord(r.date), period)
         );
 
-        let totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
+        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
         const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-        const minutesLate = relevantRecords.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
 
-        const periodDays = eachDayOfInterval(period);
-        const employeeStartDate = new Date(employee.attendanceStartDate || 0);
-        const recordedDates = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        let minutesLate = 0;
+        let hoursAbsent = 0;
 
-        periodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) === 0) { // Is Sunday
-                const dayStr = format(day, 'yyyy-MM-dd');
-                if (!recordedDates.has(dayStr)) {
-                    totalHours += 8;
+        relevantRecords.forEach(r => {
+            minutesLate += calculateMinutesLate(r);
+            const recordDate = getDateFromRecord(r.date);
+            if (getDay(recordDate) !== 0) { // Don't count Sunday absences for summary
+                if(r.morningStatus === 'Absent') {
+                    hoursAbsent += 4.5;
+                }
+                if(r.afternoonStatus === 'Absent' && getDay(recordDate) !== 6) { // And not Saturday afternoon
+                    hoursAbsent += 3.5;
                 }
             }
         });
@@ -291,6 +293,7 @@ export default function PayrollPage() {
                 baseAmount: baseAmount,
                 overtimeAmount: overtimeAmount,
                 minutesLate: minutesLate,
+                hoursAbsent: hoursAbsent,
             });
         }
     });

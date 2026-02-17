@@ -66,6 +66,15 @@ const generateSmsSummary = (entry: PayrollEntry): string => {
             summary += `Overtime Pay (${entry.overtimeHours || 0} hrs): +ETB ${entry.overtimeAmount.toFixed(2)}\n`;
         }
 
+        if (entry.hoursAbsent && entry.hoursAbsent > 0) {
+            const absentDays = (entry.hoursAbsent || 0) / 8; // approx days
+            summary += `Absent: ${absentDays.toFixed(1)} days (${(entry.hoursAbsent || 0).toFixed(1)} hrs)\n`;
+        }
+        
+        if (entry.minutesLate && entry.minutesLate > 0) {
+            summary += `Late: ${entry.minutesLate || 0} mins\n`;
+        }
+
         summary += `Total Pay: ETB **${entry.amount.toFixed(2)}**\n`;
     }
 
@@ -148,13 +157,15 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                                                                     {(entry.overtimeHours || 0).toFixed(1)} hrs overtime
                                                                 </div>
                                                             )}
+                                                            {(entry.hoursAbsent || 0) > 0 && (
+                                                                <div className="text-destructive flex items-center">
+                                                                    {(entry.hoursAbsent || 0).toFixed(1)} hrs absent
+                                                                </div>
+                                                            )}
                                                             {(entry.minutesLate || 0) > 0 && (
                                                                 <div className="text-destructive flex items-center">
                                                                     {(entry.minutesLate || 0).toFixed(0)} mins late
                                                                 </div>
-                                                            )}
-                                                            {(entry.overtimeHours || 0) === 0 && (entry.minutesLate || 0) === 0 && (
-                                                                <div>No overtime or lates</div>
                                                             )}
                                                         </>
                                                     ) : 
