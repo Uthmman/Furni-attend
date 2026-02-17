@@ -21,13 +21,6 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import type { AttendanceRecord, Employee, AttendanceStatus } from "@/lib/types";
 import { format, isValid, getDay, isAfter, startOfDay } from "date-fns";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +28,7 @@ import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePe
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
+import { Plus } from "lucide-react";
 
 
 type DailyAttendance = {
@@ -92,8 +86,6 @@ export default function AttendancePage() {
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
   
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const isSaturday = getDay(selectedDate) === 6;
-  const isSunday = getDay(selectedDate) === 0;
   
   const formattedDate = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   
@@ -105,11 +97,15 @@ export default function AttendancePage() {
   const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceCollectionRef);
 
   const [attendance, setAttendance] = useState<DailyAttendance[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [
-    selectedEmployeeAttendance,
-    setSelectedEmployeeAttendance,
-  ] = useState<DailyAttendance | null>(null);
+  
+  // Dialog states
+  const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
+  const [isLateDialogOpen, setIsLateDialogOpen] = useState(false);
+  const [isOvertimeDialogOpen, setIsOvertimeDialogOpen] = useState(false);
+  
+  // Data for dialogs
+  const [selectedEmployeeAttendance, setSelectedEmployeeAttendance] = useState<DailyAttendance | null>(null);
+  const [lateDialogData, setLateDialogData] = useState<{ session: 'morning' | 'afternoon', time: string } | null>(null);
 
   useEffect(() => {
     setTitle("Log Attendance");
@@ -127,16 +123,16 @@ export default function AttendancePage() {
 
             const isMonthly = emp.paymentMethod === 'Monthly';
             const isPastOrToday = !isAfter(startOfDay(selectedDate), startOfDay(new Date()));
+            const isSunday = getDay(selectedDate) === 0;
+            const isSaturday = getDay(selectedDate) === 6;
 
             if (isPastOrToday && isMonthly) {
                 if (isSunday) {
-                    // Unconditionally set Sunday to present, overriding any record.
                     morningStatus = "Present";
                     afternoonStatus = "Present";
                     morningEntry = "08:00";
                     afternoonEntry = "13:30";
                 } else if (isSaturday) {
-                    // Saturday afternoon defaults to 'Present' if there isn't an explicit record, but can be overridden.
                     if (!record || record.afternoonStatus === undefined || record.afternoonStatus === null) {
                          afternoonStatus = "Present";
                          afternoonEntry = "13:30";
@@ -156,7 +152,7 @@ export default function AttendancePage() {
         });
         setAttendance(dailyAttendance);
     }
-  }, [employees, attendanceRecords, selectedDate, isSaturday, isSunday]);
+  }, [employees, attendanceRecords, selectedDate]);
 
 
   const handleDateSelect = (date: Date | undefined) => {
@@ -164,86 +160,134 @@ export default function AttendancePage() {
     setSelectedDate(date);
   };
 
-  const openDialogForEmployee = (employeeId: string) => {
-    const employeeData = attendance.find((att) => att.employeeId === employeeId);
-    if (employeeData) {
-      setSelectedEmployeeAttendance({ ...employeeData });
-      setIsDialogOpen(true);
-    }
-  };
-
-  const handleDialogInputChange = (
-    field: keyof DailyAttendance,
-    value: string | number
-  ) => {
-    if (selectedEmployeeAttendance) {
-      const updated = { ...selectedEmployeeAttendance, [field]: value };
-       if (field === 'morningStatus') {
-            if (value === 'Absent') {
-                updated.morningEntry = "";
-            } else if ((value === 'Present' || value === 'Late' || value === 'Permission') && !updated.morningEntry) {
-                updated.morningEntry = "08:00";
-            }
-        }
-        if (field === 'afternoonStatus') {
-            if (value === 'Absent') {
-                updated.afternoonEntry = "";
-            } else if ((value === 'Present' || value === 'Late' || value === 'Permission') && !updated.afternoonEntry) {
-                updated.afternoonEntry = "13:30";
-            }
-        }
-        if (updated.morningStatus === 'Absent' && updated.afternoonStatus === 'Absent') {
-            updated.overtimeHours = 0;
-        }
-      setSelectedEmployeeAttendance(updated);
-    }
-  };
-
-  const handleSaveDialog = () => {
-    if (!selectedEmployeeAttendance || !firestore) return;
-
-    const att = selectedEmployeeAttendance;
+  const saveAttendance = async (attendanceData: DailyAttendance) => {
+    if (!firestore) return;
     const dateStr = format(selectedDate, "yyyy-MM-dd");
 
-    const recordRef = doc(firestore, 'attendance', dateStr, 'records', att.employeeId);
-    const employeeAttendanceRef = doc(firestore, 'employees', att.employeeId, 'attendance', dateStr);
+    const recordRef = doc(firestore, 'attendance', dateStr, 'records', attendanceData.employeeId);
+    const employeeAttendanceRef = doc(firestore, 'employees', attendanceData.employeeId, 'attendance', dateStr);
     
     const record: Partial<AttendanceRecord> = {
-        employeeId: att.employeeId,
+        employeeId: attendanceData.employeeId,
         date: selectedDate.toISOString(),
-        morningStatus: att.morningStatus,
-        afternoonStatus: att.afternoonStatus,
-        morningEntry: att.morningEntry || "",
-        afternoonEntry: att.afternoonEntry || "",
-        overtimeHours: att.overtimeHours || 0,
+        morningStatus: attendanceData.morningStatus,
+        afternoonStatus: attendanceData.afternoonStatus,
+        morningEntry: attendanceData.morningEntry || "",
+        afternoonEntry: attendanceData.afternoonEntry || "",
+        overtimeHours: attendanceData.overtimeHours || 0,
     };
     
     const batch = writeBatch(firestore);
     batch.set(recordRef, record, { merge: true });
     batch.set(employeeAttendanceRef, record, { merge: true });
 
-    batch.commit()
-      .then(() => {
+    try {
+        await batch.commit();
         toast({ title: "Attendance saved!" });
         setAttendance((prev) =>
           prev.map((a) =>
-            a.employeeId === att.employeeId ? att : a
+            a.employeeId === attendanceData.employeeId ? attendanceData : a
           )
         );
-      })
-      .catch((e) => {
+      } catch(e) {
         const permissionError = new FirestorePermissionError({
             path: recordRef.path,
             operation: 'write',
             requestResourceData: record,
         });
         errorEmitter.emit('permission-error', permissionError);
-      });
+      };
+  };
+
+  const openAttendanceDialog = (employeeId: string) => {
+    const employeeData = attendance.find((att) => att.employeeId === employeeId);
+    if (employeeData) {
+      setSelectedEmployeeAttendance({ ...employeeData });
+      setIsAttendanceDialogOpen(true);
+    }
+  };
+
+  const openOvertimeDialog = (employeeId: string) => {
+    const employeeData = attendance.find((att) => att.employeeId === employeeId);
+    if (employeeData) {
+      setSelectedEmployeeAttendance({ ...employeeData });
+      setIsOvertimeDialogOpen(true);
+    }
+  };
+
+  const handleStatusClick = async (session: 'morning' | 'afternoon', status: AttendanceStatus) => {
+      if (!selectedEmployeeAttendance || !firestore) return;
+
+      const employee = employees?.find(e => e.id === selectedEmployeeAttendance.employeeId);
+      const isMonthly = employee?.paymentMethod === 'Monthly';
+      const isSunday = getDay(selectedDate) === 0;
+
+      if (isSunday && isMonthly) {
+          toast({ variant: 'destructive', title: "Cannot Change", description: "Attendance for monthly employees on Sundays cannot be changed."});
+          return;
+      }
+
+      if (status === 'Late') {
+          setLateDialogData({ session, time: session === 'morning' ? '08:00' : '13:30' });
+          setIsLateDialogOpen(true);
+          return;
+      }
+
+      const updatedAttendance = { ...selectedEmployeeAttendance };
+      let entryTime = "";
+      if (status === 'Present' || status === 'Permission') {
+          entryTime = session === 'morning' ? '08:00' : '13:30';
+      }
+
+      if (session === 'morning') {
+          updatedAttendance.morningStatus = status;
+          updatedAttendance.morningEntry = entryTime;
+      } else {
+          updatedAttendance.afternoonStatus = status;
+          updatedAttendance.afternoonEntry = entryTime;
+      }
+
+      if (updatedAttendance.morningStatus === 'Absent' && updatedAttendance.afternoonStatus === 'Absent') {
+          updatedAttendance.overtimeHours = 0;
+      }
+
+      await saveAttendance(updatedAttendance);
+      setIsAttendanceDialogOpen(false);
+  };
+
+  const handleSaveLateTime = async () => {
+    if (!selectedEmployeeAttendance || !lateDialogData || !firestore) return;
+
+    const updatedAttendance = { ...selectedEmployeeAttendance };
+    if (lateDialogData.session === 'morning') {
+        updatedAttendance.morningStatus = 'Late';
+        updatedAttendance.morningEntry = lateDialogData.time;
+    } else {
+        updatedAttendance.afternoonStatus = 'Late';
+        updatedAttendance.afternoonEntry = lateDialogData.time;
+    }
     
-    setIsDialogOpen(false);
+    await saveAttendance(updatedAttendance);
+    
+    setIsLateDialogOpen(false);
+    setIsAttendanceDialogOpen(false);
+    setLateDialogData(null);
     setSelectedEmployeeAttendance(null);
   };
   
+  const handleOvertimeInputChange = (value: number) => {
+      if(selectedEmployeeAttendance) {
+          setSelectedEmployeeAttendance({ ...selectedEmployeeAttendance, overtimeHours: value });
+      }
+  };
+
+  const handleSaveOvertime = async () => {
+    if (!selectedEmployeeAttendance || !firestore) return;
+    await saveAttendance(selectedEmployeeAttendance);
+    setIsOvertimeDialogOpen(false);
+    setSelectedEmployeeAttendance(null);
+  };
+
   const selectedEmployeeDetails: Employee | undefined = useMemo(() => {
       if (!isUserLoading && employees) {
         return employees.find(e => e.id === selectedEmployeeAttendance?.employeeId);
@@ -251,75 +295,14 @@ export default function AttendancePage() {
       return undefined;
   }, [selectedEmployeeAttendance, employees, isUserLoading]);
 
-  const isPresetSunday = useMemo(() => {
-    if (!selectedEmployeeDetails) return false;
-    const isPastOrToday = !isAfter(startOfDay(selectedDate), startOfDay(new Date()));
-    // This logic is now stricter for Sundays
-    return isSunday && selectedEmployeeDetails.paymentMethod === 'Monthly' && isPastOrToday;
-  }, [isSunday, selectedEmployeeDetails, selectedDate]);
-  
-  const isSundayAndShouldBeDisabled = isSunday && selectedEmployeeDetails?.paymentMethod === 'Monthly';
+  const isSundayAndShouldBeDisabled = getDay(selectedDate) === 0 && selectedEmployeeDetails?.paymentMethod === 'Monthly';
 
-  const hourlyRate: number = useMemo(() => {
-    if (!selectedEmployeeDetails) return 0;
-    return selectedEmployeeDetails.hourlyRate ||
-        (selectedEmployeeDetails.dailyRate ? selectedEmployeeDetails.dailyRate / 8 : 0) ||
-        (selectedEmployeeDetails.monthlyRate ? selectedEmployeeDetails.monthlyRate / 23.625 / 8 : 0);
-  }, [selectedEmployeeDetails]);
-  
-  const overtimePay: number = useMemo(() => {
-      if (!selectedEmployeeAttendance?.overtimeHours || !hourlyRate) return 0;
-      return selectedEmployeeAttendance.overtimeHours * hourlyRate;
-  }, [selectedEmployeeAttendance, hourlyRate]);
-
-
-  const handleSaveChanges = async () => {
-    if (!firestore) return;
-    const batch = writeBatch(firestore);
-    const dateStr = format(selectedDate, "yyyy-MM-dd");
-
-    attendance.forEach((att) => {
-        const recordRef = doc(firestore, 'attendance', dateStr, 'records', att.employeeId);
-        const employeeAttendanceRef = doc(firestore, 'employees', att.employeeId, 'attendance', dateStr);
-
-        const record: Partial<AttendanceRecord> = {
-            employeeId: att.employeeId,
-            date: selectedDate.toISOString(),
-            morningStatus: att.morningStatus,
-            afternoonStatus: att.afternoonStatus,
-            morningEntry: att.morningEntry || "",
-            afternoonEntry: att.afternoonEntry || "",
-            overtimeHours: att.overtimeHours || 0,
-        };
-        batch.set(recordRef, record, { merge: true });
-        batch.set(employeeAttendanceRef, record, { merge: true });
-    });
-
-    batch.commit()
-        .then(() => {
-            toast({ title: "All attendance changes saved!" });
-        })
-        .catch((e) => {
-             const permissionError = new FirestorePermissionError({
-                path: `/attendance/${dateStr}/records`,
-                operation: 'write',
-                requestResourceData: attendance,
-            });
-            errorEmitter.emit('permission-error', permissionError);
-        });
-  };
-  
   if (employeesLoading || isUserLoading) {
       return <div>Loading...</div>
   }
   
-
   return (
     <div className="flex flex-col gap-6">
-       <div className="flex items-center justify-between">
-         <div/>
-        <Button onClick={handleSaveChanges}>Save All Changes</Button>
-      </div>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1">
           <Card>
@@ -343,20 +326,25 @@ export default function AttendancePage() {
             </CardHeader>
             <CardContent>
                 {attendanceLoading && <p>Loading attendance...</p>}
-                {!attendanceLoading && <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+                {!attendanceLoading && <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
                     {attendance.map((att) => {
                         const overallStatus = getOverallStatus(att.morningStatus, att.afternoonStatus);
                         return (
-                            <button key={att.employeeId} onClick={() => openDialogForEmployee(att.employeeId)} className="text-left">
-                                <Card className="hover:bg-accent transition-colors">
-                                    <CardContent className="flex items-center justify-between p-4">
-                                        <p className="font-medium">{att.employeeName}</p>
-                                        <Badge variant={getStatusVariant(overallStatus)} className="capitalize">
-                                            {overallStatus}
-                                        </Badge>
-                                    </CardContent>
-                                </Card>
-                            </button>
+                            <div key={att.employeeId} className="flex items-center gap-2">
+                                <button onClick={() => openAttendanceDialog(att.employeeId)} className="text-left flex-1">
+                                    <Card className="hover:bg-accent transition-colors">
+                                        <CardContent className="flex items-center justify-between p-4">
+                                            <p className="font-medium">{att.employeeName}</p>
+                                            <Badge variant={getStatusVariant(overallStatus)} className="capitalize">
+                                                {overallStatus}
+                                            </Badge>
+                                        </CardContent>
+                                    </Card>
+                                </button>
+                                <Button variant="outline" size="icon" onClick={() => openOvertimeDialog(att.employeeId)} aria-label="Log Overtime">
+                                    <Plus className="h-4 w-4"/>
+                                </Button>
+                            </div>
                         )
                     })}
                 </div>}
@@ -365,126 +353,85 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="sm:max-w-[425px]">
+      <Dialog open={isAttendanceDialogOpen} onOpenChange={setIsAttendanceDialogOpen}>
+        <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>
               Log Attendance for {selectedEmployeeAttendance?.employeeName}
             </DialogTitle>
           </DialogHeader>
           {selectedEmployeeAttendance && (
-            <div className="grid gap-4 py-4">
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="morningStatus" className="text-right">
-                  Morning
-                </Label>
-                <Select
-                  value={selectedEmployeeAttendance.morningStatus}
-                  onValueChange={(value: AttendanceStatus) =>
-                    handleDialogInputChange("morningStatus", value)
-                  }
-                  disabled={isSundayAndShouldBeDisabled}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Present">Present</SelectItem>
-                    <SelectItem value="Late">Late</SelectItem>
-                    <SelectItem value="Absent">Absent</SelectItem>
-                     {selectedEmployeeDetails?.paymentMethod === 'Monthly' && (
-                      <SelectItem value="Permission">Permission</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
+            <div className="grid gap-6 py-4">
+              <div className="grid gap-2">
+                  <Label>Morning</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Status: <Badge variant={getStatusVariant(selectedEmployeeAttendance.morningStatus)}>{selectedEmployeeAttendance.morningStatus}</Badge>
+                    {selectedEmployeeAttendance.morningEntry && ` at ${selectedEmployeeAttendance.morningEntry}`}
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Present')} disabled={isSundayAndShouldBeDisabled}>Present</Button>
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Late')} disabled={isSundayAndShouldBeDisabled}>Late</Button>
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Absent')} disabled={isSundayAndShouldBeDisabled}>Absent</Button>
+                      {selectedEmployeeDetails?.paymentMethod === 'Monthly' && <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Permission')} disabled={isSundayAndShouldBeDisabled}>Permission</Button>}
+                  </div>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="morning" className="text-right">
-                  Entry Time
-                </Label>
-                <Input
-                  id="morning"
-                  type="time"
-                  className="col-span-3"
-                  value={selectedEmployeeAttendance.morningEntry}
-                  onChange={(e) =>
-                    handleDialogInputChange("morningEntry", e.target.value)
-                  }
-                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent' || isSundayAndShouldBeDisabled}
-                />
+              <div className="grid gap-2">
+                  <Label>Afternoon</Label>
+                   <p className="text-sm text-muted-foreground">
+                    Status: <Badge variant={getStatusVariant(selectedEmployeeAttendance.afternoonStatus)}>{selectedEmployeeAttendance.afternoonStatus}</Badge>
+                    {selectedEmployeeAttendance.afternoonEntry && ` at ${selectedEmployeeAttendance.afternoonEntry}`}
+                  </p>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Present')} disabled={isSundayAndShouldBeDisabled}>Present</Button>
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Late')} disabled={isSundayAndShouldBeDisabled}>Late</Button>
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Absent')} disabled={isSundayAndShouldBeDisabled}>Absent</Button>
+                      {selectedEmployeeDetails?.paymentMethod === 'Monthly' && <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Permission')} disabled={isSundayAndShouldBeDisabled}>Permission</Button>}
+                  </div>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="afternoonStatus" className="text-right">
-                  Afternoon
-                </Label>
-                <Select
-                  value={selectedEmployeeAttendance.afternoonStatus}
-                  onValueChange={(value: AttendanceStatus) =>
-                    handleDialogInputChange("afternoonStatus", value)
-                  }
-                  disabled={isSundayAndShouldBeDisabled}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Present">Present</SelectItem>
-                    <SelectItem value="Late">Late</SelectItem>
-                    <SelectItem value="Absent">Absent</SelectItem>
-                     {selectedEmployeeDetails?.paymentMethod === 'Monthly' && (
-                      <SelectItem value="Permission">Permission</SelectItem>
-                    )}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="afternoon" className="text-right">
-                  Entry Time
-                </Label>
-                <Input
-                  id="afternoon"
-                  type="time"
-                  className="col-span-3"
-                  value={selectedEmployeeAttendance.afternoonEntry}
-                  onChange={(e) =>
-                    handleDialogInputChange("afternoonEntry", e.target.value)
-                  }
-                  disabled={selectedEmployeeAttendance.afternoonStatus === 'Absent' || isSundayAndShouldBeDisabled}
-                />
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="overtime" className="text-right">
-                  Overtime (hrs)
-                </Label>
-                <Input
-                  id="overtime"
-                  type="number"
-                  className="col-span-3"
-                  min="0"
-                  value={selectedEmployeeAttendance.overtimeHours}
-                  onChange={(e) =>
-                    handleDialogInputChange("overtimeHours", Number(e.target.value))
-                  }
-                  disabled={selectedEmployeeAttendance.morningStatus === 'Absent' && selectedEmployeeAttendance.afternoonStatus === 'Absent'}
-                />
-              </div>
-               {overtimePay > 0 && (
-                 <div className="grid grid-cols-4 items-center gap-4">
-                    <p className="col-span-1 text-right text-sm font-medium">Overtime Pay</p>
-                    <p className="col-span-3 text-lg font-semibold text-primary">
-                        ETB {overtimePay.toFixed(2)}
-                    </p>
-                </div>
-              )}
             </div>
           )}
-          <DialogFooter>
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button onClick={handleSaveDialog}>Save</Button>
-          </DialogFooter>
         </DialogContent>
+      </Dialog>
+      
+      <Dialog open={isLateDialogOpen} onOpenChange={setIsLateDialogOpen}>
+          <DialogContent className="sm:max-w-xs">
+              <DialogHeader>
+                  <DialogTitle>Enter Late Entry Time</DialogTitle>
+              </DialogHeader>
+              <Input 
+                  id="lateTime"
+                  type="time"
+                  value={lateDialogData?.time}
+                  onChange={(e) => setLateDialogData(prev => prev ? {...prev, time: e.target.value} : null)}
+              />
+              <DialogFooter>
+                  <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                  <Button onClick={handleSaveLateTime}>Save Time</Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
+      <Dialog open={isOvertimeDialogOpen} onOpenChange={setIsOvertimeDialogOpen}>
+          <DialogContent className="sm:max-w-xs">
+              <DialogHeader>
+                  <DialogTitle>Log Overtime</DialogTitle>
+                  <DialogDescription>For {selectedEmployeeAttendance?.employeeName}</DialogDescription>
+              </DialogHeader>
+               <div className="grid gap-4 py-4">
+                  <Label htmlFor="overtime">Overtime Hours</Label>
+                  <Input 
+                      id="overtime"
+                      type="number"
+                      min="0"
+                      value={selectedEmployeeAttendance?.overtimeHours || 0}
+                      onChange={(e) => handleOvertimeInputChange(Number(e.target.value))}
+                  />
+              </div>
+              <DialogFooter>
+                  <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                  <Button onClick={handleSaveOvertime}>Save Overtime</Button>
+              </DialogFooter>
+          </DialogContent>
       </Dialog>
     </div>
   );
