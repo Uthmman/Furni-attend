@@ -123,21 +123,40 @@ export default function AttendancePage() {
             let afternoonEntry = record?.afternoonEntry || "";
 
             const isMonthly = emp.paymentMethod === 'Monthly';
+            const isWeekly = emp.paymentMethod === 'Weekly';
             const isPastOrToday = !isAfter(startOfDay(selectedDate), startOfDay(new Date()));
             const isSunday = getDay(selectedDate) === 0;
             const isSaturday = getDay(selectedDate) === 6;
 
-            if (isPastOrToday && isMonthly) {
-                if (isSunday) {
-                    morningStatus = "Present";
-                    afternoonStatus = "Present";
-                    morningEntry = "08:00";
-                    afternoonEntry = "13:30";
-                } else if (isSaturday) {
-                    if (!record || record.afternoonStatus === undefined || record.afternoonStatus === null) {
-                         afternoonStatus = "Present";
-                         afternoonEntry = "13:30";
+            if (isPastOrToday) {
+                if (isMonthly) {
+                    if (isSunday) {
+                        morningStatus = "Present";
+                        afternoonStatus = "Present";
+                        morningEntry = "08:00";
+                        afternoonEntry = "13:30";
+                    } else if (isSaturday) {
+                        if (!record || record.afternoonStatus === undefined || record.afternoonStatus === null) {
+                             afternoonStatus = "Present";
+                             afternoonEntry = "";
+                        }
                     }
+                } else if (isWeekly) {
+                    if (isSunday) {
+                       if (!record || record.morningStatus === undefined || record.morningStatus === null) {
+                           morningStatus = "Present";
+                           morningEntry = "";
+                       }
+                       if (!record || record.afternoonStatus === undefined || record.afternoonStatus === null) {
+                           afternoonStatus = "Present";
+                           afternoonEntry = "";
+                       }
+                   } else if (isSaturday) {
+                       if (!record || record.afternoonStatus === undefined || record.afternoonStatus === null) {
+                            afternoonStatus = "Present";
+                            afternoonEntry = "";
+                       }
+                   }
                 }
             }
 
