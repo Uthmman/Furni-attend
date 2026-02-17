@@ -55,6 +55,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
 
 const getInitials = (name: string) => {
@@ -73,13 +74,6 @@ const getDateFromRecord = (date: string | Timestamp): Date => {
 const calculateHoursWorked = (record: AttendanceRecord): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
-
-    if (getDay(recordDate) === 0) { // Is Sunday
-        if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') {
-            return 8;
-        }
-        return 0;
-    }
 
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
@@ -312,13 +306,13 @@ export default function EmployeeProfilePage() {
   }, [employeeAttendance, selectedPeriod, employee]);
 
   const payrollData = useMemo(() => {
-    if (!employee || filteredAttendance.length === 0 || !selectedPeriod) return { totalAmount: 0, periodLabel: "" };
+    if (!employee || !selectedPeriod) return { totalAmount: 0, periodLabel: "" };
 
     const selectedPeriodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || "";
 
     if (employee.paymentMethod === 'Monthly') {
       const baseSalary = employee.monthlyRate || 0;
-      if (baseSalary === 0) return { totalAmount: 0, periodLabel: selectedPeriodLabel };
+      if (baseSalary === 0 && filteredAttendance.length === 0) return { totalAmount: 0, periodLabel: selectedPeriodLabel };
 
         const dailyRate = baseSalary / 23.625;
         const hourlyRateCalc = dailyRate / 8;
@@ -421,32 +415,44 @@ export default function EmployeeProfilePage() {
       let totalHours = filteredAttendance.reduce((acc, record) => {
           return acc + calculateHoursWorked(record);
       }, 0);
+
+      const overtimePay = totalOvertimeHours * (hourlyRate || 0);
       
-      if (selectedPeriod && employee.paymentMethod === 'Weekly') {
+      let totalMinutesLate = 0;
+      let totalHoursAbsent = 0;
+
+      if (selectedPeriod) {
           const startDate = new Date(selectedPeriod);
           const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
           const interval = { start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 0 }) };
-
           const periodDays = eachDayOfInterval(interval);
           const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
-          const employeeStartDate = new Date(employee.attendanceStartDate || 0);
 
           periodDays.forEach(day => {
-              if (day >= employeeStartDate && getDay(day) === 0) { // Is Sunday
-                  const dayStr = format(day, 'yyyy-MM-dd');
-                  if (!recordedDates.has(dayStr)) {
-                      totalHours += 8;
+              const dayStr = format(day, 'yyyy-MM-dd');
+              if (!recordedDates.has(dayStr)) {
+                  // Don't count Saturdays and Sundays as absent for weekly summary
+                  if (getDay(day) !== 0 && getDay(day) !== 6) { 
+                      totalHoursAbsent += 8;
                   }
               }
           });
       }
 
-
+      filteredAttendance.forEach(record => {
+          totalMinutesLate += calculateMinutesLate(record);
+          if (getDay(getDateFromRecord(record.date)) !== 0 && getDay(getDateFromRecord(record.date)) !== 6) {
+              if (record.morningStatus === 'Absent') totalHoursAbsent += 4.5;
+              if (record.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
+          } else if (getDay(getDateFromRecord(record.date)) === 6) { // Saturday
+             if (record.morningStatus === 'Absent') totalHoursAbsent += 4.5;
+          }
+      });
+      
       const baseAmount = totalHours * (hourlyRate || 0);
-      const overtimePay = totalOvertimeHours * (hourlyRate || 0);
       const totalAmount = baseAmount + overtimePay;
       
-      const daysWorked = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size
+      const daysWorked = new Set(filteredAttendance.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
 
       return {
         hours: totalHours,
@@ -454,6 +460,8 @@ export default function EmployeeProfilePage() {
         overtimePay: overtimePay,
         totalAmount: totalAmount,
         periodLabel: selectedPeriodLabel,
+        hoursAbsent: totalHoursAbsent,
+        minutesLate: totalMinutesLate
       };
     }
   }, [employee, allAttendance, filteredAttendance, hourlyRate, periodOptions, selectedPeriod]);
@@ -527,58 +535,86 @@ export default function EmployeeProfilePage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 flex flex-col gap-6">
-          <Card>
-            <CardHeader className="items-center">
-              <Avatar className="w-24 h-24 text-3xl">
-                <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
-              </Avatar>
-              <CardTitle className="pt-4">{employee.name}</CardTitle>
-              <Badge variant="secondary">{employee.position}</Badge>
-            </CardHeader>
-            <CardContent className="text-sm">
-                <div className="grid gap-4">
-                     {employee.attendanceStartDate && (
-                       <div className="flex items-center justify-between">
-                            <p className="font-semibold">Start Date</p>
-                             <div className="flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-muted-foreground" />
-                                <p className="text-muted-foreground">{format(new Date(employee.attendanceStartDate), "MMM d, yyyy")} / {ethiopianDateFormatter(new Date(employee.attendanceStartDate), { day: 'numeric', month: 'short', year: 'numeric' })}</p>
-                             </div>
-                        </div>
-                    )}
-                    <div className="flex items-center justify-between">
-                        <p className="font-semibold">Phone Number</p>
-                        <Button variant="ghost" size="sm" asChild>
-                            <a href={`tel:${employee.phone}`}>
-                                <Phone className="mr-2 h-4 w-4" />
-                                {employee.phone}
-                            </a>
-                        </Button>
+           <Card>
+            <Accordion type="single" collapsible defaultValue="item-1" className="w-full">
+              <AccordionItem value="item-1" className="border-b-0">
+                <AccordionTrigger className="p-6 hover:no-underline [&>svg]:ml-auto">
+                  <div className="flex items-center gap-4 text-left w-full">
+                      <Avatar className="w-20 h-20 text-3xl">
+                          <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
+                      </Avatar>
+                      <div className="flex-grow">
+                          <CardTitle>{employee.name}</CardTitle>
+                          <Badge variant="secondary" className="mt-1">{employee.position}</Badge>
+                      </div>
+                  </div>
+                </AccordionTrigger>
+                <AccordionContent>
+                  <CardContent className="text-sm pt-0">
+                    <div className="grid gap-4">
+                        {employee.attendanceStartDate && (
+                          <div className="flex items-center justify-between">
+                                <p className="font-semibold">Start Date</p>
+                                <div className="flex items-center gap-2">
+                                  <Calendar className="h-4 w-4 text-muted-foreground" />
+                                  <p className="text-muted-foreground">{format(new Date(employee.attendanceStartDate), "MMM d, yyyy")} / {ethiopianDateFormatter(new Date(employee.attendanceStartDate), { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                </div>
+                          </div>
+                      )}
+                      <div className="flex items-center justify-between">
+                          <p className="font-semibold">Phone Number</p>
+                          <Button variant="ghost" size="sm" asChild>
+                              <a href={`tel:${employee.phone}`}>
+                                  <Phone className="mr-2 h-4 w-4" />
+                                  {employee.phone}
+                              </a>
+                          </Button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                          <p className="font-semibold">Account Number</p>
+                          <div className="flex items-center gap-2">
+                            <p className="text-muted-foreground">{employee.accountNumber}</p>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copy(employee.accountNumber)}>
+                                  <Copy className="h-4 w-4" />
+                              </Button>
+                          </div>
+                      </div>
+                      <div>
+                          <p className="font-semibold">Payment Method</p>
+                          <Badge variant="outline">{employee.paymentMethod}</Badge>
+                      </div>
+                      <div>
+                          <p className="font-semibold">{employee.paymentMethod} Rate</p>
+                          <p className="text-muted-foreground">ETB {employee.monthlyRate || employee.dailyRate || "N/A"}</p>
+                      </div>
+                      <div>
+                          <p className="font-semibold">Calculated Hourly Rate</p>
+                          <p className="text-muted-foreground">ETB {hourlyRate.toFixed(2)}</p>
+                      </div>
                     </div>
-                    <div className="flex items-center justify-between">
-                        <p className="font-semibold">Account Number</p>
-                        <div className="flex items-center gap-2">
-                           <p className="text-muted-foreground">{employee.accountNumber}</p>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => copy(employee.accountNumber)}>
-                                <Copy className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
-                    <div>
-                        <p className="font-semibold">Payment Method</p>
-                        <Badge variant="outline">{employee.paymentMethod}</Badge>
-                    </div>
-                    <div>
-                        <p className="font-semibold">{employee.paymentMethod} Rate</p>
-                        <p className="text-muted-foreground">ETB {employee.monthlyRate || employee.dailyRate || "N/A"}</p>
-                    </div>
-                    <div>
-                        <p className="font-semibold">Calculated Hourly Rate</p>
-                        <p className="text-muted-foreground">ETB {hourlyRate.toFixed(2)}</p>
-                    </div>
-                </div>
-            </CardContent>
+                  </CardContent>
+                </AccordionContent>
+              </AccordionItem>
+            </Accordion>
           </Card>
+          
+           <Card>
+              <CardHeader>
+                <CardTitle>Select Period</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                    <SelectTrigger>
+                        <SelectValue placeholder="Select a period" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {periodOptions.map(option => (
+                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                </Select>
+              </CardContent>
+            </Card>
           
            <Card>
                 <CardHeader>
@@ -607,13 +643,9 @@ export default function EmployeeProfilePage() {
                         </>
                     ) : (
                         <>
-                            <div>
-                                <p className="font-semibold">Total Days Worked</p>
-                                <p className="text-2xl font-bold">{(payrollData.daysWorked || 0).toFixed(0)}</p>
-                            </div>
-                            <div>
-                                <p className="font-semibold">Total Hours Worked</p>
-                                <p className="text-2xl font-bold">{(payrollData.hours || 0).toFixed(2)}</p>
+                             <div>
+                                <p className="font-semibold">Base Pay ({(payrollData.hours || 0).toFixed(2)} hrs)</p>
+                                <p className="text-2xl font-bold">ETB {( (payrollData.hours || 0) * hourlyRate).toFixed(2)}</p>
                             </div>
                             {(payrollData.overtimePay || 0) > 0 && (
                                 <div>
@@ -622,8 +654,13 @@ export default function EmployeeProfilePage() {
                                 </div>
                             )}
                             <div>
-                                <p className="font-semibold">Calculated Payroll</p>
+                                <p className="font-semibold">Total Payout</p>
                                 <p className="text-2xl font-bold text-primary">ETB {(payrollData.totalAmount || 0).toFixed(2)}</p>
+                            </div>
+                            <div className="text-sm text-muted-foreground space-y-1 pt-2 border-t">
+                                <p>Days Worked: {(payrollData.daysWorked || 0)}</p>
+                                <p>Hours Absent: {(payrollData.hoursAbsent || 0).toFixed(1)}</p>
+                                <p>Minutes Late: {Math.round(payrollData.minutesLate || 0)}</p>
                             </div>
                         </>
                     )}
@@ -634,21 +671,10 @@ export default function EmployeeProfilePage() {
           <Card>
             <CardHeader>
               <CardTitle>Attendance History</CardTitle>
+               <CardDescription>{payrollData.periodLabel}</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-               <div className="flex flex-col gap-4">
-                  <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                      <SelectTrigger>
-                          <SelectValue placeholder="Select a period" />
-                      </SelectTrigger>
-                      <SelectContent>
-                          {periodOptions.map(option => (
-                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                          ))}
-                      </SelectContent>
-                  </Select>
-               </div>
-              <div className="flex-1 mt-4">
+            <CardContent>
+              <div className="flex-1">
                 <Table>
                     <TableHeader>
                     <TableRow>
@@ -700,3 +726,4 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
+
