@@ -427,26 +427,24 @@ export default function EmployeeProfilePage() {
           const interval = { start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 0 }) };
           const periodDays = eachDayOfInterval(interval);
           const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+          const employeeStartDate = new Date(employee.attendanceStartDate || 0);
 
           periodDays.forEach(day => {
-              const dayStr = format(day, 'yyyy-MM-dd');
-              if (!recordedDates.has(dayStr)) {
-                  // Don't count Saturdays and Sundays as absent for weekly summary
-                  if (getDay(day) !== 0 && getDay(day) !== 6) { 
-                      totalHoursAbsent += 8;
-                  }
+              if (day >= employeeStartDate) {
+                const dayStr = format(day, 'yyyy-MM-dd');
+                if (!recordedDates.has(dayStr)) {
+                    if (getDay(day) === 6) { // Saturday
+                        totalHoursAbsent += 4.5;
+                    } else if (getDay(day) !== 0) { // Not Sunday
+                        totalHoursAbsent += 8;
+                    }
+                }
               }
           });
       }
 
       filteredAttendance.forEach(record => {
           totalMinutesLate += calculateMinutesLate(record);
-          if (getDay(getDateFromRecord(record.date)) !== 0 && getDay(getDateFromRecord(record.date)) !== 6) {
-              if (record.morningStatus === 'Absent') totalHoursAbsent += 4.5;
-              if (record.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
-          } else if (getDay(getDateFromRecord(record.date)) === 6) { // Saturday
-             if (record.morningStatus === 'Absent') totalHoursAbsent += 4.5;
-          }
       });
       
       const baseAmount = totalHours * (hourlyRate || 0);
@@ -536,7 +534,7 @@ export default function EmployeeProfilePage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 flex flex-col gap-6">
            <Card>
-            <Accordion type="single" collapsible defaultValue="item-1" className="w-full">
+            <Accordion type="single" collapsible className="w-full">
               <AccordionItem value="item-1" className="border-b-0">
                 <AccordionTrigger className="p-6 hover:no-underline [&>svg]:ml-auto">
                   <div className="flex items-center gap-4 text-left w-full">
