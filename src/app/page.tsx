@@ -375,6 +375,7 @@ export default function DashboardPage() {
     const now = new Date();
     const isAfternoonCheckTime = now.getHours() > 13 || (now.getHours() === 13 && now.getMinutes() >= 30);
     const isSunday = getDay(now) === 0;
+    const isSaturday = getDay(now) === 6;
 
     employees.forEach(emp => {
         const record = todayAttendance.find(r => r.employeeId === emp.id);
@@ -408,20 +409,35 @@ export default function DashboardPage() {
         }
 
         // Handle Absences (only if no permission)
-        const isAbsentMorning = morningIsAbsent && !morningHasPermission;
-        const isAbsentAfternoon = afternoonIsAbsent && !afternoonHasPermission;
+        const isUnpaidAbsentMorning = morningIsAbsent && !morningHasPermission;
+        const isUnpaidAbsentAfternoon = afternoonIsAbsent && !afternoonHasPermission;
 
-        if (isAbsentMorning && isAbsentAfternoon) {
-             if(isAfternoonCheckTime) {
-                absent.push({ employee: emp, period: 'Full Day' });
-             } else {
-                absent.push({ employee: emp, period: 'Morning' });
-             }
-        } else if (isAbsentMorning) {
-            absent.push({ employee: emp, period: 'Morning' });
-        } else if (isAbsentAfternoon) {
-            if (isAfternoonCheckTime) {
-                absent.push({ employee: emp, period: 'Afternoon' });
+        let absencePeriod: 'Full Day' | 'Morning' | 'Afternoon' | null = null;
+        if (isUnpaidAbsentMorning && isUnpaidAbsentAfternoon) {
+            absencePeriod = isAfternoonCheckTime ? 'Full Day' : 'Morning';
+        } else if (isUnpaidAbsentMorning) {
+            absencePeriod = 'Morning';
+        } else if (isUnpaidAbsentAfternoon && isAfternoonCheckTime) {
+            absencePeriod = 'Afternoon';
+        }
+
+        if (absencePeriod) {
+            let shouldShowAbsence = true;
+            if (emp.paymentMethod === 'Weekly') {
+                if (isSunday) {
+                    shouldShowAbsence = false;
+                }
+                if (isSaturday && (absencePeriod === 'Afternoon' || absencePeriod === 'Full Day')) {
+                    if (absencePeriod === 'Full Day') {
+                        absencePeriod = 'Morning';
+                    } else {
+                        shouldShowAbsence = false;
+                    }
+                }
+            }
+
+            if (shouldShowAbsence) {
+                absent.push({ employee: emp, period: absencePeriod });
             }
         }
     });
