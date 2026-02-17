@@ -11,15 +11,17 @@ import {
 } from "@/components/ui/sidebar";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
-import { Bell, User, LogOut } from "lucide-react";
+import { User, LogOut } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { PageTitleProvider, usePageTitle } from "@/components/page-title-provider";
 import React, { useEffect } from "react";
 import { FirebaseClientProvider, useUser, useAuth } from "@/firebase";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 function AppHeader() {
   const { title } = usePageTitle();
+  const { user } = useUser();
   const auth = useAuth();
   const router = useRouter();
 
@@ -30,21 +32,20 @@ function AppHeader() {
     router.push('/login');
   }
 
+  const userName = user?.email ? user.email.split('@')[0] : 'there';
+
   return (
-      <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-4 border-b bg-background/95 backdrop-blur-sm px-4 md:px-6">
+      <header className="flex h-16 shrink-0 items-center gap-4 px-4 md:px-6">
         <div className="flex-1">
-          <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         </div>
         <div className="flex items-center gap-2 md:gap-4">
-            <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
-                <Bell className="h-4 w-4" />
-                <span className="sr-only">Toggle notifications</span>
-            </Button>
              <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="rounded-full h-8 w-8">
-                    <User className="h-4 w-4" />
-                    <span className="sr-only">User menu</span>
+                <Button variant="ghost" size="icon" className="rounded-full h-10 w-10">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>{userName?.[0].toUpperCase()}</AvatarFallback>
+                    </Avatar>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">

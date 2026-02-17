@@ -1,7 +1,7 @@
 
 'use client';
 
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { Area, AreaChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from 'recharts';
 
 interface PayrollHistoryChartProps {
     data: { month: string; total: number }[];
@@ -19,7 +19,21 @@ export function PayrollHistoryChart({ data }: PayrollHistoryChartProps) {
     return (
         <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={data}>
+                <AreaChart
+                    data={data}
+                    margin={{
+                        top: 5,
+                        right: 10,
+                        left: -10,
+                        bottom: 0,
+                    }}
+                >
+                    <defs>
+                        <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.8}/>
+                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                        </linearGradient>
+                    </defs>
                     <XAxis
                         dataKey="month"
                         stroke="#888888"
@@ -38,11 +52,11 @@ export function PayrollHistoryChart({ data }: PayrollHistoryChartProps) {
                         contentStyle={{
                             background: "hsl(var(--background))",
                             borderColor: "hsl(var(--border))",
+                            borderRadius: "var(--radius)",
                         }}
                     />
-                    <Legend wrapperStyle={{ fontSize: '12px' }}/>
-                    <Bar dataKey="total" name="Total Payroll" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                </BarChart>
+                    <Area type="monotone" dataKey="total" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorTotal)" strokeWidth={2} />
+                </AreaChart>
             </ResponsiveContainer>
         </div>
     );

@@ -4,7 +4,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, Calendar, UserX, Clock, Hand } from "lucide-react";
+import { Users, UserCheck, Wallet, Calendar, UserX, Clock, Hand, Search } from "lucide-react";
 import type { Employee, AttendanceRecord, AttendanceStatus } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
@@ -15,6 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
+import { Input } from '@/components/ui/input';
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
@@ -557,18 +558,12 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8">
-        <Card>
-            <CardContent className="p-4 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <Calendar className="h-8 w-8 text-primary" />
-                    <div>
-                        <p className="text-xl font-semibold">{format(today, 'EEEE, MMMM d, yyyy')}</p>
-                        <p className="text-sm text-muted-foreground">{ethiopianDateFormatter(today, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                    </div>
-                </div>
-            </CardContent>
-        </Card>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+        <Input placeholder="Search..." className="pl-10 w-full" />
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <StatCard
           title="Total Employees"
           value={dashboardStats.totalEmployees}
