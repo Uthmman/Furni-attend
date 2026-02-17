@@ -59,15 +59,8 @@ const generateSmsSummary = (entry: PayrollEntry): string => {
 
         summary += `Net Salary: ETB **${entry.amount.toFixed(2)}**\n`;
     } else { // Weekly
+        summary += `Hours Worked: ${(entry.totalHours || 0).toFixed(2)} hrs\n`;
         summary += `Base Pay: ETB ${(entry.baseAmount || 0).toFixed(2)}\n`;
-
-        if (entry.absenceDeduction && entry.absenceDeduction > 0) {
-            summary += `Absence Deduction (${(entry.hoursAbsent || 0).toFixed(1)} hrs): -ETB ${entry.absenceDeduction.toFixed(2)}\n`;
-        }
-
-        if (entry.lateDeduction && entry.lateDeduction > 0) {
-            summary += `Late Deduction (${entry.minutesLate || 0} mins): -ETB ${entry.lateDeduction.toFixed(2)}\n`;
-        }
 
         if (entry.overtimeAmount && entry.overtimeAmount > 0) {
             summary += `Overtime Pay (${entry.overtimeHours || 0} hrs): +ETB ${entry.overtimeAmount.toFixed(2)}\n`;
@@ -149,14 +142,10 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                                                     (
                                                         <>
                                                             <div>{entry.workingDays || 0} day(s) worked</div>
+                                                            <div>{(entry.totalHours || 0).toFixed(1)} hrs total</div>
                                                             {(entry.overtimeHours || 0) > 0 && (
                                                                 <div className="text-primary flex items-center">
                                                                     {(entry.overtimeHours || 0).toFixed(1)} hrs overtime
-                                                                </div>
-                                                            )}
-                                                            {(entry.hoursAbsent || 0) > 0 && (
-                                                                <div className="text-destructive flex items-center">
-                                                                    {(entry.hoursAbsent || 0).toFixed(1)} hrs absent
                                                                 </div>
                                                             )}
                                                             {(entry.minutesLate || 0) > 0 && (
@@ -164,8 +153,8 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                                                                     {(entry.minutesLate || 0).toFixed(0)} mins late
                                                                 </div>
                                                             )}
-                                                            {(entry.hoursAbsent || 0) === 0 && (entry.minutesLate || 0) === 0 && (entry.overtimeHours || 0) === 0 && (
-                                                                <div>No issues</div>
+                                                            {(entry.overtimeHours || 0) === 0 && (entry.minutesLate || 0) === 0 && (
+                                                                <div>No overtime or lates</div>
                                                             )}
                                                         </>
                                                     ) : 
