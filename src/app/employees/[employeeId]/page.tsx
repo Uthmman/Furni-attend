@@ -373,8 +373,9 @@ export default function EmployeeProfilePage() {
         const employeeStartDate = new Date(employee.attendanceStartDate || 0);
         const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
 
+        const today = new Date();
         periodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
+            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
                     const formattedDate = format(day, 'MMM d');
@@ -428,14 +429,16 @@ export default function EmployeeProfilePage() {
           const periodDays = eachDayOfInterval(interval);
           const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
           const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+          const today = new Date();
 
           periodDays.forEach(day => {
-              if (day >= employeeStartDate) {
+              if (day >= employeeStartDate && day <= today) {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
-                    if (getDay(day) === 6) { // Saturday
+                    // Do not count unrecorded sundays or saturday afternoons as absent time for weekly
+                    if(getDay(day) === 6){ // Saturday
                         totalHoursAbsent += 4.5;
-                    } else if (getDay(day) !== 0) { // Not Sunday
+                    } else if (getDay(day) !== 0) {
                         totalHoursAbsent += 8;
                     }
                 }

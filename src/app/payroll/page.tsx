@@ -363,9 +363,10 @@ export default function PayrollPage() {
         
         const calculationPeriodDays = eachDayOfInterval(calculationPeriod);
         const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+        const today = new Date();
 
         calculationPeriodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) !== 0) { // Mon-Sat
+            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDatesForMonth.has(dayStr)) {
                     projectedHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
