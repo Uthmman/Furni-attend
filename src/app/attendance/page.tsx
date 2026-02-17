@@ -365,10 +365,10 @@ export default function AttendancePage() {
             <div className="grid gap-6 py-4">
               <div className="grid gap-2">
                   <Label>Morning</Label>
-                  <p className="text-sm text-muted-foreground">
+                  <div className="text-sm text-muted-foreground">
                     Status: <Badge variant={getStatusVariant(selectedEmployeeAttendance.morningStatus)}>{selectedEmployeeAttendance.morningStatus}</Badge>
                     {selectedEmployeeAttendance.morningEntry && ` at ${selectedEmployeeAttendance.morningEntry}`}
-                  </p>
+                  </div>
                   <div className="flex flex-wrap gap-2 mt-2">
                       <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Present')} disabled={isSundayAndShouldBeDisabled}>Present</Button>
                       <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Late')} disabled={isSundayAndShouldBeDisabled}>Late</Button>
@@ -378,10 +378,10 @@ export default function AttendancePage() {
               </div>
               <div className="grid gap-2">
                   <Label>Afternoon</Label>
-                   <p className="text-sm text-muted-foreground">
+                   <div className="text-sm text-muted-foreground">
                     Status: <Badge variant={getStatusVariant(selectedEmployeeAttendance.afternoonStatus)}>{selectedEmployeeAttendance.afternoonStatus}</Badge>
                     {selectedEmployeeAttendance.afternoonEntry && ` at ${selectedEmployeeAttendance.afternoonEntry}`}
-                  </p>
+                  </div>
                   <div className="flex flex-wrap gap-2 mt-2">
                       <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Present')} disabled={isSundayAndShouldBeDisabled}>Present</Button>
                       <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Late')} disabled={isSundayAndShouldBeDisabled}>Late</Button>
@@ -437,3 +437,5 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    
