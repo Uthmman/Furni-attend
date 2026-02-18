@@ -9,14 +9,23 @@ export async function sendAdminPayrollSummary(message: string) {
 
     if (!adminChatId) {
         console.error('TELEGRAM_ADMIN_CHAT_ID is not set in environment variables.');
-        return { success: false, error: 'Admin Telegram Chat ID is not configured.' };
+        return { success: false, error: 'Admin Telegram Chat ID is not configured in .env.local.' };
     }
 
     try {
         const result = await sendTelegramMessage({ chatId: adminChatId, message });
         return { success: result.success };
     } catch (error) {
-        console.error("Failed to send Telegram message from server action:", error);
-        return { success: false, error: (error as Error).message };
+        const errorMessage = (error as Error).message;
+        console.error("Failed to send Telegram message from server action:", errorMessage);
+        
+        if (errorMessage.includes('chat not found')) {
+            return { 
+                success: false, 
+                error: 'Chat not found. Please ensure TELEGRAM_ADMIN_CHAT_ID is correct and the admin has started a conversation with the bot.' 
+            };
+        }
+
+        return { success: false, error: errorMessage };
     }
 }
