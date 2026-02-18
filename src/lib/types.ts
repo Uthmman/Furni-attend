@@ -14,7 +14,6 @@ export interface Employee extends DocumentData {
   monthlyRate?: number;
   hourlyRate?: number;
   attendanceStartDate?: string;
-  telegramChatId?: string;
 }
 
 export type AttendanceStatus = "Present" | "Absent" | "Late" | "Permission";
@@ -33,7 +32,6 @@ export interface AttendanceRecord extends DocumentData {
 export interface PayrollEntry {
   employeeId: string;
   employeeName: string;
-  telegramChatId?: string;
   paymentMethod: "Weekly" | "Monthly";
   period: string;
   amount: number; // Net Salary for both

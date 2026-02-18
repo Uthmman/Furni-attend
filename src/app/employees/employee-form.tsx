@@ -47,7 +47,6 @@ const employeeSchema = z.object({
   monthlyRate: z.coerce.number().optional(),
   hourlyRate: z.coerce.number().optional(),
   attendanceStartDate: z.string().min(1, { message: "Attendance start date is required." }),
-  telegramChatId: z.string().optional(),
 });
 
 type EmployeeFormValues = z.infer<typeof employeeSchema>;
@@ -76,7 +75,6 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
       monthlyRate: 0,
       hourlyRate: 0,
       attendanceStartDate: format(new Date(), 'yyyy-MM-dd'),
-      telegramChatId: "",
     },
   });
 
@@ -92,7 +90,6 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
         monthlyRate: employee.monthlyRate || 0,
         hourlyRate: employee.hourlyRate || 0,
         attendanceStartDate: employee.attendanceStartDate ? format(new Date(employee.attendanceStartDate), 'yyyy-MM-dd') : format(new Date(), 'yyyy-MM-dd'),
-        telegramChatId: employee.telegramChatId || "",
       });
     } else {
         form.reset(form.formState.defaultValues);
@@ -194,19 +191,6 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
                   <FormLabel>Bank Account Number</FormLabel>
                   <FormControl>
                     <Input placeholder="e.g. 1000123456789" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="telegramChatId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Telegram Chat ID (Optional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g. 123456789" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>

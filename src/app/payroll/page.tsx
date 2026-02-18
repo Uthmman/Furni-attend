@@ -269,10 +269,12 @@ export default function PayrollPage() {
         periodDays.forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
             if (!recordedDates.has(dayStr)) {
-                // Not recorded means absent
-                if (getDay(day) !== 0 && getDay(day) !== 6) { // Not Sunday or Saturday
+                // Not recorded means absent, but don't count for pay, just for summary.
+                const isSunday = getDay(day) === 0;
+                const isSaturday = getDay(day) === 6;
+                if (!isSunday && !isSaturday) {
                     hoursAbsent += 8;
-                } else if (getDay(day) === 6) { // Saturday
+                } else if (isSaturday) {
                     hoursAbsent += 4.5;
                 }
             }
@@ -288,7 +290,6 @@ export default function PayrollPage() {
             weekly.push({
                 employeeId: employee.id,
                 employeeName: employee.name,
-                telegramChatId: employee.telegramChatId,
                 paymentMethod: employee.paymentMethod,
                 period: weekPeriodLabel,
                 amount: finalAmount,
@@ -352,8 +353,12 @@ export default function PayrollPage() {
         let projectedHoursAbsent = 0;
         let displayMinutesLate = 0;
         
+        const today = new Date();
+        
         allRecordsForMonth.forEach(r => {
             const recordDate = getDateFromRecord(r.date);
+            if(recordDate > today) return;
+
             let hoursAbsentThisRecord = 0;
 
             const recordDateStr = format(recordDate, 'yyyy-MM-dd');
@@ -369,7 +374,6 @@ export default function PayrollPage() {
         
         const calculationPeriodDays = eachDayOfInterval(calculationPeriod);
         const employeeStartDate = new Date(employee.attendanceStartDate || 0);
-        const today = new Date();
 
         calculationPeriodDays.forEach(day => {
             if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
@@ -389,7 +393,6 @@ export default function PayrollPage() {
              monthly.push({
                 employeeId: employee.id,
                 employeeName: employee.name,
-                telegramChatId: employee.telegramChatId,
                 paymentMethod: employee.paymentMethod,
                 period: monthPeriodLabel,
                 amount: netSalary,
