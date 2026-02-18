@@ -1,6 +1,7 @@
 
 'use server';
 
+import 'dotenv/config';
 import { sendTelegramMessage } from '@/ai/flows/send-telegram-message-flow';
 
 export async function sendAdminPayrollSummary(message: string) {
