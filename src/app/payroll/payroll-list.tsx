@@ -2,7 +2,6 @@
 
 'use client';
 
-import { useState } from "react";
 import {
   Card,
   CardContent,
@@ -17,19 +16,8 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table";
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
 import type { PayrollEntry } from "@/lib/types";
-import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { sendAdminPayrollSummary } from "./actions";
-
-
-const TelegramIcon = (props: React.SVGProps<SVGSVGElement>) => (
-    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" {...props}>
-        <path d="M9.78 18.65l.28-4.23l7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3L3.64 12c-.88-.25-.89-1.37.2-1.61l16.11-5.72c.78-.27 1.45.16 1.18 1.1l-3.27 15.25c-.27 1.22-1.04 1.5-2.04 1.02l-4.87-3.57l-2.31 2.24c-.25.24-.46.46-.8.46c-.42 0-.6-.24-.7-.53z" />
-    </svg>
-);
 
 interface PayrollListProps {
     title: string;
@@ -40,49 +28,6 @@ interface PayrollListProps {
 }
 
 export function PayrollList({ title, payrollData, periodOptions, selectedPeriod, onPeriodChange }: PayrollListProps) {
-    const { toast } = useToast();
-    const [isSending, setIsSending] = useState(false);
-
-    const handleSendAdminSummary = async () => {
-        if (payrollData.length === 0) {
-            toast({
-                variant: 'destructive',
-                title: 'No Data',
-                description: 'There is no payroll data to send.'
-            });
-            return;
-        }
-
-        setIsSending(true);
-
-        const periodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || title;
-        
-        let summaryMessage = `*${title} Summary for ${periodLabel}*\n\n`;
-
-        payrollData.forEach(entry => {
-            summaryMessage += `${entry.employeeName}: ETB ${entry.amount.toFixed(2)}\n`;
-        });
-
-        summaryMessage += `\n*Total: ETB ${totalAmount.toFixed(2)}*`;
-
-        const result = await sendAdminPayrollSummary(summaryMessage);
-
-        if (result.success) {
-            toast({
-                title: 'Summary Sent!',
-                description: `The ${title.toLowerCase()} summary was sent to the admin via Telegram.`
-            });
-        } else {
-            toast({
-                variant: 'destructive',
-                title: 'Send Failed',
-                description: result.error || 'Could not send summary via Telegram.'
-            });
-        }
-        
-        setIsSending(false);
-    };
-
     const totalAmount = payrollData.reduce((acc, entry) => acc + entry.amount, 0);
 
     return (
@@ -125,7 +70,7 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                                                                 {(entry.overtimeHours || 0).toFixed(1)} hrs overtime
                                                             </div>
                                                         )}
-                                                        {(entry.hoursAbsent || 0) > 0 && (
+                                                         {(entry.hoursAbsent || 0) > 0 && (
                                                             <div className="text-destructive flex items-center">
                                                                 {(entry.hoursAbsent || 0).toFixed(1)} hrs absent
                                                             </div>
@@ -176,13 +121,7 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                 </Table>
                 <div className="flex justify-between items-center mt-4 pt-4 border-t">
                     <p className="font-bold text-lg">Total</p>
-                    <div className="flex items-center gap-2">
-                        <p className="font-bold text-lg text-primary">ETB {totalAmount.toFixed(2)}</p>
-                        <Button variant="outline" size="sm" onClick={handleSendAdminSummary} disabled={isSending}>
-                            {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <TelegramIcon className="mr-2 h-4 w-4" />}
-                            Send
-                        </Button>
-                    </div>
+                    <p className="font-bold text-lg text-primary">ETB {totalAmount.toFixed(2)}</p>
                 </div>
             </CardContent>
         </Card>
