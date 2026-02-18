@@ -177,7 +177,7 @@ export default function PayrollPage() {
             const attendanceColRef = collection(firestore, 'employees', emp.id, 'attendance');
             const querySnapshot = await getDocs(attendanceColRef);
             querySnapshot.forEach(doc => {
-                allRecords.push({ id: doc.id, ...doc.data() } as AttendanceRecord);
+                allRecords.push({ id: doc.id, employeeId: emp.id, ...doc.data() } as AttendanceRecord);
             });
         }
         setAllAttendance(allRecords);
@@ -256,19 +256,24 @@ export default function PayrollPage() {
 
         const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
         const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-
+        
         let minutesLate = 0;
         let hoursAbsent = 0;
+        const periodDays = eachDayOfInterval(period);
+        const recordedDates = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
 
         relevantRecords.forEach(r => {
             minutesLate += calculateMinutesLate(r);
-            const recordDate = getDateFromRecord(r.date);
-            if (getDay(recordDate) !== 0) { // Don't count Sunday absences for summary
-                if(r.morningStatus === 'Absent') {
+        });
+
+        periodDays.forEach(day => {
+            const dayStr = format(day, 'yyyy-MM-dd');
+            if (!recordedDates.has(dayStr)) {
+                // Not recorded means absent
+                if (getDay(day) !== 0 && getDay(day) !== 6) { // Not Sunday or Saturday
+                    hoursAbsent += 8;
+                } else if (getDay(day) === 6) { // Saturday
                     hoursAbsent += 4.5;
-                }
-                if(r.afternoonStatus === 'Absent' && getDay(recordDate) !== 6) { // And not Saturday afternoon
-                    hoursAbsent += 3.5;
                 }
             }
         });
@@ -283,6 +288,7 @@ export default function PayrollPage() {
             weekly.push({
                 employeeId: employee.id,
                 employeeName: employee.name,
+                telegramChatId: employee.telegramChatId,
                 paymentMethod: employee.paymentMethod,
                 period: weekPeriodLabel,
                 amount: finalAmount,
@@ -383,6 +389,7 @@ export default function PayrollPage() {
              monthly.push({
                 employeeId: employee.id,
                 employeeName: employee.name,
+                telegramChatId: employee.telegramChatId,
                 paymentMethod: employee.paymentMethod,
                 period: monthPeriodLabel,
                 amount: netSalary,

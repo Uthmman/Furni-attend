@@ -18,7 +18,7 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Copy, Eye } from "lucide-react";
+import { Copy, Eye, Loader2 } from "lucide-react";
 import type { PayrollEntry } from "@/lib/types";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useToast } from "@/hooks/use-toast";
@@ -33,6 +33,14 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { sendPayrollSummaryToTelegram } from "./actions";
+
+
+const TelegramIcon = (props: React.SVGProps<SVGSVGElement>) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4" {...props}>
+        <path d="M9.78 18.65l.28-4.23l7.68-6.92c.34-.31-.07-.46-.52-.19L7.74 13.3L3.64 12c-.88-.25-.89-1.37.2-1.61l16.11-5.72c.78-.27 1.45.16 1.18 1.1l-3.27 15.25c-.27 1.22-1.04 1.5-2.04 1.02l-4.87-3.57l-2.31 2.24c-.25.24-.46.46-.8.46c-.42 0-.6-.24-.7-.53z" />
+    </svg>
+);
 
 interface PayrollListProps {
     title: string;
@@ -57,7 +65,7 @@ const generateSmsSummary = (entry: PayrollEntry): string => {
             summary += `Late Deduction (${entry.minutesLate || 0} mins): -ETB ${entry.lateDeduction.toFixed(2)}\n`;
         }
 
-        summary += `Net Salary: ETB **${entry.amount.toFixed(2)}**\n`;
+        summary += `Net Salary: *ETB ${entry.amount.toFixed(2)}*\n`;
     } else { // Weekly
         summary += `Hours Worked: ${(entry.totalHours || 0).toFixed(2)} hrs\n`;
         summary += `Base Pay: ETB ${(entry.baseAmount || 0).toFixed(2)}\n`;
@@ -75,7 +83,7 @@ const generateSmsSummary = (entry: PayrollEntry): string => {
             summary += `Late: ${entry.minutesLate || 0} mins\n`;
         }
 
-        summary += `Total Pay: ETB **${entry.amount.toFixed(2)}**\n`;
+        summary += `Total Pay: *ETB ${entry.amount.toFixed(2)}*\n`;
     }
 
     summary += `Thank you.`;
@@ -88,6 +96,7 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
     const { toast } = useToast();
     const [summaryContent, setSummaryContent] = useState("");
     const [isSummaryOpen, setIsSummaryOpen] = useState(false);
+    const [sendingStatus, setSendingStatus] = useState<Record<string, boolean>>({});
 
     const handleCopy = (entry: PayrollEntry) => {
         const summary = generateSmsSummary(entry);
@@ -111,6 +120,36 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
         const summary = generateSmsSummary(entry);
         setSummaryContent(summary);
         setIsSummaryOpen(true);
+    };
+
+    const handleSendTelegram = async (entry: PayrollEntry) => {
+        if (!entry.telegramChatId) {
+            toast({
+                variant: 'destructive',
+                title: 'Missing Chat ID',
+                description: `No Telegram Chat ID is set for ${entry.employeeName}.`
+            });
+            return;
+        }
+
+        setSendingStatus(prev => ({ ...prev, [entry.employeeId]: true }));
+        
+        const summary = generateSmsSummary(entry);
+        const result = await sendPayrollSummaryToTelegram(entry.telegramChatId, summary);
+
+        if (result.success) {
+            toast({
+                title: 'Message Sent!',
+                description: `Payroll summary sent to ${entry.employeeName} via Telegram.`
+            });
+        } else {
+            toast({
+                variant: 'destructive',
+                title: 'Send Failed',
+                description: result.error || 'Could not send message via Telegram.'
+            });
+        }
+        setSendingStatus(prev => ({ ...prev, [entry.employeeId]: false }));
     };
 
     const totalAmount = payrollData.reduce((acc, entry) => acc + entry.amount, 0);
@@ -137,12 +176,14 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                             <TableRow>
                                 <TableHead>Employee</TableHead>
                                 <TableHead className="text-right">Amount (ETB)</TableHead>
-                                <TableHead className="w-[100px] text-right">Actions</TableHead>
+                                <TableHead className="w-[140px] text-right">Actions</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
                             {payrollData.length > 0 ? (
-                                payrollData.map((entry) => (
+                                payrollData.map((entry) => {
+                                    const isSending = sendingStatus[entry.employeeId];
+                                    return (
                                     <TableRow key={entry.employeeId}>
                                         <TableCell>
                                             <div className="font-medium">{entry.employeeName}</div>
@@ -196,15 +237,18 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                                         </TableCell>
                                         <TableCell className="text-right font-bold">{entry.amount.toFixed(2)}</TableCell>
                                         <TableCell className="flex items-center justify-end gap-0">
-                                            <Button variant="ghost" size="icon" onClick={() => handleViewSummary(entry)}>
+                                            <Button variant="ghost" size="icon" onClick={() => handleViewSummary(entry)} disabled={isSending}>
                                                 <Eye className="h-4 w-4" />
                                             </Button>
-                                            <Button variant="ghost" size="icon" onClick={() => handleCopy(entry)}>
+                                            <Button variant="ghost" size="icon" onClick={() => handleCopy(entry)} disabled={isSending}>
                                                 <Copy className="h-4 w-4" />
+                                            </Button>
+                                            <Button variant="ghost" size="icon" onClick={() => handleSendTelegram(entry)} disabled={!entry.telegramChatId || isSending}>
+                                                {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <TelegramIcon />}
                                             </Button>
                                         </TableCell>
                                     </TableRow>
-                                ))
+                                )})
                             ) : (
                                 <TableRow>
                                     <TableCell colSpan={3} className="h-24 text-center">
