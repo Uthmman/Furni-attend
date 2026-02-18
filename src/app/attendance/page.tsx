@@ -122,27 +122,6 @@ export default function AttendancePage() {
             let morningEntry = record?.morningEntry || "";
             let afternoonEntry = record?.afternoonEntry || "";
 
-            const isMonthly = emp.paymentMethod === 'Monthly';
-            const isPastOrToday = !isAfter(startOfDay(selectedDate), startOfDay(new Date()));
-            const isSunday = getDay(selectedDate) === 0;
-            const isSaturday = getDay(selectedDate) === 6;
-
-            if (isPastOrToday) {
-                if (isMonthly) {
-                    if (isSunday) {
-                        morningStatus = "Present";
-                        afternoonStatus = "Present";
-                        morningEntry = "08:00";
-                        afternoonEntry = "13:30";
-                    } else if (isSaturday) {
-                        if (!record || record.afternoonStatus === undefined || record.afternoonStatus === null) {
-                             afternoonStatus = "Present";
-                             afternoonEntry = "";
-                        }
-                    }
-                }
-            }
-
             return {
                 employeeId: emp.id,
                 employeeName: emp.name,
@@ -158,10 +137,10 @@ export default function AttendancePage() {
   }, [employees, attendanceRecords, selectedDate]);
 
 
-  const handleDateSelect = (date: Date | undefined) => {
+  const handleDateSelect = useCallback((date: Date | undefined) => {
     if (!date) return;
     setSelectedDate(date);
-  };
+  }, []);
 
   const saveAttendance = async (attendanceData: DailyAttendance) => {
     if (!firestore) return;
@@ -439,5 +418,7 @@ export default function AttendancePage() {
     </div>
   );
 }
+
+    
 
     
