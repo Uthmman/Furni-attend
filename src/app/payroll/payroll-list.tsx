@@ -19,7 +19,7 @@ import {
 import type { PayrollEntry } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
-import { Telegram } from "lucide-react";
+import { Send } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { sendAdminPayrollSummary } from "./actions";
 
@@ -170,7 +170,7 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                     <p className="font-bold text-lg">Total</p>
                     <div className="flex items-center gap-2">
                         <Button variant="ghost" size="icon" onClick={handleSendSummary} aria-label="Send Summary to Admin">
-                            <Telegram className="w-5 h-5 text-primary" />
+                            <Send className="w-5 h-5 text-primary" />
                         </Button>
                         <p className="font-bold text-lg text-primary">ETB {totalAmount.toFixed(2)}</p>
                     </div>
