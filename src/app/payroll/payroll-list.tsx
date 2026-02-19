@@ -18,10 +18,6 @@ import {
 } from "@/components/ui/table";
 import type { PayrollEntry } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Button } from "@/components/ui/button";
-import { Send } from "lucide-react";
-import { useToast } from "@/hooks/use-toast";
-import { sendAdminPayrollSummary } from "./actions";
 
 interface PayrollListProps {
     title: string;
@@ -33,42 +29,6 @@ interface PayrollListProps {
 
 export function PayrollList({ title, payrollData, periodOptions, selectedPeriod, onPeriodChange }: PayrollListProps) {
     const totalAmount = payrollData.reduce((acc, entry) => acc + entry.amount, 0);
-    const { toast } = useToast();
-
-    const handleSendSummary = async () => {
-        const periodLabel = periodOptions.find(p => p.value === selectedPeriod)?.label;
-        if (!periodLabel || payrollData.length === 0) {
-            toast({
-                variant: 'destructive',
-                title: 'Cannot Send Summary',
-                description: 'There is no payroll data to send for the selected period.'
-            });
-            return;
-        }
-
-        let summaryMessage = `*${title} Summary for ${periodLabel}*\n\n`;
-        payrollData.forEach(entry => {
-            summaryMessage += `${entry.employeeName}: ETB ${entry.amount.toFixed(2)}\n`;
-        });
-        summaryMessage += `\n*Total: ETB ${totalAmount.toFixed(2)}*`;
-
-        const result = await sendAdminPayrollSummary(summaryMessage);
-        
-        if (result.success) {
-            toast({
-                title: 'Summary Sent!',
-                description: `The ${title.toLowerCase()} summary was sent via Telegram.`
-            });
-        } else {
-            toast({
-                variant: 'destructive',
-                title: 'Failed to Send Summary',
-                description: result.error || 'An unknown error occurred.',
-                duration: 9000,
-            });
-        }
-    };
-
 
     return (
         <Card>
@@ -168,12 +128,7 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                 </Table>
                 <div className="flex justify-between items-center mt-4 pt-4 border-t">
                     <p className="font-bold text-lg">Total</p>
-                    <div className="flex items-center gap-2">
-                        <Button variant="ghost" size="icon" onClick={handleSendSummary} aria-label="Send Summary to Admin">
-                            <Send className="w-5 h-5 text-primary" />
-                        </Button>
-                        <p className="font-bold text-lg text-primary">ETB {totalAmount.toFixed(2)}</p>
-                    </div>
+                    <p className="font-bold text-lg text-primary">ETB {totalAmount.toFixed(2)}</p>
                 </div>
             </CardContent>
         </Card>
