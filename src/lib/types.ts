@@ -36,6 +36,7 @@ export interface PayrollEntry {
   period: string;
   amount: number; // Net Salary for both
   status: "Paid" | "Unpaid";
+  amountToDate?: number;
 
   // For weekly, these fields are used
   workingDays?: number;

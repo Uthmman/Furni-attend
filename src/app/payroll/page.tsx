@@ -389,6 +389,21 @@ export default function PayrollPage() {
         
         const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction);
 
+        let expectedHoursToDate = 0;
+        calculationPeriodDays.forEach(day => {
+            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) {
+                if (getDay(day) === 6) { // Saturday
+                    expectedHoursToDate += 4.5;
+                } else { // Weekday (Mon-Fri)
+                    expectedHoursToDate += 8;
+                }
+            }
+        });
+        const actualHoursWorkedToDate = expectedHoursToDate - projectedHoursAbsent;
+        const earnedAmountToDate = actualHoursWorkedToDate * hourlyRate;
+        const amountToDate = earnedAmountToDate - lateDeduction;
+
+
         if (netSalary > 0 || allRecordsForMonth.length > 0) {
              monthly.push({
                 employeeId: employee.id,
@@ -404,6 +419,7 @@ export default function PayrollPage() {
                 absenceDeduction: projectedAbsenceDeduction,
                 lateDeduction: lateDeduction,
                 permissionDaysUsed: Math.min(15, permissionDaysUsedInYear),
+                amountToDate: amountToDate,
             });
         }
     });
