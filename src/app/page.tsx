@@ -4,18 +4,17 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, Calendar, UserX, Clock, Hand, Search } from "lucide-react";
+import { Users, UserCheck, Wallet, UserX, Clock, Hand } from "lucide-react";
 import type { Employee, AttendanceRecord, AttendanceStatus, PayrollEntry } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { collection, getDocs, Timestamp } from "firebase/firestore";
+import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PayrollHistoryChart } from './payroll/payroll-history-chart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
-import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { sendAdminPayrollSummary } from './payroll/actions';
 
@@ -138,7 +137,7 @@ const calculateMinutesLate = (record: AttendanceRecord): number => {
             if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) {
                 minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
             }
-        } catch(e){}
+        } catch(e) {}
     }
     return Math.round(minutesLate);
 };
@@ -471,8 +470,9 @@ export default function DashboardPage() {
                 const minuteRate = hourlyRateCalc / 60;
                 
                 const ethYearForPeriod = toEthiopian(monthStart).year;
+                const allEmployeeRecords = allAttendance.filter(r => r.employeeId === employee.id);
                 const permissionDatesInYear = new Set<string>();
-                allAttendance.filter(r => r.employeeId === employee.id).forEach(rec => {
+                allEmployeeRecords.forEach(rec => {
                     const recDate = getDateFromRecord(rec.date);
                     if (toEthiopian(recDate).year === ethYearForPeriod) {
                         if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
@@ -482,38 +482,56 @@ export default function DashboardPage() {
                 });
                 const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
                 const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
+        
+                const ethToday = toEthiopian(new Date());
+                const daysInMonth = getEthiopianMonthDays(ethToday.year, ethToday.month);
+                const monthEnd = addDays(monthStart, daysInMonth - 1);
+        
+                const calculationPeriod = { start: monthStart, end: monthEnd };
+                const allRecordsForMonth = allAttendance.filter(r => 
+                    r.employeeId === employee.id &&
+                    isValid(getDateFromRecord(r.date)) &&
+                    isWithinInterval(getDateFromRecord(r.date), calculationPeriod)
+                );
+                const recordedDatesForMonth = new Set(allRecordsForMonth.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
 
-                let totalHoursAbsent = 0;
-                const minutesLate = employeeAttendance.reduce((acc, r) => {
+                let projectedHoursAbsent = 0;
+                let displayMinutesLate = 0;
+                
+                allRecordsForMonth.forEach(r => {
                     const recordDate = getDateFromRecord(r.date);
+                    if(recordDate > today) return;
+
+                    let hoursAbsentThisRecord = 0;
+
                     const recordDateStr = format(recordDate, 'yyyy-MM-dd');
+                    const morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+                    const afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
 
-                    let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
-                    let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
-
-                    if (morningIsUnpaidAbsence) totalHoursAbsent += 4.5;
-                    if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) totalHoursAbsent += 3.5;
+                    if (morningIsUnpaidAbsence) hoursAbsentThisRecord += 4.5;
+                    if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) hoursAbsentThisRecord += 3.5;
                     
-                    return acc + calculateMinutesLate(r);
-                }, 0);
-
-                const periodDays = eachDayOfInterval(interval);
+                    projectedHoursAbsent += hoursAbsentThisRecord;
+                    displayMinutesLate += calculateMinutesLate(r);
+                });
+                
+                const calculationPeriodDays = eachDayOfInterval(calculationPeriod);
                 const employeeStartDate = new Date(employee.attendanceStartDate || 0);
-                const recordedDates = new Set(employeeAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
 
-                periodDays.forEach(day => {
+                calculationPeriodDays.forEach(day => {
                     if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
                         const dayStr = format(day, 'yyyy-MM-dd');
-                        if (!recordedDates.has(dayStr)) {
-                            if (getDay(day) === 6) totalHoursAbsent += 4.5;
-                            else totalHoursAbsent += 8;
+                        if (!recordedDatesForMonth.has(dayStr)) {
+                            projectedHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
                         }
                     }
                 });
 
-                const absenceDeduction = totalHoursAbsent * hourlyRateCalc;
-                const lateDeduction = minutesLate * minuteRate;
-                const netSalary = baseSalary - (absenceDeduction + lateDeduction);
+                const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
+                const projectedAbsenceDeduction = projectedHoursAbsent * hourlyRate;
+                const lateDeduction = displayMinutesLate * minuteRate;
+                
+                const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction);
                 totalPayrollForMonth += netSalary > 0 ? netSalary : 0;
 
             } else { // Weekly
@@ -756,11 +774,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-        <Input placeholder="Search..." className="pl-10 w-full" />
-      </div>
-
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <StatCard
           title="Total Employees"
@@ -836,3 +849,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
