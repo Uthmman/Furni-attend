@@ -1,44 +1,34 @@
 
 'use client';
 
-import { useMemo, useEffect } from 'react';
-import { usePageTitle } from "@/components/page-title-provider";
-import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, UserX, Clock, Hand } from "lucide-react";
-import type { Employee, AttendanceRecord, AttendanceStatus } from "@/lib/types";
-import { 
-    format, 
-    isValid, 
-    startOfWeek, 
-    isWithinInterval, 
-    addDays, 
-    parse, 
-    getDay, 
-    eachDayOfInterval, 
-    subMonths, 
-    subDays,
-    isSameDay
-} from "date-fns";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { PayrollHistoryChart } from '../payroll/payroll-history-chart';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import React, { useState, useMemo, useEffect } from 'react';
+import { employees, attendanceRecords } from '@/lib/data';
+import type { Employee, AttendanceRecord, AttendanceStatus, PayrollEntry } from "@/lib/types";
+
+import {
+  Card, CardContent, CardHeader, CardTitle, CardDescription
+} from '@/components/ui/card';
+import {
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow
+} from "@/components/ui/table";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import Link from 'next/link';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import Image from 'next/image';
+import { format, subDays, startOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, endOfWeek } from "date-fns";
+import { Users, UserCheck, Wallet, UserX, Clock, Hand, LayoutDashboard, CalendarCheck } from "lucide-react";
+import { PayrollHistoryChart } from '../payroll/payroll-history-chart';
+import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/logo";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { StatCard } from '@/components/stat-card';
+import { PayrollList } from '../payroll/payroll-list';
 
-// Import mock data
-import { employees, orders, items, stockAdjustments, attendanceRecords } from '@/lib/data';
 
-// --- Helper functions copied from live pages for consistent calculations ---
-
+// --- MOCK DATA & HELPERS ---
 const MOCK_TODAY = subDays(new Date(), 1);
 
 const getDateFromRecord = (date: string | any): Date => {
-  if (date?.toDate) {
-    return date.toDate();
-  }
+  if (date?.toDate) return date.toDate();
   if (!date) return new Date();
   return new Date(date);
 }
@@ -86,44 +76,25 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
 const calculateHoursWorked = (record: AttendanceRecord): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
-
-    if (getDay(recordDate) === 0) {
-        if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') {
-             return 8; 
-        }
-        return 0;
-    }
-
-    if (getDay(recordDate) === 6) {
-        if(record.afternoonStatus !== 'Absent') {
-             return 4.5;
-        }
-    }
-
+    if (getDay(recordDate) === 0) return record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent' ? 8 : 0;
+    if (getDay(recordDate) === 6) return record.afternoonStatus !== 'Absent' ? 4.5 : 0;
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
-
+    
+    let totalHours = 0;
     const morningStartTime = parse("08:00", "HH:mm", new Date());
     const morningEndTime = parse("12:30", "HH:mm", new Date());
     const afternoonStartTime = parse("13:30", "HH:mm", new Date());
     const afternoonEndTime = parse("17:00", "HH:mm", new Date());
-    let totalHours = 0;
+    
     if (record.morningStatus !== 'Absent' && record.morningEntry) {
-        try {
-            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-            if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
-                const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
-                totalHours += morningWorkMs / (1000 * 60 * 60);
-            }
-        } catch(e){}
+        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+        if(isValid(morningEntryTime) && morningEntryTime < morningEndTime)
+            totalHours += (morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime())) / 3600000;
     }
     if (record.afternoonStatus !== 'Absent' && record.afternoonEntry) {
-        try {
-            const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-             if(isValid(afternoonEntryTime) && afternoonEntryTime < afternoonEndTime) {
-                const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
-                totalHours += afternoonWorkMs / (1000 * 60 * 60);
-            }
-        } catch(e){}
+        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+        if(isValid(afternoonEntryTime) && afternoonEntryTime < afternoonEndTime)
+            totalHours += (afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime())) / 3600000;
     }
     return Math.max(0, totalHours);
 };
@@ -133,35 +104,88 @@ const calculateMinutesLate = (record: AttendanceRecord): number => {
     let minutesLate = 0;
     if (record.morningStatus === 'Late' && record.morningEntry) {
         const morningStartTime = parse("08:00", "HH:mm", new Date());
-        try {
-            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-            if (isValid(morningEntryTime) && morningEntryTime > morningStartTime) {
-                minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / (1000 * 60);
-            }
-        } catch(e) {}
+        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+        if (isValid(morningEntryTime) && morningEntryTime > morningStartTime) minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / 60000;
     }
     if (record.afternoonStatus === 'Late' && record.afternoonEntry) {
         const afternoonStartTime = parse("13:30", "HH:mm", new Date());
-        try {
-            const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-            if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) {
-                minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
-            }
-        } catch(e) {}
+        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+        if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / 60000;
     }
     return Math.round(minutesLate);
 };
 
+const getInitials = (name: string) => {
+    if (!name) return "";
+    return name.split(" ").map((n) => n[0]).join("").toUpperCase();
+};
+
+const mockNavLinks = [
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "employees", label: "Employees", icon: Users },
+    { id: "attendance", label: "Attendance", icon: CalendarCheck },
+    { id: "payroll", label: "Payroll", icon: Wallet },
+];
+
+// --- CONTENT COMPONENTS ---
+
+const DashboardContent = ({ stats, history }: { stats: any, history: any[] }) => (
+    <div className="space-y-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <StatCard title="Total Employees" value={stats.totalEmployees} icon={<Users className="h-5 w-5 text-muted-foreground" />} />
+            <StatCard title="On-site Today" value={`${stats.onSiteToday} / ${stats.totalEmployees}`} icon={<UserCheck className="h-5 w-5 text-muted-foreground" />} />
+            <StatCard title="This Week's Payroll" value={`ETB ${stats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${stats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+            <StatCard title="This Month's Payroll" value={`ETB ${stats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${stats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+        </div>
+        <Card>
+            <CardHeader>
+                <CardTitle>Payroll History</CardTitle>
+                <CardDescription>Total payroll expenses for the last 6 months.</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <PayrollHistoryChart data={history} />
+            </CardContent>
+        </Card>
+    </div>
+);
+
+const EmployeesContent = ({ employees }: { employees: Employee[] }) => (
+    <Card>
+        <CardHeader>
+            <CardTitle>Employees</CardTitle>
+            <CardDescription>A list of sample employees.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <Table>
+                <TableHeader>
+                    <TableRow><TableHead>Employee</TableHead><TableHead>Payment Method</TableHead></TableRow>
+                </TableHeader>
+                <TableBody>
+                    {employees.map((employee) => (
+                        <TableRow key={employee.id}>
+                            <TableCell>
+                                <div className="flex items-center gap-3">
+                                    <Avatar className="hidden h-9 w-9 sm:flex"><AvatarFallback>{getInitials(employee.name)}</AvatarFallback></Avatar>
+                                    <div>
+                                        <p className="font-medium leading-none">{employee.name}</p>
+                                        <p className="text-xs text-muted-foreground">{employee.position}</p>
+                                    </div>
+                                </div>
+                            </TableCell>
+                            <TableCell><Badge variant="outline">{employee.paymentMethod}</Badge></TableCell>
+                        </TableRow>
+                    ))}
+                </TableBody>
+            </Table>
+        </CardContent>
+    </Card>
+);
+
 const StatusListItem = ({ employee, status, detail }: { employee: Employee, status: AttendanceStatus, detail?: string }) => (
     <div className="flex items-center justify-between py-2 border-b last:border-b-0">
         <div className="flex items-center gap-3">
-            <Avatar className="w-9 h-9">
-                <AvatarFallback>{employee.name.split(" ").map((n) => n[0]).join("")}</AvatarFallback>
-            </Avatar>
-            <div>
-                <p className="font-medium">{employee.name}</p>
-                <p className="text-sm text-muted-foreground">{employee.position}</p>
-            </div>
+            <Avatar className="w-9 h-9"><AvatarFallback>{getInitials(employee.name)}</AvatarFallback></Avatar>
+            <div><p className="font-medium">{employee.name}</p><p className="text-sm text-muted-foreground">{employee.position}</p></div>
         </div>
         <div className="text-sm text-right">
             <Badge variant={status === 'Late' || status === 'Absent' ? 'destructive' : status === 'Permission' ? 'default' : 'secondary'} className="capitalize">{status}</Badge>
@@ -170,343 +194,306 @@ const StatusListItem = ({ employee, status, detail }: { employee: Employee, stat
     </div>
 );
 
-
-export default function DemoPage() {
-  const { setTitle } = usePageTitle();
-  const allAttendance = attendanceRecords;
-  const todayAttendance = useMemo(() => allAttendance.filter(r => isSameDay(getDateFromRecord(r.date), MOCK_TODAY)), [allAttendance]);
-
-  useEffect(() => {
-    setTitle("App Demo");
-  }, [setTitle]);
-
-  const dashboardStats = useMemo(() => {
-    const totalEmployees = employees.length;
-    const onSiteToday = todayAttendance.filter(r => r.morningStatus !== "Absent" || r.afternoonStatus !== "Absent").length || 0;
-    
-    const ethToday = toEthiopian(MOCK_TODAY);
-    const weekStart = startOfWeek(MOCK_TODAY, { weekStartsOn: 0 });
-    
-    const estWeekly = employees.reduce((acc, emp) => {
-        if (emp.paymentMethod === 'Weekly' && emp.dailyRate) {
-            return acc + (emp.dailyRate * 7);
-        }
-        return acc;
-    }, 0);
-
-    const actualWeekly = employees.reduce((acc, emp) => {
-        if (emp.paymentMethod !== 'Weekly') return acc;
-        const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-        if (!hourlyRate) return acc;
-        const period = { start: weekStart, end: MOCK_TODAY };
-        const recordsInWeek = allAttendance.filter(r => r.employeeId === emp.id && isValid(new Date(r.date as string)) && isWithinInterval(new Date(r.date as string), period));
-        let hoursWorked = recordsInWeek.reduce((sum, r) => sum + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
-        return acc + (hoursWorked * hourlyRate);
-    }, 0);
-
-    const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
-    
-    const estMonthly = employees.reduce((acc, emp) => {
-        if (emp.paymentMethod === 'Monthly' && emp.monthlyRate) return acc + emp.monthlyRate;
-        return acc;
-    }, 0);
-
-    const actualMonthly = employees.reduce((acc, emp) => {
-        if (emp.paymentMethod !== 'Monthly') return acc;
-        const baseSalary = emp.monthlyRate || 0;
-        if (baseSalary === 0) return acc;
-        const dailyRate = baseSalary / 23.625;
-        const hourlyRate = dailyRate / 8;
-        const minuteRate = hourlyRate / 60;
-        const period = { start: monthStart, end: MOCK_TODAY };
-        const recordsInMonth = allAttendance.filter(r => r.employeeId === emp.id && isValid(getDateFromRecord(r.date)) && isWithinInterval(getDateFromRecord(r.date), period));
-        let totalHoursAbsent = 0;
-        const minutesLate = recordsInMonth.reduce((sum, r) => sum + calculateMinutesLate(r), 0);
-        const periodDays = eachDayOfInterval(period);
-        const recordedDates = new Set(recordsInMonth.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
-        periodDays.forEach(day => {
-            if (getDay(day) !== 0 && day <= MOCK_TODAY) {
-                const dayStr = format(day, 'yyyy-MM-dd');
-                if (!recordedDates.has(dayStr)) {
-                    totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
-                }
-            }
-        });
-        const absenceDeduction = totalHoursAbsent * hourlyRate;
-        const lateDeduction = minutesLate * minuteRate;
-        return acc + (baseSalary - absenceDeduction - lateDeduction);
-    }, 0);
-
-    return { totalEmployees, onSiteToday, estWeekly, actualWeekly, estMonthly, actualMonthly };
-  }, [employees, allAttendance, todayAttendance]);
-  
-  const todayStatus = useMemo(() => {
-    if (!todayAttendance || !employees) return { absent: [], late: [], permission: [] };
-    const absent: { employee: Employee, period: string }[] = [];
-    const late: { employee: Employee; time: string }[] = [];
-    const permission: { employee: Employee, period: string }[] = [];
-    employees.forEach(emp => {
-        const record = todayAttendance.find(r => r.employeeId === emp.id);
-        if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) {
-            absent.push({ employee: emp, period: 'Full Day' });
-        } else if (record.morningStatus === 'Late' || record.afternoonStatus === 'Late') {
-            const lateTimes: string[] = [];
-            if (record.morningStatus === 'Late' && record.morningEntry) lateTimes.push(record.morningEntry);
-            if (record.afternoonStatus === 'Late' && record.afternoonEntry) lateTimes.push(record.afternoonEntry);
-            late.push({ employee: emp, time: lateTimes.join(' & ') });
-        } else if (record.morningStatus === 'Permission' || record.afternoonStatus === 'Permission') {
-            let period = '';
-            if (record.morningStatus === 'Permission' && record.afternoonStatus === 'Permission') period = 'Full Day';
-            else if (record.morningStatus === 'Permission') period = 'Morning';
-            else period = 'Afternoon';
-            permission.push({ employee: emp, period });
-        }
-    });
-    return { absent, late, permission };
-  }, [todayAttendance, employees]);
-
-  const payrollHistory = useMemo(() => {
-    if (!employees || allAttendance.length === 0) return [];
-    const history = [];
-    for (let i = 5; i >= 0; i--) {
-        const monthDate = subMonths(new Date(), i);
-        const ethDateForMonth = toEthiopian(monthDate);
-        const monthStart = toGregorian(ethDateForMonth.year, ethDateForMonth.month, 1);
-        const daysInMonth = getEthiopianMonthDays(ethDateForMonth.year, ethDateForMonth.month);
-        const monthEnd = addDays(monthStart, daysInMonth - 1);
-        const interval = { start: monthStart, end: monthEnd };
-        let totalPayrollForMonth = 0;
-        employees.forEach(employee => {
-            const employeeAttendance = allAttendance.filter(r => r.employeeId === employee.id && isWithinInterval(getDateFromRecord(r.date), interval));
-            if (employee.paymentMethod === 'Monthly') {
-                const baseSalary = employee.monthlyRate || 0;
-                totalPayrollForMonth += baseSalary; // Simplified for demo
-            } else {
-                const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
-                if (!hourlyRate) return;
-                const totalHours = employeeAttendance.reduce((acc, r) => acc + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
-                totalPayrollForMonth += totalHours * hourlyRate;
-            }
-        });
-        history.push({ month: format(monthStart, 'MMM'), total: totalPayrollForMonth });
-    }
-    return history;
-}, [employees, allAttendance]);
-
-  const getInitials = (name: string) => {
-    if (!name) return "";
-    const names = name.split(" ");
-    return names.map((n) => n[0]).join("").toUpperCase();
-  };
-
-  return (
-    <div className="flex flex-col gap-8">
-      <Card>
+const AttendanceContent = ({ status }: { status: any }) => (
+    <Card>
         <CardHeader>
-          <CardTitle>Demo Showcase</CardTitle>
-          <CardDescription>
-            This page demonstrates the various features of the application using mock data.
-            The actual application uses live data from Firebase.
-          </CardDescription>
+            <CardTitle>Today's Status</CardTitle>
+            <CardDescription>Based on mock data for {format(MOCK_TODAY, 'PPP')}</CardDescription>
         </CardHeader>
-      </Card>
-      
-      <Tabs defaultValue="dashboard" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
-            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
-            <TabsTrigger value="employees">Employees</TabsTrigger>
-            <TabsTrigger value="attendance">Attendance</TabsTrigger>
-            <TabsTrigger value="orders">Orders</TabsTrigger>
-            <TabsTrigger value="store">Store</TabsTrigger>
-        </TabsList>
+        <CardContent>
+             <Tabs defaultValue="absent">
+                <TabsList className="grid w-full grid-cols-3">
+                    <TabsTrigger value="absent"><UserX className="mr-2 h-4 w-4" /> Absent ({status.absent.length})</TabsTrigger>
+                    <TabsTrigger value="late"><Clock className="mr-2 h-4 w-4" /> Late ({status.late.length})</TabsTrigger>
+                    <TabsTrigger value="permission"><Hand className="mr-2 h-4 w-4" /> Permission ({status.permission.length})</TabsTrigger>
+                </TabsList>
+                <TabsContent value="absent" className="mt-4">
+                    {status.absent.length > 0 ? status.absent.map((item: any) => <StatusListItem key={item.employee.id} employee={item.employee} status="Absent" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is absent today.</p>}
+                </TabsContent>
+                <TabsContent value="late" className="mt-4">
+                    {status.late.length > 0 ? status.late.map((item: any) => <StatusListItem key={item.employee.id} employee={item.employee} status="Late" detail={item.time} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is late today.</p>}
+                </TabsContent>
+                <TabsContent value="permission" className="mt-4">
+                    {status.permission.length > 0 ? status.permission.map((item: any) => <StatusListItem key={item.employee.id} employee={item.employee} status="Permission" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is on leave today.</p>}
+                </TabsContent>
+            </Tabs>
+        </CardContent>
+    </Card>
+);
 
-        <TabsContent value="dashboard" className="mt-6 space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <StatCard title="Total Employees" value={dashboardStats.totalEmployees} icon={<Users className="h-5 w-5 text-muted-foreground" />} />
-              <StatCard title="On-site Today" value={`${dashboardStats.onSiteToday} / ${dashboardStats.totalEmployees}`} icon={<UserCheck className="h-5 w-s text-muted-foreground" />} />
-              <StatCard title="This Week's Payroll" value={`ETB ${dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-              <StatCard title="This Month's Payroll" value={`ETB ${dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-            </div>
-            <Card>
-                <CardHeader>
-                    <CardTitle>Payroll History</CardTitle>
-                    <CardDescription>Total payroll expenses for the last 6 months.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <PayrollHistoryChart data={payrollHistory} />
-                </CardContent>
-            </Card>
-        </TabsContent>
-
-        <TabsContent value="employees" className="mt-6">
-            <Card>
-                <CardHeader>
-                <CardTitle>Employees</CardTitle>
-                <CardDescription>A list of sample employees.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                <Table>
-                    <TableHeader>
-                    <TableRow>
-                        <TableHead>Employee</TableHead>
-                        <TableHead>Payment Method</TableHead>
-                    </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                    {employees.map((employee) => (
-                        <TableRow key={employee.id}>
-                        <TableCell>
-                            <div className="flex items-center gap-3">
-                                <Avatar className="hidden h-9 w-9 sm:flex">
-                                    <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
-                                </Avatar>
-                                <div className="grid gap-1">
-                                    <p className="font-medium leading-none">{employee.name}</p>
-                                    <p className="text-xs text-muted-foreground">{employee.position}</p>
-                                </div>
-                            </div>
-                        </TableCell>
-                        <TableCell>
-                            <Badge variant="outline">{employee.paymentMethod}</Badge>
-                        </TableCell>
-                        </TableRow>
-                    ))}
-                    </TableBody>
-                </Table>
-                </CardContent>
-            </Card>
-        </TabsContent>
-
-        <TabsContent value="attendance" className="mt-6">
-            <Card>
-                <CardHeader>
-                    <CardTitle>Today's Status</CardTitle>
-                    <CardDescription>Based on mock data for {format(MOCK_TODAY, 'PPP')}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                    <Tabs defaultValue="absent">
-                        <TabsList className="grid w-full grid-cols-3">
-                            <TabsTrigger value="absent"><UserX className="mr-2 h-4 w-4" /> Absent ({todayStatus.absent.length})</TabsTrigger>
-                            <TabsTrigger value="late"><Clock className="mr-2 h-4 w-4" /> Late ({todayStatus.late.length})</TabsTrigger>
-                            <TabsTrigger value="permission"><Hand className="mr-2 h-4 w-4" /> Permission ({todayStatus.permission.length})</TabsTrigger>
-                        </TabsList>
-                        <TabsContent value="absent" className="mt-4">
-                            {todayStatus.absent.length > 0 ? todayStatus.absent.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Absent" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is absent today.</p>}
-                        </TabsContent>
-                         <TabsContent value="late" className="mt-4">
-                            {todayStatus.late.length > 0 ? todayStatus.late.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Late" detail={item.time} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is late today.</p>}
-                        </TabsContent>
-                         <TabsContent value="permission" className="mt-4">
-                            {todayStatus.permission.length > 0 ? todayStatus.permission.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Permission" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is on leave today.</p>}
-                        </TabsContent>
-                    </Tabs>
-                </CardContent>
-            </Card>
-        </TabsContent>
-        
-        <TabsContent value="orders" className="mt-6">
-            <Card>
-                <CardHeader>
-                <CardTitle>Orders</CardTitle>
-                <CardDescription>Track customer orders.</CardDescription>
-                </CardHeader>
-                <CardContent>
-                <Table>
-                    <TableHeader>
-                    <TableRow>
-                        <TableHead>Customer</TableHead>
-                        <TableHead>Product</TableHead>
-                        <TableHead>Status</TableHead>
-                    </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                    {orders.map((order) => (
-                        <TableRow key={order.id}>
-                        <TableCell>
-                            <div className="font-medium">{order.customerName}</div>
-                            <div className="text-sm text-muted-foreground">{format(new Date(order.orderDate), "PPP")}</div>
-                        </TableCell>
-                        <TableCell>
-                            <div className="flex items-center gap-3">
-                            {order.productPictureUrl && (
-                                <Image src={order.productPictureUrl} alt={order.orderDescription || 'Product image'} width={40} height={40} className="rounded-md object-cover" />
-                            )}
-                            <span>{order.orderDescription}</span>
-                            </div>
-                        </TableCell>
-                        <TableCell>
-                            <Badge variant={order.orderStatus === 'Completed' ? 'secondary' : order.orderStatus === 'Processing' ? 'default' : 'outline'}>
-                            {order.orderStatus}
-                            </Badge>
-                        </TableCell>
-                        </TableRow>
-                    ))}
-                    </TableBody>
-                </Table>
-                </CardContent>
-            </Card>
-        </TabsContent>
-        
-        <TabsContent value="store" className="mt-6">
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <Card>
-                    <CardHeader>
-                    <CardTitle>Store Inventory</CardTitle>
-                    <CardDescription>Keep track of raw materials and stock levels.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                    <Table>
-                        <TableHeader>
-                        <TableRow>
-                            <TableHead>Item Name</TableHead>
-                            <TableHead>Stock Level</TableHead>
-                        </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                        {items.map((item) => (
-                            <TableRow key={item.id}>
-                            <TableCell className="font-medium">{item.name}</TableCell>
-                            <TableCell>{item.stockLevel} {item.unitOfMeasurement}</TableCell>
-                            </TableRow>
-                        ))}
-                        </TableBody>
-                    </Table>
-                    </CardContent>
-                </Card>
-                
-                <Card>
-                    <CardHeader>
-                    <CardTitle>Stock Adjustments</CardTitle>
-                    <CardDescription>History of stock changes.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                    <Table>
-                        <TableHeader>
-                        <TableRow>
-                            <TableHead>Item</TableHead>
-                            <TableHead>Date</TableHead>
-                            <TableHead className="text-right">Quantity</TableHead>
-                        </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                        {stockAdjustments.map((adj) => (
-                            <TableRow key={adj.id}>
-                            <TableCell>{items.find(i => i.id === adj.itemId)?.name}</TableCell>
-                            <TableCell>{format(new Date(adj.adjustmentDate), "PPP p")}</TableCell>
-                            <TableCell className={`text-right ${adj.adjustmentQuantity > 0 ? 'text-primary' : 'text-destructive'}`}>
-                                {adj.adjustmentQuantity > 0 ? `+${adj.adjustmentQuantity}` : adj.adjustmentQuantity}
-                            </TableCell>
-                            </TableRow>
-                        ))}
-                        </TableBody>
-                    </Table>
-                    </CardContent>
-                </Card>
-            </div>
-        </TabsContent>
-      </Tabs>
+const PayrollContent = ({ weeklyPayroll, monthlyPayroll }: { weeklyPayroll: PayrollEntry[], monthlyPayroll: PayrollEntry[] }) => (
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <PayrollList 
+            title="Weekly Payout" 
+            payrollData={weeklyPayroll}
+            periodOptions={[]}
+            selectedPeriod={undefined}
+            onPeriodChange={() => {}}
+            isMock={true}
+        />
+        <PayrollList 
+            title="Monthly Payout" 
+            payrollData={monthlyPayroll} 
+            periodOptions={[]}
+            selectedPeriod={undefined}
+            onPeriodChange={() => {}}
+            isMock={true}
+        />
     </div>
-  );
+);
+
+// --- MAIN DEMO PAGE COMPONENT ---
+export default function DemoPage() {
+    const [activePage, setActivePage] = useState('dashboard');
+    const hasMounted = useHasMounted();
+    const isMobile = useIsMobile();
+    const allAttendance = attendanceRecords;
+    
+    // Calculations from the previous demo page
+    const todayAttendance = useMemo(() => allAttendance.filter(r => isSameDay(getDateFromRecord(r.date), MOCK_TODAY)), [allAttendance]);
+
+    const dashboardStats = useMemo(() => {
+        const totalEmployees = employees.length;
+        const onSiteToday = todayAttendance.filter(r => r.morningStatus !== "Absent" || r.afternoonStatus !== "Absent").length || 0;
+        const ethToday = toEthiopian(MOCK_TODAY);
+        const weekStart = startOfWeek(MOCK_TODAY, { weekStartsOn: 0 });
+        const estWeekly = employees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 7 : 0), 0);
+        const actualWeekly = employees.reduce((acc, emp) => {
+            if (emp.paymentMethod !== 'Weekly') return acc;
+            const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+            if (!hourlyRate) return acc;
+            const recordsInWeek = allAttendance.filter(r => r.employeeId === emp.id && isValid(new Date(r.date as string)) && isWithinInterval(new Date(r.date as string), { start: weekStart, end: MOCK_TODAY }));
+            let hoursWorked = recordsInWeek.reduce((sum, r) => sum + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
+            return acc + (hoursWorked * hourlyRate);
+        }, 0);
+        const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
+        const estMonthly = employees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : 0), 0);
+        const actualMonthly = employees.reduce((acc, emp) => {
+            if (emp.paymentMethod !== 'Monthly') return acc;
+            const baseSalary = emp.monthlyRate || 0;
+            if (baseSalary === 0) return acc;
+            const dailyRate = baseSalary / 23.625;
+            const hourlyRate = dailyRate / 8;
+            const minuteRate = hourlyRate / 60;
+            const recordsInMonth = allAttendance.filter(r => r.employeeId === emp.id && isValid(getDateFromRecord(r.date)) && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: MOCK_TODAY }));
+            let totalHoursAbsent = 0;
+            const minutesLate = recordsInMonth.reduce((sum, r) => sum + calculateMinutesLate(r), 0);
+            const recordedDates = new Set(recordsInMonth.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+            eachDayOfInterval({ start: monthStart, end: MOCK_TODAY }).forEach(day => {
+                if (getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+            });
+            const absenceDeduction = totalHoursAbsent * hourlyRate;
+            const lateDeduction = minutesLate * minuteRate;
+            return acc + (baseSalary - absenceDeduction - lateDeduction);
+        }, 0);
+        return { totalEmployees, onSiteToday, estWeekly, actualWeekly, estMonthly, actualMonthly };
+    }, [employees, allAttendance, todayAttendance]);
+    
+    const todayStatus = useMemo(() => {
+        if (!todayAttendance || !employees) return { absent: [], late: [], permission: [] };
+        const absent: { employee: Employee, period: string }[] = [];
+        const late: { employee: Employee; time: string }[] = [];
+        const permission: { employee: Employee, period: string }[] = [];
+        employees.forEach(emp => {
+            const record = todayAttendance.find(r => r.employeeId === emp.id);
+            if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) {
+                absent.push({ employee: emp, period: 'Full Day' });
+            } else if (record.morningStatus === 'Late' || record.afternoonStatus === 'Late') {
+                const lateTimes: string[] = [];
+                if (record.morningStatus === 'Late' && record.morningEntry) lateTimes.push(record.morningEntry);
+                if (record.afternoonStatus === 'Late' && record.afternoonEntry) lateTimes.push(record.afternoonEntry);
+                late.push({ employee: emp, time: lateTimes.join(' & ') });
+            } else if (record.morningStatus === 'Permission' || record.afternoonStatus === 'Permission') {
+                let period = record.morningStatus === 'Permission' && record.afternoonStatus === 'Permission' ? 'Full Day' : record.morningStatus === 'Permission' ? 'Morning' : 'Afternoon';
+                permission.push({ employee: emp, period });
+            }
+        });
+        return { absent, late, permission };
+    }, [todayAttendance, employees]);
+
+    const payrollHistory = useMemo(() => {
+        if (!employees || allAttendance.length === 0) return [];
+        const history = [];
+        for (let i = 5; i >= 0; i--) {
+            const monthDate = subMonths(new Date(), i);
+            const ethDateForMonth = toEthiopian(monthDate);
+            const monthStart = toGregorian(ethDateForMonth.year, ethDateForMonth.month, 1);
+            const monthEnd = addDays(monthStart, getEthiopianMonthDays(ethDateForMonth.year, ethDateForMonth.month) - 1);
+            let totalPayrollForMonth = 0;
+            employees.forEach(employee => {
+                const employeeAttendance = allAttendance.filter(r => r.employeeId === employee.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
+                if (employee.paymentMethod === 'Monthly') {
+                    totalPayrollForMonth += employee.monthlyRate || 0;
+                } else {
+                    const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
+                    if (!hourlyRate) return;
+                    const totalHours = employeeAttendance.reduce((acc, r) => acc + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
+                    totalPayrollForMonth += totalHours * hourlyRate;
+                }
+            });
+            history.push({ month: format(monthStart, 'MMM'), total: totalPayrollForMonth });
+        }
+        return history;
+    }, [employees, allAttendance]);
+
+     const weeklyPayroll = useMemo(() => {
+        const weekly: PayrollEntry[] = [];
+        const weekStart = startOfWeek(MOCK_TODAY, { weekStartsOn: 0 });
+        const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
+        employees.filter(e => e.paymentMethod === 'Weekly').forEach(employee => {
+            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
+            if (!hourlyRate) return;
+            const records = allAttendance.filter(r => r.employeeId === employee.id && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: weekEnd }));
+            const totalHours = records.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
+            const overtimeHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+            weekly.push({
+                employeeId: employee.id, employeeName: employee.name, paymentMethod: "Weekly", period: "", amount: (totalHours + overtimeHours) * hourlyRate, status: 'Unpaid',
+            });
+        });
+        return weekly;
+    }, [employees, allAttendance]);
+  
+    const monthlyPayroll = useMemo(() => {
+        const monthly: PayrollEntry[] = [];
+        const ethDate = toEthiopian(MOCK_TODAY);
+        const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
+        const monthEnd = addDays(monthStart, getEthiopianMonthDays(ethDate.year, ethDate.month) - 1);
+        employees.filter(e => e.paymentMethod === 'Monthly').forEach(employee => {
+            const baseSalary = employee.monthlyRate || 0;
+            if (!baseSalary) return;
+            const records = allAttendance.filter(r => r.employeeId === employee.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
+            monthly.push({
+                employeeId: employee.id, employeeName: employee.name, paymentMethod: "Monthly", period: "", amount: baseSalary, status: 'Unpaid',
+            });
+        });
+        return monthly;
+    }, [employees, allAttendance]);
+
+
+    const renderContent = () => {
+        switch(activePage) {
+            case 'dashboard': return <DashboardContent stats={dashboardStats} history={payrollHistory} />;
+            case 'employees': return <EmployeesContent employees={employees} />;
+            case 'attendance': return <AttendanceContent status={todayStatus} />;
+            case 'payroll': return <PayrollContent weeklyPayroll={weeklyPayroll} monthlyPayroll={monthlyPayroll} />;
+            default: return <DashboardContent stats={dashboardStats} history={payrollHistory} />;
+        }
+    };
+    
+    if (!hasMounted) {
+        return (
+             <div className="flex h-screen w-full items-center justify-center">
+                <div className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" role="status">
+                    <span className="sr-only">Loading...</span>
+                </div>
+            </div>
+        )
+    }
+
+    return (
+        <div className="flex min-h-screen w-full bg-background">
+            {/* Mock Desktop Sidebar */}
+            {!isMobile && (
+                <aside className="flex flex-col w-64 border-r">
+                    <div className="flex items-center gap-3 p-4 border-b h-16">
+                        <Logo className="w-8 h-8 text-primary" />
+                        <p className="font-headline text-lg font-bold">FurnishWise</p>
+                    </div>
+                    <div className="p-2 flex-1">
+                        {mockNavLinks.map(link => (
+                            <Button 
+                                key={link.id} 
+                                variant={activePage === link.id ? 'secondary' : 'ghost'} 
+                                onClick={() => setActivePage(link.id)}
+                                className="w-full justify-start gap-2"
+                            >
+                                <link.icon className="h-5 w-5" />
+                                <span>{link.label}</span>
+                            </Button>
+                        ))}
+                    </div>
+                </aside>
+            )}
+            
+            <div className="flex flex-col w-full">
+                {/* Mock Header */}
+                <header className="flex h-16 shrink-0 items-center gap-4 px-4 md:px-6 border-b">
+                    <h1 className="flex-1 text-2xl font-bold tracking-tight">
+                        {mockNavLinks.find(l => l.id === activePage)?.label} (Demo)
+                    </h1>
+                    <Avatar className="h-10 w-10">
+                        <AvatarFallback>AD</AvatarFallback>
+                    </Avatar>
+                </header>
+
+                <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
+                    {renderContent()}
+                </main>
+            </div>
+
+            {/* Mock Mobile Nav */}
+            {isMobile && (
+                <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
+                    <div className="bg-background border-t">
+                        <nav className="flex justify-around items-center p-2">
+                        {mockNavLinks.map((link) => (
+                            <button
+                                key={link.id}
+                                onClick={() => setActivePage(link.id)}
+                                className={cn(
+                                    "flex flex-col items-center justify-center gap-1 p-2 rounded-lg transition-colors duration-200",
+                                    activePage === link.id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"
+                                )}
+                                style={{ minWidth: '64px' }}
+                            >
+                                <link.icon className="h-6 w-6" />
+                                <span className={cn("text-xs font-medium", activePage === link.id ? "block" : "hidden")}>
+                                    {link.label}
+                                </span>
+                            </button>
+                        ))}
+                        </nav>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 }
 
-    
+// Custom hook to ensure we're on the client before using client-side hooks like useIsMobile
+function useHasMounted() {
+    const [hasMounted, setHasMounted] = useState(false);
+    useEffect(() => {
+        setHasMounted(true);
+    }, []);
+    return hasMounted;
+}
+// Local Tabs implementation to avoid dependency on real routing
+const Tabs = ({ defaultValue, children }: { defaultValue: string, children: React.ReactNode[] }) => {
+    const [activeTab, setActiveTab] = useState(defaultValue);
+    const list = children.find((c: any) => c.type === TabsList);
+    const content = children.filter((c: any) => c.type === TabsContent);
+    return (
+        <div>
+            {React.cloneElement(list as React.ReactElement, { activeTab, setActiveTab })}
+            {content.find((c: any) => c.props.value === activeTab)}
+        </div>
+    );
+};
+const TabsList = ({ children, activeTab, setActiveTab }: { children: React.ReactNode[], activeTab: string, setActiveTab: (v: string) => void }) => (
+    <div className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground">
+        {React.Children.map(children, (child: any) => React.cloneElement(child, { activeTab, setActiveTab }))}
+    </div>
+);
+const TabsTrigger = ({ children, value, activeTab, setActiveTab }: { children: React.ReactNode, value: string, activeTab: string, setActiveTab: (v: string) => void }) => (
+    <button
+        onClick={() => setActiveTab(value)}
+        className={cn(
+            "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50",
+            activeTab === value ? "bg-background text-foreground shadow-sm" : ""
+        )}
+    >{children}</button>
+);
+const TabsContent = ({ children, value }: { children: React.ReactNode, value: string }) => (
+    <div className="mt-2">{children}</div>
+);
