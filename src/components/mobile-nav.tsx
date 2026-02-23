@@ -19,7 +19,6 @@ const links = [
   { href: "/employees", label: "Employees", icon: Users },
   { href: "/attendance", label: "Attendance", icon: CalendarCheck },
   { href: "/payroll", label: "Payroll", icon: Wallet },
-  { href: "/demo", label: "Demo", icon: Palette },
 ];
 
 export function MobileNav() {
