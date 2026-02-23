@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/table";
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import { format, subDays, startOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, endOfWeek } from "date-fns";
+import { format, subDays, startOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, endOfWeek, isValid } from "date-fns";
 import { Users, UserCheck, Wallet, UserX, Clock, Hand, LayoutDashboard, CalendarCheck } from "lucide-react";
 import { PayrollHistoryChart } from '../payroll/payroll-history-chart';
 import { cn } from "@/lib/utils";
