@@ -1,3 +1,4 @@
+
 "use client";
 
 import Link from "next/link";
@@ -16,6 +17,7 @@ import {
   LayoutDashboard,
   Users,
   Wallet,
+  Palette,
 } from "lucide-react";
 
 const links = [
@@ -23,6 +25,7 @@ const links = [
   { href: "/employees", label: "Employees", icon: Users },
   { href: "/attendance", label: "Attendance", icon: CalendarCheck },
   { href: "/payroll", label: "Payroll", icon: Wallet },
+  { href: "/demo", label: "Demo", icon: Palette },
 ];
 
 export function SidebarNav() {
@@ -63,5 +66,3 @@ export function SidebarNav() {
     </>
   );
 }
-
-    

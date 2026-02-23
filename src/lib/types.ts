@@ -56,3 +56,27 @@ export interface PayrollEntry {
   lateDates?: string[];
   permissionDaysUsed?: number;
 };
+
+export interface Order {
+    id: string;
+    customerName: string;
+    orderDate: string;
+    orderDescription?: string;
+    orderStatus: string;
+    productPictureUrl?: string;
+}
+
+export interface Item {
+    id: string;
+    name: string;
+    unitOfMeasurement: string;
+    stockLevel: number;
+}
+
+export interface StockAdjustment {
+    id: string;
+    itemId: string;
+    adjustmentDate: string;
+    adjustmentQuantity: number;
+    reason: string;
+}
