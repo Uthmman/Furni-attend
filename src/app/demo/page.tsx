@@ -311,185 +311,200 @@ export default function DemoPage() {
         </CardHeader>
       </Card>
       
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <StatCard title="Total Employees" value={dashboardStats.totalEmployees} icon={<Users className="h-5 w-5 text-muted-foreground" />} />
-        <StatCard title="On-site Today" value={`${dashboardStats.onSiteToday} / ${dashboardStats.totalEmployees}`} icon={<UserCheck className="h-5 w-s text-muted-foreground" />} />
-        <StatCard title="This Week's Payroll" value={`ETB ${dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-        <StatCard title="This Month's Payroll" value={`ETB ${dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card>
-            <CardHeader>
-                <CardTitle>Today's Status</CardTitle>
-                <CardDescription>Based on mock data for {format(MOCK_TODAY, 'PPP')}</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <Tabs defaultValue="absent">
-                    <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="absent"><UserX className="mr-2 h-4 w-4" /> Absent ({todayStatus.absent.length})</TabsTrigger>
-                        <TabsTrigger value="late"><Clock className="mr-2 h-4 w-4" /> Late ({todayStatus.late.length})</TabsTrigger>
-                        <TabsTrigger value="permission"><Hand className="mr-2 h-4 w-4" /> Permission ({todayStatus.permission.length})</TabsTrigger>
-                    </TabsList>
-                    <TabsContent value="absent" className="mt-4">
-                        {todayStatus.absent.length > 0 ? todayStatus.absent.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Absent" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is absent today.</p>}
-                    </TabsContent>
-                     <TabsContent value="late" className="mt-4">
-                        {todayStatus.late.length > 0 ? todayStatus.late.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Late" detail={item.time} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is late today.</p>}
-                    </TabsContent>
-                     <TabsContent value="permission" className="mt-4">
-                        {todayStatus.permission.length > 0 ? todayStatus.permission.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Permission" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is on leave today.</p>}
-                    </TabsContent>
-                </Tabs>
-            </CardContent>
-        </Card>
-        
-        <Card>
-            <CardHeader>
-                <CardTitle>Payroll History</CardTitle>
-                <CardDescription>Total payroll expenses for the last 6 months.</CardDescription>
-            </CardHeader>
-            <CardContent>
-                <PayrollHistoryChart data={payrollHistory} />
-            </CardContent>
-        </Card>
-      </div>
+      <Tabs defaultValue="dashboard" className="w-full">
+        <TabsList className="grid w-full grid-cols-5">
+            <TabsTrigger value="dashboard">Dashboard</TabsTrigger>
+            <TabsTrigger value="employees">Employees</TabsTrigger>
+            <TabsTrigger value="attendance">Attendance</TabsTrigger>
+            <TabsTrigger value="orders">Orders</TabsTrigger>
+            <TabsTrigger value="store">Store</TabsTrigger>
+        </TabsList>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card>
-            <CardHeader>
-            <CardTitle>Employees</CardTitle>
-            <CardDescription>A list of sample employees.</CardDescription>
-            </CardHeader>
-            <CardContent>
-            <Table>
-                <TableHeader>
-                <TableRow>
-                    <TableHead>Employee</TableHead>
-                    <TableHead>Payment Method</TableHead>
-                </TableRow>
-                </TableHeader>
-                <TableBody>
-                {employees.map((employee) => (
-                    <TableRow key={employee.id}>
-                    <TableCell>
-                        <div className="flex items-center gap-3">
-                            <Avatar className="hidden h-9 w-9 sm:flex">
-                                <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
-                            </Avatar>
-                            <div className="grid gap-1">
-                                <p className="font-medium leading-none">{employee.name}</p>
-                                <p className="text-xs text-muted-foreground">{employee.position}</p>
+        <TabsContent value="dashboard" className="mt-6 space-y-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <StatCard title="Total Employees" value={dashboardStats.totalEmployees} icon={<Users className="h-5 w-5 text-muted-foreground" />} />
+              <StatCard title="On-site Today" value={`${dashboardStats.onSiteToday} / ${dashboardStats.totalEmployees}`} icon={<UserCheck className="h-5 w-s text-muted-foreground" />} />
+              <StatCard title="This Week's Payroll" value={`ETB ${dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+              <StatCard title="This Month's Payroll" value={`ETB ${dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+            </div>
+            <Card>
+                <CardHeader>
+                    <CardTitle>Payroll History</CardTitle>
+                    <CardDescription>Total payroll expenses for the last 6 months.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <PayrollHistoryChart data={payrollHistory} />
+                </CardContent>
+            </Card>
+        </TabsContent>
+
+        <TabsContent value="employees" className="mt-6">
+            <Card>
+                <CardHeader>
+                <CardTitle>Employees</CardTitle>
+                <CardDescription>A list of sample employees.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                <Table>
+                    <TableHeader>
+                    <TableRow>
+                        <TableHead>Employee</TableHead>
+                        <TableHead>Payment Method</TableHead>
+                    </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                    {employees.map((employee) => (
+                        <TableRow key={employee.id}>
+                        <TableCell>
+                            <div className="flex items-center gap-3">
+                                <Avatar className="hidden h-9 w-9 sm:flex">
+                                    <AvatarFallback>{getInitials(employee.name)}</AvatarFallback>
+                                </Avatar>
+                                <div className="grid gap-1">
+                                    <p className="font-medium leading-none">{employee.name}</p>
+                                    <p className="text-xs text-muted-foreground">{employee.position}</p>
+                                </div>
                             </div>
-                        </div>
-                    </TableCell>
-                    <TableCell>
-                        <Badge variant="outline">{employee.paymentMethod}</Badge>
-                    </TableCell>
-                    </TableRow>
-                ))}
-                </TableBody>
-            </Table>
-            </CardContent>
-        </Card>
-        <Card>
-            <CardHeader>
-            <CardTitle>Orders</CardTitle>
-            <CardDescription>Track customer orders.</CardDescription>
-            </CardHeader>
-            <CardContent>
-            <Table>
-                <TableHeader>
-                <TableRow>
-                    <TableHead>Customer</TableHead>
-                    <TableHead>Product</TableHead>
-                    <TableHead>Status</TableHead>
-                </TableRow>
-                </TableHeader>
-                <TableBody>
-                {orders.map((order) => (
-                    <TableRow key={order.id}>
-                    <TableCell>
-                        <div className="font-medium">{order.customerName}</div>
-                        <div className="text-sm text-muted-foreground">{format(new Date(order.orderDate), "PPP")}</div>
-                    </TableCell>
-                    <TableCell>
-                        <div className="flex items-center gap-3">
-                        {order.productPictureUrl && (
-                            <Image src={order.productPictureUrl} alt={order.orderDescription || 'Product image'} width={40} height={40} className="rounded-md object-cover" />
-                        )}
-                        <span>{order.orderDescription}</span>
-                        </div>
-                    </TableCell>
-                    <TableCell>
-                        <Badge variant={order.orderStatus === 'Completed' ? 'secondary' : order.orderStatus === 'Processing' ? 'default' : 'outline'}>
-                        {order.orderStatus}
-                        </Badge>
-                    </TableCell>
-                    </TableRow>
-                ))}
-                </TableBody>
-            </Table>
-            </CardContent>
-        </Card>
-      </div>
-      
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        <Card>
-            <CardHeader>
-            <CardTitle>Store Inventory</CardTitle>
-            <CardDescription>Keep track of raw materials and stock levels.</CardDescription>
-            </CardHeader>
-            <CardContent>
-            <Table>
-                <TableHeader>
-                <TableRow>
-                    <TableHead>Item Name</TableHead>
-                    <TableHead>Stock Level</TableHead>
-                </TableRow>
-                </TableHeader>
-                <TableBody>
-                {items.map((item) => (
-                    <TableRow key={item.id}>
-                    <TableCell className="font-medium">{item.name}</TableCell>
-                    <TableCell>{item.stockLevel} {item.unitOfMeasurement}</TableCell>
-                    </TableRow>
-                ))}
-                </TableBody>
-            </Table>
-            </CardContent>
-        </Card>
-        
-        <Card>
-            <CardHeader>
-            <CardTitle>Stock Adjustments</CardTitle>
-            <CardDescription>History of stock changes.</CardDescription>
-            </CardHeader>
-            <CardContent>
-            <Table>
-                <TableHeader>
-                <TableRow>
-                    <TableHead>Item</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead className="text-right">Quantity</TableHead>
-                </TableRow>
-                </TableHeader>
-                <TableBody>
-                {stockAdjustments.map((adj) => (
-                    <TableRow key={adj.id}>
-                    <TableCell>{items.find(i => i.id === adj.itemId)?.name}</TableCell>
-                    <TableCell>{format(new Date(adj.adjustmentDate), "PPP p")}</TableCell>
-                    <TableCell className={`text-right ${adj.adjustmentQuantity > 0 ? 'text-primary' : 'text-destructive'}`}>
-                        {adj.adjustmentQuantity > 0 ? `+${adj.adjustmentQuantity}` : adj.adjustmentQuantity}
-                    </TableCell>
-                    </TableRow>
-                ))}
-                </TableBody>
-            </Table>
-            </CardContent>
-        </Card>
-      </div>
+                        </TableCell>
+                        <TableCell>
+                            <Badge variant="outline">{employee.paymentMethod}</Badge>
+                        </TableCell>
+                        </TableRow>
+                    ))}
+                    </TableBody>
+                </Table>
+                </CardContent>
+            </Card>
+        </TabsContent>
 
+        <TabsContent value="attendance" className="mt-6">
+            <Card>
+                <CardHeader>
+                    <CardTitle>Today's Status</CardTitle>
+                    <CardDescription>Based on mock data for {format(MOCK_TODAY, 'PPP')}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <Tabs defaultValue="absent">
+                        <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="absent"><UserX className="mr-2 h-4 w-4" /> Absent ({todayStatus.absent.length})</TabsTrigger>
+                            <TabsTrigger value="late"><Clock className="mr-2 h-4 w-4" /> Late ({todayStatus.late.length})</TabsTrigger>
+                            <TabsTrigger value="permission"><Hand className="mr-2 h-4 w-4" /> Permission ({todayStatus.permission.length})</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="absent" className="mt-4">
+                            {todayStatus.absent.length > 0 ? todayStatus.absent.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Absent" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is absent today.</p>}
+                        </TabsContent>
+                         <TabsContent value="late" className="mt-4">
+                            {todayStatus.late.length > 0 ? todayStatus.late.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Late" detail={item.time} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is late today.</p>}
+                        </TabsContent>
+                         <TabsContent value="permission" className="mt-4">
+                            {todayStatus.permission.length > 0 ? todayStatus.permission.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Permission" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is on leave today.</p>}
+                        </TabsContent>
+                    </Tabs>
+                </CardContent>
+            </Card>
+        </TabsContent>
+        
+        <TabsContent value="orders" className="mt-6">
+            <Card>
+                <CardHeader>
+                <CardTitle>Orders</CardTitle>
+                <CardDescription>Track customer orders.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                <Table>
+                    <TableHeader>
+                    <TableRow>
+                        <TableHead>Customer</TableHead>
+                        <TableHead>Product</TableHead>
+                        <TableHead>Status</TableHead>
+                    </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                    {orders.map((order) => (
+                        <TableRow key={order.id}>
+                        <TableCell>
+                            <div className="font-medium">{order.customerName}</div>
+                            <div className="text-sm text-muted-foreground">{format(new Date(order.orderDate), "PPP")}</div>
+                        </TableCell>
+                        <TableCell>
+                            <div className="flex items-center gap-3">
+                            {order.productPictureUrl && (
+                                <Image src={order.productPictureUrl} alt={order.orderDescription || 'Product image'} width={40} height={40} className="rounded-md object-cover" />
+                            )}
+                            <span>{order.orderDescription}</span>
+                            </div>
+                        </TableCell>
+                        <TableCell>
+                            <Badge variant={order.orderStatus === 'Completed' ? 'secondary' : order.orderStatus === 'Processing' ? 'default' : 'outline'}>
+                            {order.orderStatus}
+                            </Badge>
+                        </TableCell>
+                        </TableRow>
+                    ))}
+                    </TableBody>
+                </Table>
+                </CardContent>
+            </Card>
+        </TabsContent>
+        
+        <TabsContent value="store" className="mt-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <Card>
+                    <CardHeader>
+                    <CardTitle>Store Inventory</CardTitle>
+                    <CardDescription>Keep track of raw materials and stock levels.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                    <Table>
+                        <TableHeader>
+                        <TableRow>
+                            <TableHead>Item Name</TableHead>
+                            <TableHead>Stock Level</TableHead>
+                        </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                        {items.map((item) => (
+                            <TableRow key={item.id}>
+                            <TableCell className="font-medium">{item.name}</TableCell>
+                            <TableCell>{item.stockLevel} {item.unitOfMeasurement}</TableCell>
+                            </TableRow>
+                        ))}
+                        </TableBody>
+                    </Table>
+                    </CardContent>
+                </Card>
+                
+                <Card>
+                    <CardHeader>
+                    <CardTitle>Stock Adjustments</CardTitle>
+                    <CardDescription>History of stock changes.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                    <Table>
+                        <TableHeader>
+                        <TableRow>
+                            <TableHead>Item</TableHead>
+                            <TableHead>Date</TableHead>
+                            <TableHead className="text-right">Quantity</TableHead>
+                        </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                        {stockAdjustments.map((adj) => (
+                            <TableRow key={adj.id}>
+                            <TableCell>{items.find(i => i.id === adj.itemId)?.name}</TableCell>
+                            <TableCell>{format(new Date(adj.adjustmentDate), "PPP p")}</TableCell>
+                            <TableCell className={`text-right ${adj.adjustmentQuantity > 0 ? 'text-primary' : 'text-destructive'}`}>
+                                {adj.adjustmentQuantity > 0 ? `+${adj.adjustmentQuantity}` : adj.adjustmentQuantity}
+                            </TableCell>
+                            </TableRow>
+                        ))}
+                        </TableBody>
+                    </Table>
+                    </CardContent>
+                </Card>
+            </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
