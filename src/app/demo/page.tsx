@@ -2,7 +2,6 @@
 'use client';
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
-import { employees, attendanceRecords } from '@/lib/data';
 import type { Employee, AttendanceRecord, AttendanceStatus, PayrollEntry } from "@/lib/types";
 
 import {
@@ -38,6 +37,52 @@ import { Label } from "@/components/ui/label";
 
 // --- MOCK DATA & HELPERS ---
 const MOCK_TODAY = subDays(new Date(), 1);
+
+const employees: Employee[] = [
+  {
+    id: "EMP001",
+    name: "Abebe Bekele",
+    position: "Lead Carpenter",
+    phone: "0911223344",
+    paymentMethod: "Monthly",
+    accountNumber: "1000123456789",
+    monthlyRate: 15000,
+    attendanceStartDate: subDays(MOCK_TODAY, 90).toISOString(),
+  },
+  {
+    id: "EMP002",
+    name: "Genet Tesfaye",
+    position: "Upholstery Specialist",
+    phone: "0922334455",
+    paymentMethod: "Weekly",
+    accountNumber: "1000987654321",
+    dailyRate: 700,
+    attendanceStartDate: subDays(MOCK_TODAY, 60).toISOString(),
+  },
+  {
+    id: "EMP003",
+    name: "Fikre Selam",
+    position: "Finisher",
+    phone: "0933445566",
+    paymentMethod: "Weekly",
+    accountNumber: "1000555555555",
+    dailyRate: 650,
+    attendanceStartDate: subDays(MOCK_TODAY, 120).toISOString(),
+  },
+];
+
+const attendanceRecords: AttendanceRecord[] = [
+  { id: 'ATT001', employeeId: "EMP001", date: MOCK_TODAY.toISOString(), morningEntry: "08:05", afternoonEntry: "13:35", morningStatus: "Present", afternoonStatus: "Present", overtimeHours: 1 },
+  { id: 'ATT002', employeeId: "EMP002", date: MOCK_TODAY.toISOString(), morningEntry: "08:45", afternoonEntry: "13:30", morningStatus: "Late", afternoonStatus: "Present" },
+  { id: 'ATT003', employeeId: "EMP003", date: MOCK_TODAY.toISOString(), morningStatus: "Absent", afternoonStatus: "Absent" },
+  { id: 'ATT004', employeeId: "EMP001", date: subDays(MOCK_TODAY, 1).toISOString(), morningEntry: "08:00", afternoonEntry: "13:30", morningStatus: "Present", afternoonStatus: "Present" },
+  { id: 'ATT005', employeeId: "EMP002", date: subDays(MOCK_TODAY, 1).toISOString(), morningEntry: "08:02", afternoonEntry: "13:31", morningStatus: "Present", afternoonStatus: "Present", overtimeHours: 2 },
+  { id: 'ATT006', employeeId: "EMP003", date: subDays(MOCK_TODAY, 1).toISOString(), morningEntry: "07:58", afternoonEntry: "13:29", morningStatus: "Present", afternoonStatus: "Present" },
+  { id: 'ATT007', employeeId: "EMP001", date: subDays(MOCK_TODAY, 2).toISOString(), morningStatus: "Permission", afternoonStatus: "Permission" },
+  { id: 'ATT008', employeeId: "EMP002", date: subDays(MOCK_TODAY, 2).toISOString(), morningEntry: "08:05", afternoonEntry: "13:40", morningStatus: "Present", afternoonStatus: "Present" },
+  { id: 'ATT009', employeeId: "EMP003", date: subDays(MOCK_TODAY, 2).toISOString(), morningEntry: "08:20", afternoonEntry: "13:35", morningStatus: "Late", afternoonStatus: "Present" },
+];
+
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) return date.toDate();
@@ -673,3 +718,6 @@ const TabsTrigger = ({ children, value, activeTab, setActiveTab }: { children: R
 const TabsContent = ({ children, value }: { children: React.ReactNode, value: string }) => (
     <div className="mt-2">{children}</div>
 );
+
+
+    
