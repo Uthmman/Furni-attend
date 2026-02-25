@@ -229,7 +229,6 @@ const PayrollContent = ({ weeklyPayroll, monthlyPayroll }: { weeklyPayroll: Payr
             periodOptions={[]}
             selectedPeriod={undefined}
             onPeriodChange={() => {}}
-            isMock={true}
         />
         <PayrollList 
             title="Monthly Payout" 
@@ -237,7 +236,6 @@ const PayrollContent = ({ weeklyPayroll, monthlyPayroll }: { weeklyPayroll: Payr
             periodOptions={[]}
             selectedPeriod={undefined}
             onPeriodChange={() => {}}
-            isMock={true}
         />
     </div>
 );
