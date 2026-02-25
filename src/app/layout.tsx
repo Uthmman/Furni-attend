@@ -121,7 +121,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!isUserLoading && !user && pathname !== '/login') {
+    if (!isUserLoading && !user && pathname !== '/login' && pathname !== '/demo') {
       router.replace('/login');
     }
   }, [user, isUserLoading, router, pathname]);
@@ -139,7 +139,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (pathname === '/login') {
+  if (pathname === '/login' || pathname === '/demo') {
     return <>{children}</>;
   }
 
