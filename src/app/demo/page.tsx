@@ -1,7 +1,7 @@
 
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { employees, attendanceRecords } from '@/lib/data';
 import type { Employee, AttendanceRecord, AttendanceStatus, PayrollEntry } from "@/lib/types";
 
@@ -14,7 +14,7 @@ import {
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { format, subDays, startOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, endOfWeek, isValid } from "date-fns";
-import { Users, UserCheck, Wallet, UserX, Clock, Hand, LayoutDashboard, CalendarCheck } from "lucide-react";
+import { Users, UserCheck, Wallet, UserX, Clock, Hand, LayoutDashboard, CalendarCheck, Plus } from "lucide-react";
 import { PayrollHistoryChart } from '../payroll/payroll-history-chart';
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -22,6 +22,18 @@ import { Logo } from "@/components/logo";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { StatCard } from '@/components/stat-card';
 import { PayrollList } from '../payroll/payroll-list';
+import { HorizontalDatePicker } from '@/components/ui/horizontal-date-picker';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 
 
 // --- MOCK DATA & HELPERS ---
@@ -127,6 +139,36 @@ const mockNavLinks = [
     { id: "payroll", label: "Payroll", icon: Wallet },
 ];
 
+// --- Attendance Demo Types & Helpers ---
+type DailyAttendance = {
+  employeeId: string;
+  employeeName: string;
+  morningStatus: AttendanceStatus;
+  afternoonStatus: AttendanceStatus;
+  morningEntry?: string;
+  afternoonEntry?: string;
+  overtimeHours?: number;
+};
+
+const getStatusVariant = (status: AttendanceStatus) => {
+  switch (status) {
+    case "Permission": return "default";
+    case "Present":
+    case "Late": return "secondary";
+    case "Absent": return "destructive";
+    default: return "outline";
+  }
+};
+
+const getOverallStatus = (morning: AttendanceStatus, afternoon: AttendanceStatus): AttendanceStatus => {
+    if (morning === 'Permission' || afternoon === 'Permission') return 'Permission';
+    if (morning === 'Absent' && afternoon === 'Absent') return 'Absent';
+    if (morning === 'Late' || afternoon === 'Late') return 'Late';
+    if (morning === 'Present' || afternoon === 'Present') return 'Present';
+    return 'Absent';
+}
+
+
 // --- CONTENT COMPONENTS ---
 
 const DashboardContent = ({ stats, history }: { stats: any, history: any[] }) => (
@@ -181,45 +223,203 @@ const EmployeesContent = ({ employees }: { employees: Employee[] }) => (
     </Card>
 );
 
-const StatusListItem = ({ employee, status, detail }: { employee: Employee, status: AttendanceStatus, detail?: string }) => (
-    <div className="flex items-center justify-between py-2 border-b last:border-b-0">
-        <div className="flex items-center gap-3">
-            <Avatar className="w-9 h-9"><AvatarFallback>{getInitials(employee.name)}</AvatarFallback></Avatar>
-            <div><p className="font-medium">{employee.name}</p><p className="text-sm text-muted-foreground">{employee.position}</p></div>
-        </div>
-        <div className="text-sm text-right">
-            <Badge variant={status === 'Late' || status === 'Absent' ? 'destructive' : status === 'Permission' ? 'default' : 'secondary'} className="capitalize">{status}</Badge>
-            {detail && <p className="text-muted-foreground mt-1">{detail}</p>}
-        </div>
-    </div>
-);
+const DemoAttendanceContent = () => {
+    const [demoAttendance, setDemoAttendance] = useState<DailyAttendance[]>([]);
+    const [selectedDate, setSelectedDate] = useState<Date>(MOCK_TODAY);
+    const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
+    const [isLateDialogOpen, setIsLateDialogOpen] = useState(false);
+    const [isOvertimeDialogOpen, setIsOvertimeDialogOpen] = useState(false);
+    const [selectedEmployeeAttendance, setSelectedEmployeeAttendance] = useState<DailyAttendance | null>(null);
+    const [lateDialogData, setLateDialogData] = useState<{ session: 'morning' | 'afternoon', time: string } | null>(null);
 
-const AttendanceContent = ({ status }: { status: any }) => (
-    <Card>
-        <CardHeader>
-            <CardTitle>Today's Status</CardTitle>
-            <CardDescription>Based on mock data for {format(MOCK_TODAY, 'PPP')}</CardDescription>
-        </CardHeader>
-        <CardContent>
-             <Tabs defaultValue="absent">
-                <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="absent"><UserX className="mr-2 h-4 w-4" /> Absent ({status.absent.length})</TabsTrigger>
-                    <TabsTrigger value="late"><Clock className="mr-2 h-4 w-4" /> Late ({status.late.length})</TabsTrigger>
-                    <TabsTrigger value="permission"><Hand className="mr-2 h-4 w-4" /> Permission ({status.permission.length})</TabsTrigger>
-                </TabsList>
-                <TabsContent value="absent" className="mt-4">
-                    {status.absent.length > 0 ? status.absent.map((item: any) => <StatusListItem key={item.employee.id} employee={item.employee} status="Absent" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is absent today.</p>}
-                </TabsContent>
-                <TabsContent value="late" className="mt-4">
-                    {status.late.length > 0 ? status.late.map((item: any) => <StatusListItem key={item.employee.id} employee={item.employee} status="Late" detail={item.time} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is late today.</p>}
-                </TabsContent>
-                <TabsContent value="permission" className="mt-4">
-                    {status.permission.length > 0 ? status.permission.map((item: any) => <StatusListItem key={item.employee.id} employee={item.employee} status="Permission" detail={item.period} />) : <p className="text-muted-foreground text-center py-8 text-sm">No one is on leave today.</p>}
-                </TabsContent>
-            </Tabs>
-        </CardContent>
-    </Card>
-);
+    useEffect(() => {
+        const dailyAttendance: DailyAttendance[] = employees.map((emp) => {
+            const record = attendanceRecords?.find((r) => r.employeeId === emp.id && isSameDay(getDateFromRecord(r.date), selectedDate));
+            return {
+                employeeId: emp.id,
+                employeeName: emp.name,
+                morningStatus: record?.morningStatus || "Absent",
+                afternoonStatus: record?.afternoonStatus || "Absent",
+                morningEntry: record?.morningEntry || "",
+                afternoonEntry: record?.afternoonEntry || "",
+                overtimeHours: record?.overtimeHours || 0,
+            };
+        });
+        setDemoAttendance(dailyAttendance);
+    }, [selectedDate]);
+
+    const handleDateSelect = useCallback((date: Date | undefined) => {
+        if (!date) return;
+        setSelectedDate(date);
+    }, []);
+
+    const saveDemoAttendance = async (attendanceData: DailyAttendance) => {
+        setDemoAttendance((prev) =>
+          prev.map((a) => (a.employeeId === attendanceData.employeeId ? attendanceData : a))
+        );
+    };
+
+    const openAttendanceDialog = (employeeId: string) => {
+        const employeeData = demoAttendance.find((att) => att.employeeId === employeeId);
+        if (employeeData) {
+            setSelectedEmployeeAttendance({ ...employeeData });
+            setIsAttendanceDialogOpen(true);
+        }
+    };
+    
+    const openOvertimeDialog = (employeeId: string) => {
+        const employeeData = demoAttendance.find((att) => att.employeeId === employeeId);
+        if (employeeData) {
+            setSelectedEmployeeAttendance({ ...employeeData });
+            setIsOvertimeDialogOpen(true);
+        }
+    };
+
+    const handleStatusClick = async (session: 'morning' | 'afternoon', status: AttendanceStatus) => {
+        if (!selectedEmployeeAttendance) return;
+        if (status === 'Late') {
+            setLateDialogData({ session, time: session === 'morning' ? '08:00' : '13:30' });
+            setIsLateDialogOpen(true);
+            return;
+        }
+
+        const updatedAttendance = { ...selectedEmployeeAttendance };
+        let entryTime = "";
+        if (status === 'Present') entryTime = session === 'morning' ? '08:00' : '13:30';
+        if (session === 'morning') {
+            updatedAttendance.morningStatus = status;
+            updatedAttendance.morningEntry = entryTime;
+        } else {
+            updatedAttendance.afternoonStatus = status;
+            updatedAttendance.afternoonEntry = entryTime;
+        }
+        await saveDemoAttendance(updatedAttendance);
+        setSelectedEmployeeAttendance(updatedAttendance);
+        setIsAttendanceDialogOpen(false);
+    };
+    
+    const handleSaveLateTime = async () => {
+        if (!selectedEmployeeAttendance || !lateDialogData) return;
+        const updatedAttendance = { ...selectedEmployeeAttendance };
+        if (lateDialogData.session === 'morning') {
+            updatedAttendance.morningStatus = 'Late';
+            updatedAttendance.morningEntry = lateDialogData.time;
+        } else {
+            updatedAttendance.afternoonStatus = 'Late';
+            updatedAttendance.afternoonEntry = lateDialogData.time;
+        }
+        await saveDemoAttendance(updatedAttendance);
+        setIsLateDialogOpen(false);
+        setIsAttendanceDialogOpen(false);
+    };
+    
+    const handleSaveOvertime = async () => {
+        if (!selectedEmployeeAttendance) return;
+        await saveDemoAttendance(selectedEmployeeAttendance);
+        setIsOvertimeDialogOpen(false);
+    };
+    
+    const selectedEmployeeDetails = useMemo(() => {
+        return employees.find(e => e.id === selectedEmployeeAttendance?.employeeId);
+    }, [selectedEmployeeAttendance]);
+
+    return (
+    <div className="flex flex-col gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-1">
+          <Card><CardContent className="flex justify-center"><HorizontalDatePicker selectedDate={selectedDate} onDateSelect={handleDateSelect} /></CardContent></Card>
+        </div>
+        <div className="lg:col-span-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Employee Attendance for {format(selectedDate, "PPP")}</CardTitle>
+              <CardDescription>{ethiopianDateFormatter(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</CardDescription>
+            </CardHeader>
+            <CardContent>
+                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
+                    {demoAttendance.map((att) => {
+                        const overallStatus = getOverallStatus(att.morningStatus, att.afternoonStatus);
+                        return (
+                            <div key={att.employeeId} className="flex items-center gap-2">
+                                <button onClick={() => openAttendanceDialog(att.employeeId)} className="text-left flex-1">
+                                    <Card className="hover:bg-accent transition-colors">
+                                        <CardContent className="flex items-center justify-between p-4">
+                                            <p className="font-medium">{att.employeeName}</p>
+                                            <Badge variant={getStatusVariant(overallStatus)} className="capitalize">{overallStatus}</Badge>
+                                        </CardContent>
+                                    </Card>
+                                </button>
+                                <Button variant="outline" size="icon" onClick={() => openOvertimeDialog(att.employeeId)} aria-label="Log Overtime"><Plus className="h-4 w-4"/></Button>
+                            </div>
+                        )
+                    })}
+                </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      <Dialog open={isAttendanceDialogOpen} onOpenChange={setIsAttendanceDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader><DialogTitle>Log Attendance for {selectedEmployeeAttendance?.employeeName}</DialogTitle></DialogHeader>
+          {selectedEmployeeAttendance && (
+            <div className="grid gap-6 py-4">
+              <div className="grid gap-2">
+                  <Label>Morning</Label>
+                  <div className="text-sm text-muted-foreground">Status: <Badge variant={getStatusVariant(selectedEmployeeAttendance.morningStatus)}>{selectedEmployeeAttendance.morningStatus}</Badge>{selectedEmployeeAttendance.morningEntry && ` at ${selectedEmployeeAttendance.morningEntry}`}</div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Present')}>Present</Button>
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Late')}>Late</Button>
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Absent')}>Absent</Button>
+                      {selectedEmployeeDetails?.paymentMethod === 'Monthly' && <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Permission')}>Permission</Button>}
+                  </div>
+              </div>
+              <div className="grid gap-2">
+                  <Label>Afternoon</Label>
+                   <div className="text-sm text-muted-foreground">Status: <Badge variant={getStatusVariant(selectedEmployeeAttendance.afternoonStatus)}>{selectedEmployeeAttendance.afternoonStatus}</Badge>{selectedEmployeeAttendance.afternoonEntry && ` at ${selectedEmployeeAttendance.afternoonEntry}`}</div>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Present')}>Present</Button>
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Late')}>Late</Button>
+                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Absent')}>Absent</Button>
+                      {selectedEmployeeDetails?.paymentMethod === 'Monthly' && <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Permission')}>Permission</Button>}
+                  </div>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+      
+      <Dialog open={isLateDialogOpen} onOpenChange={setIsLateDialogOpen}>
+          <DialogContent className="sm:max-w-xs">
+              <DialogHeader><DialogTitle>Enter Late Entry Time</DialogTitle></DialogHeader>
+              <Input id="lateTime" type="time" value={lateDialogData?.time} onChange={(e) => setLateDialogData(prev => prev ? {...prev, time: e.target.value} : null)} />
+              <DialogFooter>
+                  <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                  <Button onClick={handleSaveLateTime}>Save Time</Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
+      <Dialog open={isOvertimeDialogOpen} onOpenChange={setIsOvertimeDialogOpen}>
+          <DialogContent className="sm:max-w-xs">
+              <DialogHeader>
+                  <DialogTitle>Log Overtime</DialogTitle>
+                  <DialogDescription>For {selectedEmployeeAttendance?.employeeName}</DialogDescription>
+              </DialogHeader>
+               <div className="grid gap-4 py-4">
+                  <Label htmlFor="overtime">Overtime Hours</Label>
+                  <Input id="overtime" type="number" min="0" value={selectedEmployeeAttendance?.overtimeHours || 0} onChange={(e) => setSelectedEmployeeAttendance(prev => prev ? {...prev, overtimeHours: Number(e.target.value)} : null)} />
+              </div>
+              <DialogFooter>
+                  <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                  <Button onClick={handleSaveOvertime}>Save Overtime</Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 
 const PayrollContent = ({ weeklyPayroll, monthlyPayroll }: { weeklyPayroll: PayrollEntry[], monthlyPayroll: PayrollEntry[] }) => (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -287,28 +487,6 @@ export default function DemoPage() {
         return { totalEmployees, onSiteToday, estWeekly, actualWeekly, estMonthly, actualMonthly };
     }, [employees, allAttendance, todayAttendance]);
     
-    const todayStatus = useMemo(() => {
-        if (!todayAttendance || !employees) return { absent: [], late: [], permission: [] };
-        const absent: { employee: Employee, period: string }[] = [];
-        const late: { employee: Employee; time: string }[] = [];
-        const permission: { employee: Employee, period: string }[] = [];
-        employees.forEach(emp => {
-            const record = todayAttendance.find(r => r.employeeId === emp.id);
-            if (!record || (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent')) {
-                absent.push({ employee: emp, period: 'Full Day' });
-            } else if (record.morningStatus === 'Late' || record.afternoonStatus === 'Late') {
-                const lateTimes: string[] = [];
-                if (record.morningStatus === 'Late' && record.morningEntry) lateTimes.push(record.morningEntry);
-                if (record.afternoonStatus === 'Late' && record.afternoonEntry) lateTimes.push(record.afternoonEntry);
-                late.push({ employee: emp, time: lateTimes.join(' & ') });
-            } else if (record.morningStatus === 'Permission' || record.afternoonStatus === 'Permission') {
-                let period = record.morningStatus === 'Permission' && record.afternoonStatus === 'Permission' ? 'Full Day' : record.morningStatus === 'Permission' ? 'Morning' : 'Afternoon';
-                permission.push({ employee: emp, period });
-            }
-        });
-        return { absent, late, permission };
-    }, [todayAttendance, employees]);
-
     const payrollHistory = useMemo(() => {
         if (!employees || allAttendance.length === 0) return [];
         const history = [];
@@ -372,7 +550,7 @@ export default function DemoPage() {
         switch(activePage) {
             case 'dashboard': return <DashboardContent stats={dashboardStats} history={payrollHistory} />;
             case 'employees': return <EmployeesContent employees={employees} />;
-            case 'attendance': return <AttendanceContent status={todayStatus} />;
+            case 'attendance': return <DemoAttendanceContent />;
             case 'payroll': return <PayrollContent weeklyPayroll={weeklyPayroll} monthlyPayroll={monthlyPayroll} />;
             default: return <DashboardContent stats={dashboardStats} history={payrollHistory} />;
         }
