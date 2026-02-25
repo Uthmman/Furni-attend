@@ -718,6 +718,3 @@ const TabsTrigger = ({ children, value, activeTab, setActiveTab }: { children: R
 const TabsContent = ({ children, value }: { children: React.ReactNode, value: string }) => (
     <div className="mt-2">{children}</div>
 );
-
-
-    
