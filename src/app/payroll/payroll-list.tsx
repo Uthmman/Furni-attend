@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/table";
 import type { PayrollEntry } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import Link from "next/link";
 
 interface PayrollListProps {
     title: string;
@@ -58,7 +59,7 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                             payrollData.map((entry) => (
                                 <TableRow key={entry.employeeId}>
                                     <TableCell>
-                                        <div className="font-medium">{entry.employeeName}</div>
+                                        <Link href={`/employees/${entry.employeeId}`} className="font-medium hover:underline">{entry.employeeName}</Link>
                                         <div className="text-sm text-muted-foreground">
                                             {entry.paymentMethod === 'Weekly' ? 
                                                 (
