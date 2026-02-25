@@ -37,7 +37,7 @@ import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone, Trash2, Edit, Calendar, Send, Loader2 } from "lucide-react";
+import { Copy, Phone, Trash2, Edit, Calendar } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
@@ -56,7 +56,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { sendAdminPayrollSummary } from "@/app/payroll/actions";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+  DialogClose,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 
 
 const getInitials = (name: string) => {
@@ -195,7 +204,8 @@ export default function EmployeeProfilePage() {
   const { user, isUserLoading } = useUser();
   
   const [isFormOpen, setIsFormOpen] = useState(false);
-  const [isSending, setIsSending] = useState(false);
+  const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
+  const [summaryText, setSummaryText] = useState("");
 
   const employeeDocRef = useMemoFirebase(() => {
     if (!firestore || !employeeId || !user) return null;
@@ -469,12 +479,11 @@ export default function EmployeeProfilePage() {
     }
   }, [employee, allAttendance, filteredAttendance, hourlyRate, periodOptions, selectedPeriod]);
 
-  const handleSendSummary = async () => {
+  const handleViewSummary = () => {
     if (!employee || !payrollData) return;
 
-    setIsSending(true);
-    let summaryMessage = `*Payroll Summary for ${employee.name}*\n`;
-    summaryMessage += `*Period: ${payrollData.periodLabel}*\n\n`;
+    let summaryMessage = `Payroll Summary for ${employee.name}\n`;
+    summaryMessage += `Period: ${payrollData.periodLabel}\n\n`;
 
     if (employee.paymentMethod === 'Monthly') {
       summaryMessage += `Base Salary: ETB ${(payrollData.baseSalary || 0).toFixed(2)}\n`;
@@ -485,33 +494,26 @@ export default function EmployeeProfilePage() {
         summaryMessage += `Absence Deduction (${(payrollData.hoursAbsent || 0).toFixed(1)} hrs): - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
       }
       summaryMessage += `--------------------\n`;
-      summaryMessage += `*Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
+      summaryMessage += `Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}`;
     } else { // Weekly
       summaryMessage += `Base Pay (${(payrollData.hours || 0).toFixed(2)} hrs): ETB ${( (payrollData.hours || 0) * hourlyRate).toFixed(2)}\n`;
       if ((payrollData.overtimePay || 0) > 0) {
         summaryMessage += `Overtime Pay: + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
       }
       summaryMessage += `--------------------\n`;
-      summaryMessage += `*Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
+      summaryMessage += `Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}`;
     }
-
-    const result = await sendAdminPayrollSummary(summaryMessage);
-
-    if (result.success) {
-      toast({
-        title: "Summary Sent",
-        description: `Payroll summary for ${employee.name} has been sent via Telegram.`,
-      });
-    } else {
-      toast({
-        variant: "destructive",
-        title: "Failed to Send",
-        description: result.error || "An unknown error occurred.",
-      });
-    }
-
-    setIsSending(false);
+    
+    setSummaryText(summaryMessage);
+    setIsSummaryDialogOpen(true);
   };
+  
+  const handleCopyToClipboard = () => {
+    copy(summaryText);
+    toast({
+      title: "Copied to clipboard!",
+    });
+  }
 
   const handleDelete = async () => {
     if (!employeeId || !firestore) return;
@@ -552,6 +554,26 @@ export default function EmployeeProfilePage() {
         setIsOpen={setIsFormOpen}
         employee={employee}
       />
+       <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Payroll Summary</DialogTitle>
+            <DialogDescription>
+              For {employee.name} covering {payrollData.periodLabel}
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea readOnly value={summaryText} rows={10} className="text-sm font-mono" />
+          <DialogFooter>
+             <Button variant="secondary" onClick={handleCopyToClipboard}>
+                <Copy className="mr-2 h-4 w-4" />
+                Copy
+              </Button>
+            <DialogClose asChild>
+              <Button variant="outline">Close</Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <div className="flex justify-end gap-2">
         <Button variant="outline" onClick={() => setIsFormOpen(true)}>
             <Edit className="mr-2 h-4 w-4" /> Edit
@@ -669,9 +691,9 @@ export default function EmployeeProfilePage() {
                         <CardTitle>Payroll Summary</CardTitle>
                         <CardDescription>{payrollData.periodLabel}</CardDescription>
                     </div>
-                    <Button variant="outline" size="icon" onClick={handleSendSummary} disabled={isSending}>
-                        {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                        <span className="sr-only">Send Summary</span>
+                    <Button variant="outline" size="icon" onClick={handleViewSummary}>
+                        <Copy className="h-4 w-4" />
+                        <span className="sr-only">View Summary</span>
                     </Button>
                 </CardHeader>
                 <CardContent className="grid gap-4 pt-4">
