@@ -4,9 +4,9 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, UserX, Clock, Hand } from "lucide-react";
+import { Users, UserCheck, Wallet, UserX, Clock, Hand, CalendarDays, ListFilter } from "lucide-react";
 import type { Employee, AttendanceRecord, AttendanceStatus, PayrollEntry } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge';
 import Link from 'next/link';
 import { useToast } from '@/hooks/use-toast';
 import { sendAdminPayrollSummary } from './payroll/actions';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 
 
 const getDateFromRecord = (date: string | any): Date => {
@@ -71,17 +72,15 @@ const calculateHoursWorked = (record: AttendanceRecord): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
 
-    // If present on Sunday or Saturday afternoon for weekly, it's paid.
     if (getDay(recordDate) === 0) {
         if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') {
-             return 8; // simplified: present at all on sunday is 8 hours
+             return 8; 
         }
         return 0;
     }
 
-    if (getDay(recordDate) === 6) { // Saturday
+    if (getDay(recordDate) === 6) { 
         if(record.afternoonStatus !== 'Absent') {
-            // any presence in afternoon counts for hours
              return 4.5;
         }
     }
@@ -141,27 +140,6 @@ const calculateMinutesLate = (record: AttendanceRecord): number => {
     }
     return Math.round(minutesLate);
 };
-
-const StatusListItem = ({ employee, status, detail }: { employee: Employee, status: AttendanceStatus, detail?: string }) => (
-    <Link href={`/employees/${employee.id}`} className="block hover:bg-accent rounded-lg -mx-2 px-2">
-        <div className="flex items-center justify-between py-2 border-b">
-            <div className="flex items-center gap-3">
-                <Avatar className="w-9 h-9">
-                    <AvatarFallback>{employee.name.split(" ").map((n) => n[0]).join("")}</AvatarFallback>
-                </Avatar>
-                <div>
-                    <p className="font-medium">{employee.name}</p>
-                    <p className="text-sm text-muted-foreground">{employee.position}</p>
-                </div>
-            </div>
-            <div className="text-sm text-right">
-                <Badge variant={status === 'Late' || status === 'Absent' ? 'destructive' : status === 'Permission' ? 'default' : 'secondary'} className="capitalize">{status}</Badge>
-                {detail && <p className="text-muted-foreground mt-1">{detail}</p>}
-            </div>
-        </div>
-    </Link>
-);
-
 
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
@@ -243,7 +221,7 @@ export default function DashboardPage() {
     const today = new Date();
     const ethToday = toEthiopian(today);
 
-    const weekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
+    const weekStart = startOfWeek(today, { weekStartsOn: 0 }); 
     
     const estWeekly = employees.reduce((acc, emp) => {
         if (emp.paymentMethod === 'Weekly' && emp.dailyRate) {
@@ -331,10 +309,10 @@ export default function DashboardPage() {
         const recordedDates = new Set(recordsInMonth.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
 
         periodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
+            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { 
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
-                    if (getDay(day) === 6) { // Saturday
+                    if (getDay(day) === 6) { 
                         totalHoursAbsent += 4.5;
                     } else {
                         totalHoursAbsent += 8;
@@ -361,84 +339,6 @@ export default function DashboardPage() {
       actualMonthly
     };
   }, [employees, allAttendance, todayAttendance]);
-  
-  const todayStatus = useMemo(() => {
-    if (!todayAttendance || !employees) return { absent: [], late: [], permission: [] };
-
-    const absent: { employee: Employee, period: string }[] = [];
-    const late: { employee: Employee; time: string }[] = [];
-    const permission: { employee: Employee, period: string }[] = [];
-
-    const now = new Date();
-    const isAfternoonCheckTime = now.getHours() > 13 || (now.getHours() === 13 && now.getMinutes() >= 30);
-    const isSunday = getDay(now) === 0;
-    const isSaturday = getDay(now) === 6;
-
-    employees.forEach(emp => {
-        const record = todayAttendance.find(r => r.employeeId === emp.id);
-        
-        const morningIsAbsent = !record || record.morningStatus === 'Absent';
-        const afternoonIsAbsent = !record || record.afternoonStatus === 'Absent';
-        const morningHasPermission = record?.morningStatus === 'Permission';
-        const afternoonHasPermission = record?.afternoonStatus === 'Permission';
-
-        // Handle Permissions
-        if (morningHasPermission && afternoonHasPermission) {
-            permission.push({ employee: emp, period: 'Full Day' });
-        } else if (morningHasPermission) {
-            permission.push({ employee: emp, period: 'Morning' });
-        } else if (afternoonHasPermission) {
-            if (isAfternoonCheckTime) {
-                permission.push({ employee: emp, period: 'Afternoon' });
-            }
-        }
-        
-        // Handle Lates
-        if (record?.morningStatus === 'Late' || record?.afternoonStatus === 'Late') {
-            const lateTimes = [];
-            if (record.morningStatus === 'Late' && record.morningEntry) lateTimes.push(record.morningEntry);
-            if (record.afternoonStatus === 'Late' && record.afternoonEntry) lateTimes.push(record.afternoonEntry);
-            late.push({ employee: emp, time: lateTimes.join(' & ') });
-        }
-
-        // Handle Absences (only if no permission)
-        const isUnpaidAbsentMorning = morningIsAbsent && !morningHasPermission;
-        const isUnpaidAbsentAfternoon = afternoonIsAbsent && !afternoonHasPermission;
-
-        let absencePeriod: 'Full Day' | 'Morning' | 'Afternoon' | null = null;
-        if (isUnpaidAbsentMorning && isUnpaidAbsentAfternoon) {
-            absencePeriod = isAfternoonCheckTime ? 'Full Day' : 'Morning';
-        } else if (isUnpaidAbsentMorning) {
-            absencePeriod = 'Morning';
-        } else if (isUnpaidAbsentAfternoon && isAfternoonCheckTime) {
-            absencePeriod = 'Afternoon';
-        }
-
-        if (absencePeriod) {
-            let shouldShowAbsence = true;
-            // Dont show weekly employees as absent on sundays or saturday afternoons in summary
-            if (emp.paymentMethod === 'Weekly') {
-                if (isSunday) {
-                    shouldShowAbsence = false;
-                }
-                if (isSaturday && (absencePeriod === 'Afternoon' || absencePeriod === 'Full Day')) {
-                    shouldShowAbsence = false;
-                }
-            }
-            // Don't show monthly employees as absent on Sundays
-            if (emp.paymentMethod === 'Monthly' && isSunday) {
-                 shouldShowAbsence = false;
-            }
-
-            if (shouldShowAbsence) {
-                absent.push({ employee: emp, period: absencePeriod });
-            }
-        }
-    });
-
-    return { absent, late, permission };
-
-  }, [todayAttendance, employees]);
 
   const payrollHistory = useMemo(() => {
     if (!employees || allAttendance.length === 0) return [];
@@ -483,10 +383,6 @@ export default function DashboardPage() {
                 const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
                 const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
         
-                const ethToday = toEthiopian(new Date());
-                const daysInMonth = getEthiopianMonthDays(ethToday.year, ethToday.month);
-                const monthEnd = addDays(monthStart, daysInMonth - 1);
-        
                 const calculationPeriod = { start: monthStart, end: monthEnd };
                 const allRecordsForMonth = allAttendance.filter(r => 
                     r.employeeId === employee.id &&
@@ -503,7 +399,6 @@ export default function DashboardPage() {
                     if(recordDate > today) return;
 
                     let hoursAbsentThisRecord = 0;
-
                     const recordDateStr = format(recordDate, 'yyyy-MM-dd');
                     const morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
                     const afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
@@ -519,7 +414,7 @@ export default function DashboardPage() {
                 const employeeStartDate = new Date(employee.attendanceStartDate || 0);
 
                 calculationPeriodDays.forEach(day => {
-                    if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
+                    if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { 
                         const dayStr = format(day, 'yyyy-MM-dd');
                         if (!recordedDatesForMonth.has(dayStr)) {
                             projectedHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
@@ -528,13 +423,13 @@ export default function DashboardPage() {
                 });
 
                 const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
-                const projectedAbsenceDeduction = projectedHoursAbsent * hourlyRate;
+                const projectedAbsenceDeduction = projectedHoursAbsent * (hourlyRateCalc || hourlyRate);
                 const lateDeduction = displayMinutesLate * minuteRate;
                 
                 const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction);
                 totalPayrollForMonth += netSalary > 0 ? netSalary : 0;
 
-            } else { // Weekly
+            } else { 
                 const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
                 if (!hourlyRate) return;
 
@@ -554,8 +449,6 @@ export default function DashboardPage() {
     return history;
 }, [employees, allAttendance]);
 
-  const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading;
-
   const weeklyPayroll = useMemo(() => {
     const today = new Date();
     if (!employees || allAttendance.length === 0) return [];
@@ -563,14 +456,12 @@ export default function DashboardPage() {
     const weekly: PayrollEntry[] = [];
     const weekStart = startOfWeek(today, { weekStartsOn: 0 });
     const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
-    const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
     
     employees.filter(employee => employee.paymentMethod === 'Weekly').forEach(employee => {
         const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
         if (!hourlyRate) return;
 
-        const period = { start: weekStart, end: weekEnd };
-        
+        const period = { start: weekStart, end: today };
         const relevantRecords = allAttendance.filter(r => 
             r.employeeId === employee.id &&
             isValid(getDateFromRecord(r.date)) &&
@@ -580,20 +471,17 @@ export default function DashboardPage() {
         const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
         const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
         
-        const baseAmount = totalHours * hourlyRate;
-        const overtimeAmount = overtimeHours * hourlyRate;
-        const finalAmount = baseAmount + overtimeAmount;
+        const finalAmount = (totalHours + overtimeHours) * hourlyRate;
 
-        if (finalAmount > 0 || relevantRecords.length > 0) {
-            weekly.push({
-                employeeId: employee.id,
-                employeeName: employee.name,
-                paymentMethod: employee.paymentMethod,
-                period: weekPeriodLabel,
-                amount: finalAmount,
-                status: 'Unpaid',
-            });
-        }
+        weekly.push({
+            employeeId: employee.id,
+            employeeName: employee.name,
+            paymentMethod: employee.paymentMethod,
+            period: "This Week",
+            amount: finalAmount,
+            status: 'Unpaid',
+            totalHours: totalHours + overtimeHours
+        });
     });
 
     return weekly;
@@ -606,34 +494,16 @@ export default function DashboardPage() {
     const monthly: PayrollEntry[] = [];
     const ethToday = toEthiopian(today);
     const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
-    const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethToday.year}`;
 
     employees.filter(employee => employee.paymentMethod === 'Monthly').forEach(employee => {
         const baseSalary = employee.monthlyRate || 0;
         if (baseSalary === 0) return;
 
-        const ethYearForPeriod = ethToday.year;
-        const allEmployeeRecords = allAttendance.filter(r => r.employeeId === employee.id);
-        const permissionDatesInYear = new Set<string>();
-        allEmployeeRecords.forEach(rec => {
-            const recDate = getDateFromRecord(rec.date);
-            if (toEthiopian(recDate).year === ethYearForPeriod) {
-                if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
-                    permissionDatesInYear.add(format(recDate, 'yyyy-MM-dd'));
-                }
-            }
-        });
-        const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
-        const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
-        
-        const daysInMonth = getEthiopianMonthDays(ethToday.year, ethToday.month);
-        const monthEnd = addDays(monthStart, daysInMonth - 1);
-        
         const dailyRate = baseSalary / 23.625;
         const hourlyRate = dailyRate / 8;
         const minuteRate = hourlyRate / 60;
 
-        const calculationPeriod = { start: monthStart, end: monthEnd };
+        const calculationPeriod = { start: monthStart, end: today };
         const allRecordsForMonth = allAttendance.filter(r => 
             r.employeeId === employee.id &&
             isValid(getDateFromRecord(r.date)) &&
@@ -646,18 +516,11 @@ export default function DashboardPage() {
         
         allRecordsForMonth.forEach(r => {
             const recordDate = getDateFromRecord(r.date);
-            if(recordDate > today) return;
+            const morningIsUnpaidAbsence = r.morningStatus === 'Absent';
+            const afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' && getDay(recordDate) !== 6;
 
-            let hoursAbsentThisRecord = 0;
-
-            const recordDateStr = format(recordDate, 'yyyy-MM-dd');
-            const morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
-            const afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
-
-            if (morningIsUnpaidAbsence) hoursAbsentThisRecord += 4.5;
-            if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) hoursAbsentThisRecord += 3.5;
-            
-            projectedHoursAbsent += hoursAbsentThisRecord;
+            if (morningIsUnpaidAbsence) projectedHoursAbsent += 4.5;
+            if (afternoonIsUnpaidAbsence) projectedHoursAbsent += 3.5;
             displayMinutesLate += calculateMinutesLate(r);
         });
         
@@ -665,7 +528,7 @@ export default function DashboardPage() {
         const employeeStartDate = new Date(employee.attendanceStartDate || 0);
 
         calculationPeriodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
+            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { 
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDatesForMonth.has(dayStr)) {
                     projectedHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
@@ -673,91 +536,70 @@ export default function DashboardPage() {
             }
         });
 
-        const projectedAbsenceDeduction = projectedHoursAbsent * hourlyRate;
-        const lateDeduction = displayMinutesLate * minuteRate;
-        
-        const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction);
+        const netSalary = baseSalary - (projectedHoursAbsent * hourlyRate) - (displayMinutesLate * minuteRate);
 
-        if (netSalary > 0 || allRecordsForMonth.length > 0) {
-             monthly.push({
-                employeeId: employee.id,
-                employeeName: employee.name,
-                paymentMethod: employee.paymentMethod,
-                period: monthPeriodLabel,
-                amount: netSalary,
-                status: 'Unpaid',
-            });
-        }
+        monthly.push({
+            employeeId: employee.id,
+            employeeName: employee.name,
+            paymentMethod: employee.paymentMethod,
+            period: "This Month",
+            amount: netSalary,
+            status: 'Unpaid',
+            hoursAbsent: projectedHoursAbsent,
+            minutesLate: displayMinutesLate
+        });
     });
 
     return monthly;
 
   }, [employees, allAttendance]);
-  
-  useEffect(() => {
-    const checkAndSendSummaries = async () => {
-        const today = new Date();
 
-        // --- Weekly Summary ---
-        if (getDay(today) === 6 && today.getHours() >= 17) { // Saturday, 5 PM or later
-            const weekStart = startOfWeek(today, { weekStartsOn: 0 });
-            const weekKey = `weekly_summary_sent_${format(weekStart, 'yyyy-MM-dd')}`;
+  const dailyEarnings = useMemo(() => {
+    if (!employees || !todayAttendance) return [];
+    
+    return employees.map(emp => {
+        const record = todayAttendance.find(r => r.employeeId === emp.id);
+        let amount = 0;
+        
+        if (emp.paymentMethod === 'Weekly') {
+            const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+            if (record) {
+                const hours = calculateHoursWorked(record);
+                const overtime = record.overtimeHours || 0;
+                amount = (hours + overtime) * hourlyRate;
+            } else if (getDay(new Date()) === 0) { 
+                amount = 8 * hourlyRate; 
+            }
+        } else { 
+            const baseSalary = emp.monthlyRate || 0;
+            const dailyRate = baseSalary / 23.625;
+            const minuteRate = dailyRate / 8 / 60;
             
-            if (!localStorage.getItem(weekKey) && weeklyPayroll.length > 0) {
-                const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(endOfWeek(weekStart, { weekStartsOn: 0 }), { day: 'numeric', month: 'short', year: 'numeric' })}`;
-                const totalAmount = weeklyPayroll.reduce((acc, entry) => acc + entry.amount, 0);
-
-                let summaryMessage = `*Weekly Payroll Summary for ${weekPeriodLabel}*\n\n`;
-                weeklyPayroll.forEach(entry => {
-                    summaryMessage += `${entry.employeeName}: ETB ${entry.amount.toFixed(2)}\n`;
-                });
-                summaryMessage += `\n*Total: ETB ${totalAmount.toFixed(2)}*`;
-
-                const result = await sendAdminPayrollSummary(summaryMessage);
-                if (result.success) {
-                    localStorage.setItem(weekKey, 'true');
-                    toast({
-                        title: 'Weekly Summary Sent!',
-                        description: `The weekly payroll summary was sent to the admin via Telegram.`
-                    });
-                }
+            if (getDay(new Date()) === 0) {
+                amount = dailyRate;
+            } else if (record) {
+                let deduction = 0;
+                if (record.morningStatus === 'Absent') deduction += (4.5 / 8) * dailyRate;
+                if (record.afternoonStatus === 'Absent' && getDay(new Date()) !== 6) deduction += (3.5 / 8) * dailyRate;
+                deduction += calculateMinutesLate(record) * minuteRate;
+                amount = dailyRate - deduction;
+            } else {
+                amount = 0;
             }
         }
+        
+        return {
+            employeeId: emp.id,
+            name: emp.name,
+            morning: record?.morningEntry || "—",
+            afternoon: record?.afternoonEntry || "—",
+            status: record?.morningStatus || (getDay(new Date()) === 0 ? "Present" : "Absent"),
+            amount: Math.max(0, amount)
+        };
+    });
+  }, [employees, todayAttendance]);
 
-        // --- Monthly Summary ---
-        const ethToday = toEthiopian(today);
-        const daysInMonth = getEthiopianMonthDays(ethToday.year, ethToday.month);
-        if (ethToday.day === daysInMonth && today.getHours() >= 17) { // Last day of Ethiopian month, 5 PM or later
-            const monthStart = toGregorian(ethToday.year, ethToday.month, 1);
-            const monthKey = `monthly_summary_sent_${format(monthStart, 'yyyy-MM')}`;
-
-            if (!localStorage.getItem(monthKey) && monthlyPayroll.length > 0) {
-                 const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethToday.year}`;
-                 const totalAmount = monthlyPayroll.reduce((acc, entry) => acc + entry.amount, 0);
-
-                 let summaryMessage = `*Monthly Payroll Summary for ${monthPeriodLabel}*\n\n`;
-                 monthlyPayroll.forEach(entry => {
-                    summaryMessage += `${entry.employeeName}: ETB ${entry.amount.toFixed(2)}\n`;
-                 });
-                 summaryMessage += `\n*Total: ETB ${totalAmount.toFixed(2)}*`;
-
-                 const result = await sendAdminPayrollSummary(summaryMessage);
-                 if (result.success) {
-                     localStorage.setItem(monthKey, 'true');
-                     toast({
-                        title: 'Monthly Summary Sent!',
-                        description: `The monthly payroll summary was sent to the admin via Telegram.`
-                    });
-                 }
-            }
-        }
-    };
-
-    if (typeof window !== 'undefined' && !loading) {
-        checkAndSendSummaries();
-    }
-  }, [loading, weeklyPayroll, monthlyPayroll, toast]);
-  
+  const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading;
 
   if (loading) {
     return (
@@ -774,7 +616,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <StatCard
           title="Total Employees"
           value={dashboardStats.totalEmployees}
@@ -783,7 +625,7 @@ export default function DashboardPage() {
         <StatCard
           title="On-site Today"
           value={`${dashboardStats.onSiteToday} / ${dashboardStats.totalEmployees}`}
-          icon={<UserCheck className="h-5 w-s text-muted-foreground" />}
+          icon={<UserCheck className="h-5 w-5 text-muted-foreground" />}
         />
          <StatCard
             title="This Week's Payroll"
@@ -801,36 +643,123 @@ export default function DashboardPage() {
 
        <div className="flex flex-col gap-8">
         <Card>
-            <CardHeader>
-                <CardTitle>Today's Status</CardTitle>
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle>Overview</CardTitle>
+                    <CardDescription>Real-time attendance and payment summaries</CardDescription>
+                </div>
+                <Badge variant="outline" className="flex items-center gap-1">
+                    <CalendarDays className="h-3 w-3" />
+                    {ethiopianDateFormatter(new Date(), { month: 'long', day: 'numeric', year: 'numeric' })}
+                </Badge>
             </CardHeader>
             <CardContent>
-                <Tabs defaultValue="absent">
-                    <TabsList className="grid w-full grid-cols-3">
-                        <TabsTrigger value="absent">
-                            <UserX className="mr-2 h-4 w-4" /> Absent ({todayStatus.absent.length})
+                <Tabs defaultValue="today">
+                    <TabsList className="grid w-full grid-cols-3 mb-6">
+                        <TabsTrigger value="today">
+                            Today
                         </TabsTrigger>
-                        <TabsTrigger value="late">
-                            <Clock className="mr-2 h-4 w-4" /> Late ({todayStatus.late.length})
+                        <TabsTrigger value="week">
+                            This Week
                         </TabsTrigger>
-                        <TabsTrigger value="permission">
-                            <Hand className="mr-2 h-4 w-4" /> Permission ({todayStatus.permission.length})
+                        <TabsTrigger value="month">
+                            This Month
                         </TabsTrigger>
                     </TabsList>
-                    <TabsContent value="absent" className="mt-4">
-                        {todayStatus.absent.length > 0 ? (
-                            todayStatus.absent.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Absent" detail={item.period} />)
-                        ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is absent today.</p>}
+                    
+                    <TabsContent value="today">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Employee</TableHead>
+                                    <TableHead>Morning</TableHead>
+                                    <TableHead>Afternoon</TableHead>
+                                    <TableHead>Status</TableHead>
+                                    <TableHead className="text-right">Today's Pay</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {dailyEarnings.map(item => (
+                                    <TableRow key={item.employeeId}>
+                                        <TableCell className="font-medium">{item.name}</TableCell>
+                                        <TableCell>{item.morning}</TableCell>
+                                        <TableCell>{item.afternoon}</TableCell>
+                                        <TableCell>
+                                            <Badge variant={item.status === 'Absent' ? 'destructive' : 'secondary'}>
+                                                {item.status}
+                                            </Badge>
+                                        </TableCell>
+                                        <TableCell className="text-right font-bold text-primary">
+                                            ETB {item.amount.toFixed(2)}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                            </TableBody>
+                        </Table>
                     </TabsContent>
-                     <TabsContent value="late" className="mt-4">
-                        {todayStatus.late.length > 0 ? (
-                            todayStatus.late.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Late" detail={item.time} />)
-                        ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is late today.</p>}
+
+                    <TabsContent value="week">
+                         <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Employee</TableHead>
+                                    <TableHead>Method</TableHead>
+                                    <TableHead>Summary</TableHead>
+                                    <TableHead className="text-right">Earned This Week</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {weeklyPayroll.map(entry => (
+                                    <TableRow key={entry.employeeId}>
+                                        <TableCell className="font-medium">{entry.employeeName}</TableCell>
+                                        <TableCell>
+                                            <Badge variant="outline">{entry.paymentMethod}</Badge>
+                                        </TableCell>
+                                        <TableCell className="text-muted-foreground text-xs">
+                                            {entry.totalHours?.toFixed(1)} hrs recorded
+                                        </TableCell>
+                                        <TableCell className="text-right font-bold text-primary">
+                                            ETB {entry.amount.toFixed(2)}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {weeklyPayroll.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">No weekly employees found.</TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
                     </TabsContent>
-                     <TabsContent value="permission" className="mt-4">
-                        {todayStatus.permission.length > 0 ? (
-                            todayStatus.permission.map(item => <StatusListItem key={item.employee.id} employee={item.employee} status="Permission" detail={item.period} />)
-                        ) : <p className="text-muted-foreground text-center py-8 text-sm">No one is on leave today.</p>}
+
+                    <TabsContent value="month">
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead>Employee</TableHead>
+                                    <TableHead>Summary</TableHead>
+                                    <TableHead className="text-right">Month To-Date</TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {monthlyPayroll.map(entry => (
+                                    <TableRow key={entry.employeeId}>
+                                        <TableCell className="font-medium">{entry.employeeName}</TableCell>
+                                        <TableCell className="text-muted-foreground text-xs">
+                                            {entry.hoursAbsent?.toFixed(1)}h absent · {entry.minutesLate}m late
+                                        </TableCell>
+                                        <TableCell className="text-right font-bold text-primary">
+                                            ETB {entry.amount.toFixed(2)}
+                                        </TableCell>
+                                    </TableRow>
+                                ))}
+                                {monthlyPayroll.length === 0 && (
+                                    <TableRow>
+                                        <TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No monthly employees found.</TableCell>
+                                    </TableRow>
+                                )}
+                            </TableBody>
+                        </Table>
                     </TabsContent>
                 </Tabs>
             </CardContent>
@@ -849,4 +778,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
