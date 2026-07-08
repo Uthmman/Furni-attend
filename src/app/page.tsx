@@ -3,21 +3,17 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, UserX, Clock, Hand, CalendarDays, ListFilter, ChevronLeft, ChevronRight } from "lucide-react";
-import type { Employee, AttendanceRecord, AttendanceStatus, PayrollEntry } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfMonth } from "date-fns";
+import { Users, UserCheck, Wallet, CalendarDays, Clock } from "lucide-react";
+import type { Employee, AttendanceRecord } from "@/lib/types";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PayrollHistoryChart } from './payroll/payroll-history-chart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
-import Link from 'next/link';
-import { useToast } from '@/hooks/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 const getDateFromRecord = (date: string | any): Date => {
@@ -145,7 +141,6 @@ export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
-  const { toast } = useToast();
   
   const employeesCollectionRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -157,7 +152,6 @@ export default function DashboardPage() {
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
 
-  // Overview tab selectors
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(startOfWeek(new Date(), { weekStartsOn: 0 }).toISOString());
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1).toISOString());
@@ -214,7 +208,6 @@ export default function DashboardPage() {
     const now = new Date();
     const todayStr = format(now, "yyyy-MM-dd");
 
-    // Real-time site attendance based on today's logs
     const onSiteTodayCount = allAttendance.filter(r => 
         format(getDateFromRecord(r.date), "yyyy-MM-dd") === todayStr &&
         (r.morningStatus !== "Absent" || r.afternoonStatus !== "Absent")
@@ -279,7 +272,7 @@ export default function DashboardPage() {
         employees.forEach(emp => {
             const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start, end }));
             if (emp.paymentMethod === 'Monthly') {
-                total += emp.monthlyRate || 0; // Simplified for chart
+                total += emp.monthlyRate || 0; 
             } else {
                 const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
                 const hours = records.reduce((sum, r) => sum + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
@@ -291,7 +284,6 @@ export default function DashboardPage() {
     return history;
   }, [employees, allAttendance]);
 
-  // Tab calculations
   const weeklyPayroll = useMemo(() => {
     if (!employees || !selectedWeekStart) return [];
     const weekStart = new Date(selectedWeekStart);
@@ -338,7 +330,7 @@ export default function DashboardPage() {
             amount = record ? (calculateHoursWorked(record) + (record.overtimeHours || 0)) * (hourly || 0) : 0;
         } else {
             const daily = (emp.monthlyRate || 0) / 23.625;
-            amount = record ? daily : 0; // Simplified for daily
+            amount = record ? daily : 0; 
         }
         return { 
             employeeId: emp.id, name: emp.name, morning: record?.morningEntry || "—", afternoon: record?.afternoonEntry || "—",
@@ -347,7 +339,6 @@ export default function DashboardPage() {
     });
   }, [employees, todayAttendance, selectedDay]);
 
-  // Options for selectors
   const weekOptions = useMemo(() => {
       const options = [];
       let current = startOfWeek(new Date(), { weekStartsOn: 0 });
@@ -382,6 +373,15 @@ export default function DashboardPage() {
     );
   }
 
+  const getStatusVariant = (status: string) => {
+    switch (status) {
+        case 'Present': return 'secondary';
+        case 'Late': return 'outline';
+        case 'Absent': return 'destructive';
+        default: return 'outline';
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -396,7 +396,7 @@ export default function DashboardPage() {
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div>
                     <CardTitle>Overview</CardTitle>
-                    <CardDescription>Detailed attendance and payment tracking</CardDescription>
+                    <CardDescription>Real-time attendance and payment tracking</CardDescription>
                 </div>
                 <Badge variant="outline" className="flex items-center gap-1">
                     <CalendarDays className="h-3 w-3" />
@@ -413,9 +413,33 @@ export default function DashboardPage() {
                     
                     <TabsContent value="today" className="space-y-4">
                         <div className="flex items-center gap-2 max-w-xs">
-                            <Input type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} />
+                            <Input type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} className="w-full" />
                         </div>
-                        <div className="overflow-x-auto">
+                        
+                        {/* Mobile List View */}
+                        <div className="grid grid-cols-1 gap-4 md:hidden">
+                            {dailyEarnings.map(item => (
+                                <div key={item.employeeId} className="border rounded-lg p-4 space-y-3">
+                                    <div className="flex justify-between items-start">
+                                        <div className="font-bold">{item.name}</div>
+                                        <Badge variant={getStatusVariant(item.status)}>{item.status}</Badge>
+                                    </div>
+                                    <div className="grid grid-cols-2 text-xs text-muted-foreground">
+                                        <div><span className="font-semibold text-foreground">Morning:</span> {item.morning}</div>
+                                        <div><span className="font-semibold text-foreground">Afternoon:</span> {item.afternoon}</div>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-2 border-t">
+                                        <div className="text-xs">
+                                            {item.overtimeHours > 0 && <span className="text-primary font-medium">+{item.overtimeHours} hrs OT</span>}
+                                        </div>
+                                        <div className="font-bold text-primary">ETB {item.amount.toFixed(2)}</div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
@@ -423,20 +447,18 @@ export default function DashboardPage() {
                                         <TableHead>Morning</TableHead>
                                         <TableHead>Afternoon</TableHead>
                                         <TableHead>Status</TableHead>
-                                        <TableHead>OT Hrs</TableHead>
-                                        <TableHead className="text-right">Today's Pay</TableHead>
+                                        <TableHead>OT</TableHead>
+                                        <TableHead className="text-right">Earnings</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {dailyEarnings.map(item => (
                                         <TableRow key={item.employeeId}>
-                                            <TableCell className="font-medium whitespace-nowrap">{item.name}</TableCell>
+                                            <TableCell className="font-medium">{item.name}</TableCell>
                                             <TableCell>{item.morning}</TableCell>
                                             <TableCell>{item.afternoon}</TableCell>
-                                            <TableCell>
-                                                <Badge variant={item.status === 'Absent' ? 'destructive' : 'secondary'}>{item.status}</Badge>
-                                            </TableCell>
-                                            <TableCell>{item.overtimeHours || 0}</TableCell>
+                                            <TableCell><Badge variant={getStatusVariant(item.status)}>{item.status}</Badge></TableCell>
+                                            <TableCell>{item.overtimeHours > 0 ? `+${item.overtimeHours} hrs` : "—"}</TableCell>
                                             <TableCell className="text-right font-bold text-primary">ETB {item.amount.toFixed(2)}</TableCell>
                                         </TableRow>
                                     ))}
@@ -448,32 +470,55 @@ export default function DashboardPage() {
                     <TabsContent value="week" className="space-y-4">
                         <div className="flex items-center gap-2 max-w-xs">
                              <Select value={selectedWeekStart} onValueChange={setSelectedWeekStart}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select week" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                                </SelectContent>
+                                <SelectTrigger><SelectValue placeholder="Select week" /></SelectTrigger>
+                                <SelectContent>{weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                        <div className="overflow-x-auto">
+
+                        {/* Mobile List View */}
+                        <div className="grid grid-cols-1 gap-4 md:hidden">
+                            {weeklyPayroll.map(entry => (
+                                <div key={entry.employeeId} className="border rounded-lg p-4 space-y-2">
+                                    <div className="font-bold">{entry.employeeName}</div>
+                                    <div className="flex justify-between text-sm">
+                                        <span>Working Hours:</span>
+                                        <span className="font-medium">{entry.totalHours?.toFixed(1)} hrs</span>
+                                    </div>
+                                    {entry.overtimeHours > 0 && (
+                                        <div className="flex justify-between text-sm text-primary">
+                                            <span>Overtime:</span>
+                                            <span>+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between pt-2 border-t font-bold">
+                                        <span>Weekly Total:</span>
+                                        <span className="text-primary">ETB {entry.amount.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Employee</TableHead>
                                         <TableHead>Working Hours</TableHead>
-                                        <TableHead>OT Hours</TableHead>
-                                        <TableHead>OT Pay</TableHead>
+                                        <TableHead>Overtime</TableHead>
                                         <TableHead className="text-right">Weekly Total</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {weeklyPayroll.map(entry => (
                                         <TableRow key={entry.employeeId}>
-                                            <TableCell className="font-medium whitespace-nowrap">{entry.employeeName}</TableCell>
+                                            <TableCell className="font-medium">{entry.employeeName}</TableCell>
                                             <TableCell>{entry.totalHours?.toFixed(1)} hrs</TableCell>
-                                            <TableCell>{entry.overtimeHours || 0}</TableCell>
-                                            <TableCell>ETB {entry.overtimeAmount?.toFixed(2)}</TableCell>
+                                            <TableCell>
+                                                {entry.overtimeHours > 0 ? (
+                                                    <span className="text-primary font-medium">+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
+                                                ) : "—"}
+                                            </TableCell>
                                             <TableCell className="text-right font-bold text-primary">ETB {entry.amount.toFixed(2)}</TableCell>
                                         </TableRow>
                                     ))}
@@ -485,32 +530,54 @@ export default function DashboardPage() {
                     <TabsContent value="month" className="space-y-4">
                         <div className="flex items-center gap-2 max-w-xs">
                             <Select value={selectedMonthStart} onValueChange={setSelectedMonthStart}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Select month" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                                </SelectContent>
+                                <SelectTrigger><SelectValue placeholder="Select month" /></SelectTrigger>
+                                <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                        <div className="overflow-x-auto">
+
+                        {/* Mobile List View */}
+                        <div className="grid grid-cols-1 gap-4 md:hidden">
+                            {monthlyPayroll.map(entry => (
+                                <div key={entry.employeeId} className="border rounded-lg p-4 space-y-2">
+                                    <div className="flex justify-between items-start">
+                                        <div className="font-bold">{entry.employeeName}</div>
+                                        <Badge variant="outline">{entry.paymentMethod}</Badge>
+                                    </div>
+                                    {entry.overtimeHours > 0 && (
+                                        <div className="flex justify-between text-sm text-primary">
+                                            <span>Overtime:</span>
+                                            <span>+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
+                                        </div>
+                                    )}
+                                    <div className="flex justify-between pt-2 border-t font-bold">
+                                        <span>Month To-Date:</span>
+                                        <span className="text-primary">ETB {entry.amount.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Desktop Table View */}
+                        <div className="hidden md:block">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Employee</TableHead>
-                                        <TableHead>Payment Method</TableHead>
-                                        <TableHead>OT Hours</TableHead>
-                                        <TableHead>OT Pay</TableHead>
+                                        <TableHead>Method</TableHead>
+                                        <TableHead>Overtime</TableHead>
                                         <TableHead className="text-right">Month To-Date</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {monthlyPayroll.map(entry => (
                                         <TableRow key={entry.employeeId}>
-                                            <TableCell className="font-medium whitespace-nowrap">{entry.employeeName}</TableCell>
+                                            <TableCell className="font-medium">{entry.employeeName}</TableCell>
                                             <TableCell><Badge variant="outline">{entry.paymentMethod}</Badge></TableCell>
-                                            <TableCell>{entry.overtimeHours || 0}</TableCell>
-                                            <TableCell>ETB {entry.overtimeAmount?.toFixed(2)}</TableCell>
+                                            <TableCell>
+                                                {entry.overtimeHours > 0 ? (
+                                                    <span className="text-primary font-medium">+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
+                                                ) : "—"}
+                                            </TableCell>
                                             <TableCell className="text-right font-bold text-primary">ETB {entry.amount.toFixed(2)}</TableCell>
                                         </TableRow>
                                     ))}
