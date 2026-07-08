@@ -15,6 +15,9 @@ import { Badge } from '@/components/ui/badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
@@ -343,7 +346,9 @@ export default function DashboardPage() {
       const options = [];
       let current = startOfWeek(new Date(), { weekStartsOn: 0 });
       for (let i = 0; i < 8; i++) {
-          options.push({ value: current.toISOString(), label: `Week of ${format(current, 'MMM d')}` });
+          const ethStart = ethiopianDateFormatter(current, { month: 'short', day: 'numeric' });
+          const ethEnd = ethiopianDateFormatter(endOfWeek(current, { weekStartsOn: 0 }), { month: 'short', day: 'numeric', year: 'numeric' });
+          options.push({ value: current.toISOString(), label: `Week of ${ethStart} - ${ethEnd}` });
           current = addDays(current, -7);
       }
       return options;
@@ -382,6 +387,16 @@ export default function DashboardPage() {
     }
   };
 
+  const handleGlobalDateSelect = (date: Date | undefined) => {
+      if (date) {
+          const dayStr = format(date, "yyyy-MM-dd");
+          setSelectedDay(dayStr);
+          setSelectedWeekStart(startOfWeek(date, { weekStartsOn: 0 }).toISOString());
+          const eth = toEthiopian(date);
+          setSelectedMonthStart(toGregorian(eth.year, eth.month, 1).toISOString());
+      }
+  };
+
   return (
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -398,10 +413,22 @@ export default function DashboardPage() {
                     <CardTitle>Overview</CardTitle>
                     <CardDescription>Real-time attendance and payment tracking</CardDescription>
                 </div>
-                <Badge variant="outline" className="flex items-center gap-1">
-                    <CalendarDays className="h-3 w-3" />
-                    {ethiopianDateFormatter(new Date(), { month: 'long', day: 'numeric', year: 'numeric' })}
-                </Badge>
+                <Popover>
+                    <PopoverTrigger asChild>
+                        <Button variant="outline" size="sm" className="h-8 flex items-center gap-1 font-normal bg-background">
+                            <CalendarDays className="h-3 w-3" />
+                            {ethiopianDateFormatter(new Date(selectedDay), { month: 'long', day: 'numeric', year: 'numeric' })}
+                        </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="end">
+                        <Calendar
+                            mode="single"
+                            selected={new Date(selectedDay)}
+                            onSelect={handleGlobalDateSelect}
+                            initialFocus
+                        />
+                    </PopoverContent>
+                </Popover>
             </CardHeader>
             <CardContent>
                 <Tabs defaultValue="today">
