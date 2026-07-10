@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -19,7 +18,9 @@ import {
   startOfWeek,
   endOfWeek,
   parse,
-  getDay
+  getDay,
+  startOfDay,
+  endOfDay
 } from "date-fns";
 import { Timestamp, getDocs } from "firebase/firestore";
 import type { Employee, AttendanceRecord, PayrollEntry } from "@/lib/types";
@@ -69,17 +70,25 @@ const toEthiopian = (date: Date) => {
 const getEthiopianMonthDays = (year: number, month: number): number => {
     if (month < 1 || month > 13) return 0;
     if (month <= 12) return 30;
-    // Pagume (13th month)
     const isLeap = (year + 1) % 4 === 0;
     return isLeap ? 6 : 5;
 };
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
-    const today = new Date();
-    const ethToday = toEthiopian(today);
-    // Rough approximation
-    const dayDiff = ((ethYear - ethToday.year) * 365.25) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
-    return addDays(today, Math.round(dayDiff));
+    // Robust search logic with noon-reference
+    let date = new Date(ethYear + 7, ethMonth + 7, ethDay, 12, 0, 0);
+    for (let i = 0; i < 60; i++) {
+        const eth = toEthiopian(date);
+        if (eth.year === ethYear && eth.month === ethMonth && eth.day === ethDay) {
+            return startOfDay(date);
+        }
+        if (eth.year < ethYear || (eth.year === ethYear && eth.month < ethMonth) || (eth.year === ethYear && eth.month === ethMonth && eth.day < ethDay)) {
+            date.setDate(date.getDate() + 1);
+        } else {
+            date.setDate(date.getDate() - 1);
+        }
+    }
+    return startOfDay(date);
 };
 
 const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
@@ -221,13 +230,13 @@ export default function PayrollPage() {
             const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
             if (monthStart < addDays(earliestAttendance, -31)) break;
             const monthName = ethiopianDateFormatter(monthStart, { month: 'long' });
-            mOptions.push({ value: monthStart.toISOString(), label: `${monthName} ${ethDate.year}` });
+            mOptions.push({ value: format(monthStart, "yyyy-MM-dd"), label: `${monthName} ${ethDate.year}` });
             const prevMonthDate = addDays(monthStart, -5);
             const prevEthDate = toEthiopian(prevMonthDate);
             currentMonthStart = toGregorian(prevEthDate.year, prevEthDate.month, 1);
         }
         setMonthOptions(mOptions);
-        if (mOptions.length > 0) setSelectedMonth(new Date(mOptions[0]?.value || new Date()));
+        if (mOptions.length > 0) setSelectedMonth(new Date(mOptions[0]?.value));
 
         // Week Options
         const wOptions = [];
@@ -237,7 +246,7 @@ export default function PayrollPage() {
             if (weekEnd < earliestAttendance) break;
             const startDayEth = ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' });
             const endDayEth = ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' });
-            wOptions.push({ value: currentWeekStart.toISOString(), label: `${startDayEth} - ${endDayEth}` });
+            wOptions.push({ value: format(currentWeekStart, "yyyy-MM-dd"), label: `${startDayEth} - ${endDayEth}` });
             currentWeekStart = addDays(currentWeekStart, -7);
         }
         setWeekOptions(wOptions);
@@ -250,8 +259,8 @@ export default function PayrollPage() {
     if (!employees || allAttendance.length === 0 || !selectedWeek) return [];
     
     const weekly: PayrollEntry[] = [];
-    const weekStart = startOfWeek(selectedWeek, { weekStartsOn: 0 });
-    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
+    const weekStart = startOfDay(selectedWeek);
+    const weekEnd = endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
     const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
     
     employees.filter(employee => employee.paymentMethod === 'Weekly').forEach(employee => {
@@ -324,7 +333,7 @@ export default function PayrollPage() {
     if (!employees || allAttendance.length === 0 || !selectedMonth) return [];
 
     const monthly: PayrollEntry[] = [];
-    const monthStart = selectedMonth;
+    const monthStart = startOfDay(selectedMonth);
     const ethDate = toEthiopian(monthStart);
     const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethDate.year}`;
     const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
@@ -348,9 +357,8 @@ export default function PayrollPage() {
         const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
         const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
         
-        const monthEnd = addDays(monthStart, daysInMonth - 1);
+        const monthEnd = endOfDay(addDays(monthStart, daysInMonth - 1));
         
-        // DYNAMIC RATE CALCULATION
         const hourlyRate = baseSalary / workingUnits / 8;
         const minuteRate = hourlyRate / 60;
 
@@ -371,21 +379,17 @@ export default function PayrollPage() {
             const recordDate = getDateFromRecord(r.date);
             if(recordDate > today) return;
 
-            let hoursAbsentThisRecord = 0;
-
             const recordDateStr = format(recordDate, 'yyyy-MM-dd');
-            const morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
-            const afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+            const isSaturday = getDay(recordDate) === 6;
 
-            if (morningIsUnpaidAbsence) hoursAbsentThisRecord += 4.5;
-            if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) hoursAbsentThisRecord += 3.5;
+            if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr))) projectedHoursAbsent += 4.5;
+            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr)))) projectedHoursAbsent += 3.5;
             
-            projectedHoursAbsent += hoursAbsentThisRecord;
             displayMinutesLate += calculateMinutesLate(r);
         });
         
         const calculationPeriodDays = eachDayOfInterval(calculationPeriod);
-        const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+        const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
 
         calculationPeriodDays.forEach(day => {
             if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
@@ -404,21 +408,6 @@ export default function PayrollPage() {
         
         const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction) + overtimePay;
 
-        let expectedHoursToDate = 0;
-        calculationPeriodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) {
-                if (getDay(day) === 6) { // Saturday
-                    expectedHoursToDate += 4.5;
-                } else { // Weekday (Mon-Fri)
-                    expectedHoursToDate += 8;
-                }
-            }
-        });
-        const actualHoursWorkedToDate = expectedHoursToDate - projectedHoursAbsent;
-        const earnedAmountToDate = actualHoursWorkedToDate * hourlyRate;
-        const amountToDate = earnedAmountToDate - lateDeduction + overtimePay;
-
-
         if (netSalary > 0 || allRecordsForMonth.length > 0) {
              monthly.push({
                 employeeId: employee.id,
@@ -434,7 +423,6 @@ export default function PayrollPage() {
                 absenceDeduction: projectedAbsenceDeduction,
                 lateDeduction: lateDeduction,
                 permissionDaysUsed: Math.min(15, sortedPermissionDates.length),
-                amountToDate: amountToDate,
                 overtimeHours: overtimeHours,
                 overtimeAmount: overtimePay
             });
@@ -449,11 +437,11 @@ export default function PayrollPage() {
   const monthlyExpenseHistoryData = useMemo(() => {
     if (!employees || !allAttendance || !selectedMonth) return { monthly: [], totalMonthly: 0 };
 
-    const ethSelected = toEthiopian(selectedMonth);
-    const monthStart = selectedMonth;
+    const monthStart = startOfDay(selectedMonth);
+    const ethSelected = toEthiopian(monthStart);
     const daysInMonthCount = getEthiopianMonthDays(ethSelected.year, ethSelected.month);
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
-    const monthEnd = addDays(monthStart, daysInMonthCount - 1);
+    const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
     let totalMonthlyExpense = 0;
@@ -496,8 +484,8 @@ export default function PayrollPage() {
   const weeklyExpenseHistoryData = useMemo(() => {
     if (!employees || !allAttendance || !selectedWeek) return { weekly: [], totalWeekly: 0 };
 
-    const weekStart = startOfWeek(selectedWeek, { weekStartsOn: 0 });
-    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
+    const weekStart = startOfDay(selectedWeek);
+    const weekEnd = endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
     const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
 
     let totalWeeklyExpense = 0;
@@ -541,11 +529,11 @@ export default function PayrollPage() {
   const totalExpenseHistoryData = useMemo(() => {
     if (!selectedMonth || !employees || !allAttendance) return { total: [], overallTotal: 0 };
 
-    const ethSelected = toEthiopian(selectedMonth);
-    const monthStart = selectedMonth;
+    const monthStart = startOfDay(selectedMonth);
+    const ethSelected = toEthiopian(monthStart);
     const daysInMonthCount = getEthiopianMonthDays(ethSelected.year, ethSelected.month);
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
-    const monthEnd = addDays(monthStart, daysInMonthCount - 1);
+    const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
     let overallTotal = 0;
@@ -609,7 +597,7 @@ export default function PayrollPage() {
   }
 
   const monthLabel = selectedMonth ? ethiopianDateFormatter(selectedMonth, {month: 'long', year: 'numeric'}) : "";
-  const weekLabel = selectedWeek ? weekOptions.find(o => o.value === selectedWeek.toISOString())?.label : "";
+  const weekLabel = selectedWeek ? weekOptions.find(o => o.value === format(selectedWeek, "yyyy-MM-dd"))?.label : "";
 
   return (
     <div className="flex flex-col gap-8">
@@ -618,14 +606,14 @@ export default function PayrollPage() {
                 title="Weekly Payout" 
                 payrollData={weeklyPayroll}
                 periodOptions={weekOptions}
-                selectedPeriod={selectedWeek?.toISOString()}
+                selectedPeriod={selectedWeek ? format(selectedWeek, "yyyy-MM-dd") : undefined}
                 onPeriodChange={handleWeekSelect}
             />
             <PayrollList 
                 title="Monthly Payout" 
                 payrollData={monthlyPayroll} 
                 periodOptions={monthOptions}
-                selectedPeriod={selectedMonth?.toISOString()}
+                selectedPeriod={selectedMonth ? format(selectedMonth, "yyyy-MM-dd") : undefined}
                 onPeriodChange={handleMonthSelect}
             />
         </div>
@@ -638,7 +626,7 @@ export default function PayrollPage() {
           <CardContent className="flex flex-col gap-6">
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
                     <div className="flex flex-col gap-4">
-                        <Select onValueChange={handleWeekSelect} value={selectedWeek?.toISOString()}>
+                        <Select onValueChange={handleWeekSelect} value={selectedWeek ? format(selectedWeek, "yyyy-MM-dd") : undefined}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select a week" />
                             </SelectTrigger>
@@ -657,7 +645,7 @@ export default function PayrollPage() {
                         />
                     </div>
                     <div className="flex flex-col gap-4">
-                        <Select onValueChange={handleMonthSelect} value={selectedMonth.toISOString()}>
+                        <Select onValueChange={handleMonthSelect} value={selectedMonth ? format(selectedMonth, "yyyy-MM-dd") : undefined}>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select a month" />
                             </SelectTrigger>
