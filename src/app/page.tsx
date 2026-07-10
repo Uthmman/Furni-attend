@@ -4,7 +4,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
@@ -19,6 +19,7 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
+import { Progress } from "@/components/ui/progress";
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
@@ -514,26 +515,104 @@ export default function DashboardPage() {
     }
   };
 
+  const attendancePercentage = (dashboardStats.onSiteToday / dashboardStats.totalEmployees) * 100;
+
   return (
     <div className="flex flex-col gap-8">
+      {/* Welcome & Date Section */}
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-2xl border">
+        <div>
+          <h2 className="text-3xl font-bold tracking-tight">Welcome back!</h2>
+          <p className="text-muted-foreground mt-1">Here is what's happening today at FurnishWise.</p>
+        </div>
+        <div className="flex items-center gap-4 bg-background/50 p-4 rounded-xl border shadow-sm">
+           <div className="flex flex-col items-end">
+              <span className="text-sm font-semibold text-primary uppercase tracking-wider">
+                {ethiopianDateFormatter(new Date(), { month: 'long' })} {toEthiopian(new Date()).year}
+              </span>
+              <span className="text-2xl font-bold">
+                {ethiopianDateFormatter(new Date(), { weekday: 'long', day: 'numeric' })}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                {format(new Date(), "PPP")}
+              </span>
+           </div>
+           <div className="h-12 w-[1px] bg-border mx-2" />
+           <div className="bg-primary/20 p-3 rounded-full">
+              <CalendarDays className="h-6 w-6 text-primary" />
+           </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Active Employees" value={dashboardStats.totalEmployees} icon={<Users className="h-5 w-5 text-muted-foreground" />} />
-        <StatCard title="On-site Today" value={`${dashboardStats.onSiteToday} / ${dashboardStats.totalEmployees}`} icon={<UserCheck className="h-5 w-5 text-muted-foreground" />} />
-        <StatCard title="Weekly Payroll" value={`ETB ${dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-        <StatCard title="Monthly Payroll" value={`ETB ${dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+        <StatCard 
+          title="Active Employees" 
+          value={dashboardStats.totalEmployees} 
+          icon={<div className="bg-blue-500/10 p-2 rounded-lg"><Users className="h-5 w-5 text-blue-600" /></div>} 
+        />
+        <Card className="relative overflow-hidden">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">On-site Today</CardTitle>
+            <div className="bg-green-500/10 p-2 rounded-lg"><UserCheck className="h-5 w-5 text-green-600" /></div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <div className="text-3xl font-bold">{dashboardStats.onSiteToday} / {dashboardStats.totalEmployees}</div>
+            <div className="flex flex-col gap-1">
+              <Progress value={attendancePercentage} className="h-2" />
+              <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-tighter">
+                {attendancePercentage.toFixed(0)}% attendance rate
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Weekly Payroll</CardTitle>
+            <div className="bg-amber-500/10 p-2 rounded-lg"><HandCoins className="h-5 w-5 text-amber-600" /></div>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <div className="text-3xl font-bold">ETB {dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className="flex items-center gap-2">
+               <Badge variant="outline" className="text-[10px] font-medium py-0 h-4 border-amber-200 text-amber-700 bg-amber-50">
+                 Est: ETB {dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+               </Badge>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Monthly Payroll</CardTitle>
+            <div className="bg-purple-500/10 p-2 rounded-lg"><Wallet className="h-5 w-5 text-purple-600" /></div>
+          </CardHeader>
+          <CardContent className="space-y-1">
+            <div className="text-3xl font-bold">ETB {dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className="flex items-center gap-2">
+               <Badge variant="outline" className="text-[10px] font-medium py-0 h-4 border-purple-200 text-purple-700 bg-purple-50">
+                 Est: ETB {dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+               </Badge>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
        <div className="flex flex-col gap-8">
-        <Card>
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div>
-                    <CardTitle>Overview</CardTitle>
-                    <CardDescription>Real-time attendance and payment tracking</CardDescription>
+        <Card className="shadow-lg border-primary/20">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-6">
+                <div className="flex items-center gap-3">
+                  <div className="bg-primary/10 p-3 rounded-xl">
+                    <TrendingUp className="h-6 w-6 text-primary" />
+                  </div>
+                  <div>
+                      <CardTitle className="text-xl">Detailed Overview</CardTitle>
+                      <CardDescription>Track payments and performance across periods</CardDescription>
+                  </div>
                 </div>
                 <Popover>
                     <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-8 flex items-center gap-1 font-normal bg-background">
-                            <CalendarDays className="h-3 w-3" />
+                        <Button variant="outline" size="sm" className="h-10 px-4 flex items-center gap-2 font-medium bg-background border-primary/30 hover:bg-primary/5 transition-colors">
+                            <CalendarDays className="h-4 w-4 text-primary" />
                             {ethiopianDateFormatter(new Date(selectedDay), { month: 'long', day: 'numeric', year: 'numeric' })}
                         </Button>
                     </PopoverTrigger>
@@ -547,67 +626,78 @@ export default function DashboardPage() {
                     </PopoverContent>
                 </Popover>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pt-6">
                 <Tabs defaultValue="today">
-                    <TabsList className="grid w-full grid-cols-3 mb-6">
-                        <TabsTrigger value="today">Today</TabsTrigger>
-                        <TabsTrigger value="week">Week</TabsTrigger>
-                        <TabsTrigger value="month">Month</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-3 mb-8 h-12 p-1 bg-muted/50">
+                        <TabsTrigger value="today" className="text-sm font-semibold">Today</TabsTrigger>
+                        <TabsTrigger value="week" className="text-sm font-semibold">This Week</TabsTrigger>
+                        <TabsTrigger value="month" className="text-sm font-semibold">This Month</TabsTrigger>
                     </TabsList>
                     
-                    <TabsContent value="today" className="space-y-4">
-                        <div className="flex items-center gap-2 max-w-sm">
-                            <Button variant="outline" size="icon" onClick={handlePrevDay}>
+                    <TabsContent value="today" className="space-y-6">
+                        <div className="flex items-center gap-3 bg-muted/30 p-2 rounded-xl w-fit">
+                            <Button variant="ghost" size="icon" onClick={handlePrevDay} className="hover:bg-background shadow-sm">
                                 <ChevronLeft className="h-4 w-4" />
                             </Button>
-                            <Input type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} className="w-full flex-1" />
-                            <Button variant="outline" size="icon" onClick={handleNextDay}>
+                            <Input 
+                              type="date" 
+                              value={selectedDay} 
+                              onChange={(e) => setSelectedDay(e.target.value)} 
+                              className="border-none bg-transparent font-medium focus-visible:ring-0 w-[140px]" 
+                            />
+                            <Button variant="ghost" size="icon" onClick={handleNextDay} className="hover:bg-background shadow-sm">
                                 <ChevronRight className="h-4 w-4" />
                             </Button>
                         </div>
                         
                         <div className="grid grid-cols-1 gap-4 md:hidden">
                             {dailyEarnings.map(item => (
-                                <div key={item.employeeId} className="border rounded-lg p-4 space-y-3">
+                                <div key={item.employeeId} className="border rounded-xl p-4 space-y-3 bg-card shadow-sm">
                                     <div className="flex justify-between items-start">
-                                        <div className="font-bold">{item.name}</div>
+                                        <div className="font-bold text-lg">{item.name}</div>
                                         <Badge variant={getStatusVariant(item.status)}>{item.status}</Badge>
                                     </div>
-                                    <div className="grid grid-cols-2 text-xs text-muted-foreground">
+                                    <div className="grid grid-cols-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
                                         <div><span className="font-semibold text-foreground">Morning:</span> {item.morning}</div>
                                         <div><span className="font-semibold text-foreground">Afternoon:</span> {item.afternoon}</div>
                                     </div>
-                                    <div className="flex justify-between items-center pt-2 border-t">
+                                    <div className="flex justify-between items-center pt-2 border-t border-dashed">
                                         <div className="text-xs">
-                                            {item.overtimeHours > 0 && <span className="text-primary font-medium">+{item.overtimeHours} hrs OT</span>}
+                                            {item.overtimeHours > 0 && <Badge variant="secondary" className="bg-primary/10 text-primary border-none">+{item.overtimeHours} hrs OT</Badge>}
                                         </div>
-                                        <div className="font-bold text-primary">ETB {item.amount.toFixed(2)}</div>
+                                        <div className="font-bold text-lg text-primary">ETB {item.amount.toFixed(2)}</div>
                                     </div>
                                 </div>
                             ))}
                         </div>
 
-                        <div className="hidden md:block">
+                        <div className="hidden md:block overflow-hidden rounded-xl border">
                             <Table>
-                                <TableHeader>
+                                <TableHeader className="bg-muted/50">
                                     <TableRow>
-                                        <TableHead>Employee</TableHead>
-                                        <TableHead>Morning</TableHead>
-                                        <TableHead>Afternoon</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead>OT</TableHead>
-                                        <TableHead className="text-right">Earnings</TableHead>
+                                        <TableHead className="font-bold">Employee</TableHead>
+                                        <TableHead className="font-bold">Morning</TableHead>
+                                        <TableHead className="font-bold">Afternoon</TableHead>
+                                        <TableHead className="font-bold">Status</TableHead>
+                                        <TableHead className="font-bold">OT</TableHead>
+                                        <TableHead className="text-right font-bold">Earnings Today</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {dailyEarnings.map(item => (
-                                        <TableRow key={item.employeeId}>
+                                        <TableRow key={item.employeeId} className="hover:bg-muted/30 transition-colors">
                                             <TableCell className="font-medium">{item.name}</TableCell>
-                                            <TableCell>{item.morning}</TableCell>
-                                            <TableCell>{item.afternoon}</TableCell>
-                                            <TableCell><Badge variant={getStatusVariant(item.status)}>{item.status}</Badge></TableCell>
-                                            <TableCell>{item.overtimeHours > 0 ? `+${item.overtimeHours} hrs` : "—"}</TableCell>
-                                            <TableCell className="text-right font-bold text-primary">ETB {item.amount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-muted-foreground font-mono text-xs">{item.morning}</TableCell>
+                                            <TableCell className="text-muted-foreground font-mono text-xs">{item.afternoon}</TableCell>
+                                            <TableCell><Badge variant={getStatusVariant(item.status)} className="shadow-none">{item.status}</Badge></TableCell>
+                                            <TableCell>
+                                              {item.overtimeHours > 0 ? (
+                                                <Badge variant="secondary" className="bg-primary/5 text-primary border-none">+{item.overtimeHours} hrs</Badge>
+                                              ) : (
+                                                <span className="text-muted-foreground/30">—</span>
+                                              )}
+                                            </TableCell>
+                                            <TableCell className="text-right font-bold text-primary text-lg">ETB {item.amount.toFixed(2)}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -615,67 +705,72 @@ export default function DashboardPage() {
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="week" className="space-y-4">
+                    <TabsContent value="week" className="space-y-6">
                         <div className="flex items-center gap-2 max-w-xs">
                              <Select value={selectedWeekStart} onValueChange={setSelectedWeekStart}>
-                                <SelectTrigger><SelectValue placeholder="Select week" /></SelectTrigger>
+                                <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select week" /></SelectTrigger>
                                 <SelectContent>{weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
 
                         <div className="grid grid-cols-1 gap-4 md:hidden">
                             {weeklyPayroll.map(entry => (
-                                <div key={entry.employeeId} className="border rounded-lg p-4 space-y-2">
-                                    <div className="font-bold">{entry.employeeName}</div>
-                                    <div className="flex justify-between text-sm">
-                                        <span>Working Hours:</span>
-                                        <span className="font-medium">{entry.totalHours?.toFixed(1)} hrs</span>
+                                <div key={entry.employeeId} className="border rounded-xl p-4 space-y-3 bg-card shadow-sm">
+                                    <div className="font-bold text-lg">{entry.employeeName}</div>
+                                    <div className="flex justify-between text-sm items-center bg-muted/30 p-2 rounded-lg">
+                                        <span className="text-muted-foreground">Working Hours:</span>
+                                        <span className="font-bold">{entry.totalHours?.toFixed(1)} hrs</span>
                                     </div>
                                     {entry.overtimeHours > 0 && (
-                                        <div className="flex justify-between text-sm text-primary">
+                                        <div className="flex justify-between text-sm text-primary items-center bg-primary/5 p-2 rounded-lg">
                                             <span>Overtime:</span>
-                                            <span>+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
+                                            <span className="font-bold">+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
                                         </div>
                                     )}
-                                    <div className="grid grid-cols-2 text-[10px] text-muted-foreground pt-1">
-                                        {entry.minutesLate > 0 && <span>Late: {entry.minutesLate}m</span>}
-                                        {entry.hoursAbsent > 0 && <span>Absent: {entry.hoursAbsent.toFixed(1)}h</span>}
+                                    <div className="grid grid-cols-2 text-[10px] text-muted-foreground pt-1 px-2">
+                                        {entry.minutesLate > 0 && <span className="flex items-center gap-1"><Clock className="h-3 w-3" /> Late: {entry.minutesLate}m</span>}
+                                        {entry.hoursAbsent > 0 && <span className="flex items-center gap-1"><UserCheck className="h-3 w-3" /> Absent: {entry.hoursAbsent.toFixed(1)}h</span>}
                                     </div>
-                                    <div className="flex justify-between pt-2 border-t font-bold">
-                                        <span>Weekly Total:</span>
-                                        <span className="text-primary">ETB {entry.amount.toFixed(2)}</span>
+                                    <div className="flex justify-between pt-3 border-t border-dashed font-bold items-center">
+                                        <span className="text-sm">Weekly Total:</span>
+                                        <span className="text-2xl text-primary tracking-tight">ETB {entry.amount.toFixed(2)}</span>
                                     </div>
                                 </div>
                             ))}
                         </div>
 
-                        <div className="hidden md:block">
+                        <div className="hidden md:block overflow-hidden rounded-xl border">
                             <Table>
-                                <TableHeader>
+                                <TableHeader className="bg-muted/50">
                                     <TableRow>
-                                        <TableHead>Employee</TableHead>
-                                        <TableHead>Working Hours</TableHead>
-                                        <TableHead>Late/Absent</TableHead>
-                                        <TableHead>Overtime</TableHead>
-                                        <TableHead className="text-right">Weekly Total</TableHead>
+                                        <TableHead className="font-bold">Employee</TableHead>
+                                        <TableHead className="font-bold">Working Hours</TableHead>
+                                        <TableHead className="font-bold">Late/Absent</TableHead>
+                                        <TableHead className="font-bold">Overtime</TableHead>
+                                        <TableHead className="text-right font-bold">Weekly Total</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {weeklyPayroll.map(entry => (
-                                        <TableRow key={entry.employeeId}>
+                                        <TableRow key={entry.employeeId} className="hover:bg-muted/30 transition-colors">
                                             <TableCell className="font-medium">{entry.employeeName}</TableCell>
-                                            <TableCell>{entry.totalHours?.toFixed(1)} hrs</TableCell>
-                                            <TableCell className="text-xs text-muted-foreground">
-                                                {entry.minutesLate > 0 && <div>{entry.minutesLate}m late</div>}
-                                                {entry.hoursAbsent > 0 && <div>{entry.hoursAbsent.toFixed(1)}h absent</div>}
-                                                {entry.minutesLate === 0 && entry.hoursAbsent === 0 && "—"}
+                                            <TableCell className="font-semibold">{entry.totalHours?.toFixed(1)} hrs</TableCell>
+                                            <TableCell className="text-xs">
+                                                <div className="flex flex-col gap-1">
+                                                  {entry.minutesLate > 0 && <span className="text-amber-600 font-medium">{entry.minutesLate}m late</span>}
+                                                  {entry.hoursAbsent > 0 && <span className="text-destructive font-medium">{entry.hoursAbsent.toFixed(1)}h absent</span>}
+                                                  {entry.minutesLate === 0 && entry.hoursAbsent === 0 && <span className="text-muted-foreground/30">—</span>}
+                                                </div>
                                             </TableCell>
                                             <TableCell>
                                                 {entry.overtimeHours > 0 ? (
-                                                    <span className="text-primary font-medium">+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
-                                                ) : "—"}
+                                                    <div className="flex flex-col">
+                                                      <span className="text-primary font-bold">+{entry.overtimeHours} hrs</span>
+                                                      <span className="text-[10px] text-muted-foreground">ETB {entry.overtimeAmount?.toFixed(2)}</span>
+                                                    </div>
+                                                ) : <span className="text-muted-foreground/30">—</span>}
                                             </TableCell>
-                                            <TableCell className="text-right font-bold text-primary">ETB {entry.amount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right font-bold text-primary text-xl tracking-tight">ETB {entry.amount.toFixed(2)}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -683,68 +778,71 @@ export default function DashboardPage() {
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="month" className="space-y-4">
+                    <TabsContent value="month" className="space-y-6">
                         <div className="flex items-center gap-2 max-w-xs">
                             <Select value={selectedMonthStart} onValueChange={setSelectedMonthStart}>
-                                <SelectTrigger><SelectValue placeholder="Select month" /></SelectTrigger>
+                                <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
                                 <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
 
                         <div className="grid grid-cols-1 gap-4 md:hidden">
                             {monthlyPayroll.map(entry => (
-                                <div key={entry.employeeId} className="border rounded-lg p-4 space-y-2">
+                                <div key={entry.employeeId} className="border rounded-xl p-4 space-y-3 bg-card shadow-sm">
                                     <div className="flex justify-between items-start">
-                                        <div className="font-bold">{entry.employeeName}</div>
-                                        <Badge variant="outline">{entry.paymentMethod}</Badge>
+                                        <div className="font-bold text-lg">{entry.employeeName}</div>
+                                        <Badge variant="outline" className="text-[10px] px-2 h-5">{entry.paymentMethod}</Badge>
                                     </div>
-                                    <div className="grid grid-cols-2 text-xs text-muted-foreground">
-                                        {entry.minutesLate > 0 && <span className="text-destructive">Late: {entry.minutesLate}m</span>}
-                                        {entry.hoursAbsent > 0 && <span className="text-destructive">Absent: {entry.hoursAbsent.toFixed(1)}h</span>}
+                                    <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
+                                        {entry.minutesLate > 0 ? <span className="text-destructive font-semibold">Late: {entry.minutesLate}m</span> : <span>No late mins</span>}
+                                        {entry.hoursAbsent > 0 ? <span className="text-destructive font-semibold">Absent: {entry.hoursAbsent.toFixed(1)}h</span> : <span>No absences</span>}
                                     </div>
                                     {entry.overtimeHours > 0 && (
-                                        <div className="flex justify-between text-sm text-primary">
+                                        <div className="flex justify-between text-sm text-primary items-center bg-primary/5 p-2 rounded-lg">
                                             <span>Overtime:</span>
-                                            <span>+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
+                                            <span className="font-bold">+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
                                         </div>
                                     )}
-                                    <div className="flex justify-between pt-2 border-t font-bold">
-                                        <span>Month To-Date:</span>
-                                        <span className="text-primary">ETB {entry.amount.toFixed(2)}</span>
+                                    <div className="flex justify-between pt-3 border-t border-dashed font-bold items-center">
+                                        <span className="text-sm">Month To-Date:</span>
+                                        <span className="text-2xl text-primary tracking-tight">ETB {entry.amount.toFixed(2)}</span>
                                     </div>
                                 </div>
                             ))}
                         </div>
 
-                        <div className="hidden md:block">
+                        <div className="hidden md:block overflow-hidden rounded-xl border">
                             <Table>
-                                <TableHeader>
+                                <TableHeader className="bg-muted/50">
                                     <TableRow>
-                                        <TableHead>Employee</TableHead>
-                                        <TableHead>Method</TableHead>
-                                        <TableHead>Late Time</TableHead>
-                                        <TableHead>Absent Day (Hrs)</TableHead>
-                                        <TableHead>Overtime</TableHead>
-                                        <TableHead className="text-right">Month To-Date</TableHead>
+                                        <TableHead className="font-bold">Employee</TableHead>
+                                        <TableHead className="font-bold">Method</TableHead>
+                                        <TableHead className="font-bold">Late Time</TableHead>
+                                        <TableHead className="font-bold">Absent Day (Hrs)</TableHead>
+                                        <TableHead className="font-bold">Overtime</TableHead>
+                                        <TableHead className="text-right font-bold">Month To-Date</TableHead>
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
                                     {monthlyPayroll.map(entry => (
-                                        <TableRow key={entry.employeeId}>
+                                        <TableRow key={entry.employeeId} className="hover:bg-muted/30 transition-colors">
                                             <TableCell className="font-medium">{entry.employeeName}</TableCell>
-                                            <TableCell><Badge variant="outline">{entry.paymentMethod}</Badge></TableCell>
-                                            <TableCell className={entry.minutesLate > 0 ? "text-destructive font-medium" : ""}>
+                                            <TableCell><Badge variant="outline" className="text-[10px] uppercase font-bold">{entry.paymentMethod}</Badge></TableCell>
+                                            <TableCell className={entry.minutesLate > 0 ? "text-destructive font-bold" : "text-muted-foreground/30"}>
                                                 {entry.minutesLate > 0 ? `${entry.minutesLate}m` : "—"}
                                             </TableCell>
-                                            <TableCell className={entry.hoursAbsent > 0 ? "text-destructive font-medium" : ""}>
+                                            <TableCell className={entry.hoursAbsent > 0 ? "text-destructive font-bold" : "text-muted-foreground/30"}>
                                                 {entry.hoursAbsent > 0 ? `${entry.hoursAbsent.toFixed(1)}h` : "—"}
                                             </TableCell>
                                             <TableCell>
                                                 {entry.overtimeHours > 0 ? (
-                                                    <span className="text-primary font-medium">+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
-                                                ) : "—"}
+                                                    <div className="flex flex-col">
+                                                      <span className="text-primary font-bold">+{entry.overtimeHours} hrs</span>
+                                                      <span className="text-[10px] text-muted-foreground">ETB {entry.overtimeAmount?.toFixed(2)}</span>
+                                                    </div>
+                                                ) : <span className="text-muted-foreground/30">—</span>}
                                             </TableCell>
-                                            <TableCell className="text-right font-bold text-primary">ETB {entry.amount.toFixed(2)}</TableCell>
+                                            <TableCell className="text-right font-bold text-primary text-xl tracking-tight">ETB {entry.amount.toFixed(2)}</TableCell>
                                         </TableRow>
                                     ))}
                                 </TableBody>
@@ -755,10 +853,15 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
         
-        <Card>
-            <CardHeader>
-                <CardTitle>Payroll History</CardTitle>
-                <CardDescription>Total payroll expenses for the last 6 months.</CardDescription>
+        <Card className="shadow-lg">
+            <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                    <CardTitle className="text-xl">Payroll Trends</CardTitle>
+                    <CardDescription>Visualizing expenses over the last 6 months</CardDescription>
+                </div>
+                <div className="bg-primary/10 p-2 rounded-lg">
+                  <TrendingUp className="h-5 w-5 text-primary" />
+                </div>
             </CardHeader>
             <CardContent>
                 <PayrollHistoryChart data={payrollHistory} />
@@ -768,3 +871,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
