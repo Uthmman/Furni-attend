@@ -164,6 +164,19 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
     return addDays(today, Math.round(ethDays));
 };
 
+const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
+    const interval = { start: monthStart, end: addDays(monthStart, daysInMonth - 1) };
+    const days = eachDayOfInterval(interval);
+    let weekdays = 0;
+    let saturdays = 0;
+    days.forEach(day => {
+        const d = getDay(day);
+        if (d >= 1 && d <= 5) weekdays++;
+        else if (d === 6) saturdays++;
+    });
+    return weekdays + (saturdays * 0.5625);
+};
+
 const calculateMinutesLate = (record: AttendanceRecord): number => {
     if (!record) return 0;
     let minutesLate = 0;
@@ -229,10 +242,12 @@ export default function EmployeeProfilePage() {
     }
   }, [employee, setTitle]);
 
+  // This is a default/fallback hourly rate if no period is selected
   const hourlyRate = useMemo(() => {
     if (!employee) return 0;
     if (employee.hourlyRate) return employee.hourlyRate;
     if (employee.paymentMethod === 'Monthly' && employee.monthlyRate) {
+        // Fallback to average month if no period selected
         return employee.monthlyRate / 23.625 / 8;
     }
     if (employee.paymentMethod === 'Weekly' && employee.dailyRate) {
@@ -319,14 +334,19 @@ export default function EmployeeProfilePage() {
     const selectedPeriodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || "";
 
     if (employee.paymentMethod === 'Monthly') {
-      const baseSalary = employee.monthlyRate || 0;
-      if (baseSalary === 0 && filteredAttendance.length === 0) return { totalAmount: 0, periodLabel: selectedPeriodLabel };
+        const baseSalary = employee.monthlyRate || 0;
+        if (baseSalary === 0 && filteredAttendance.length === 0) return { totalAmount: 0, periodLabel: selectedPeriodLabel };
 
-        const dailyRate = baseSalary / 23.625;
-        const hourlyRateCalc = dailyRate / 8;
+        // DYNAMIC RATE CALCULATION BASED ON MONTHLY WORKING UNITS
+        const startDate = new Date(selectedPeriod);
+        const ethDate = toEthiopian(startDate);
+        const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
+        const workingUnits = getMonthlyWorkingUnits(startDate, daysInMonth);
+        
+        const hourlyRateCalc = baseSalary / workingUnits / 8;
         const minuteRate = hourlyRateCalc / 60;
         
-        const ethYearForPeriod = toEthiopian(new Date(selectedPeriod)).year;
+        const ethYearForPeriod = ethDate.year;
         const permissionDatesInYear = new Set<string>();
         (allAttendance || []).forEach(rec => {
             const recDate = getDateFromRecord(rec.date);
@@ -374,9 +394,6 @@ export default function EmployeeProfilePage() {
             return acc + currentMinutesLate;
         }, 0);
 
-        const startDate = new Date(selectedPeriod);
-        const ethDate = toEthiopian(startDate);
-        const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
         const interval = { start: startDate, end: addDays(startDate, daysInMonth - 1) };
         const periodDays = eachDayOfInterval(interval);
         const employeeStartDate = new Date(employee.attendanceStartDate || 0);
@@ -419,10 +436,12 @@ export default function EmployeeProfilePage() {
           absentDates: absentDates,
           lateDates: lateDates,
           overtimePay: overtimePay,
-          overtimeHours: overtimeHours
+          overtimeHours: overtimeHours,
+          hourlyRate: hourlyRateCalc
       };
 
     } else { // Weekly logic
+      const currentHourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
       const totalOvertimeHours = filteredAttendance.reduce((acc, record) => {
           return acc + (record.overtimeHours || 0);
       }, 0);
@@ -431,7 +450,7 @@ export default function EmployeeProfilePage() {
           return acc + calculateHoursWorked(record);
       }, 0);
 
-      const overtimePay = totalOvertimeHours * (hourlyRate || 0);
+      const overtimePay = totalOvertimeHours * (currentHourlyRate || 0);
       
       let totalMinutesLate = 0;
       let totalHoursAbsent = 0;
@@ -463,7 +482,7 @@ export default function EmployeeProfilePage() {
           totalMinutesLate += calculateMinutesLate(record);
       });
       
-      const baseAmount = totalHours * (hourlyRate || 0);
+      const baseAmount = totalHours * (currentHourlyRate || 0);
       const totalAmount = baseAmount + overtimePay;
       
       const daysWorked = new Set(filteredAttendance.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
@@ -476,10 +495,11 @@ export default function EmployeeProfilePage() {
         periodLabel: selectedPeriodLabel,
         hoursAbsent: totalHoursAbsent,
         minutesLate: totalMinutesLate,
-        overtimeHours: totalOvertimeHours
+        overtimeHours: totalOvertimeHours,
+        hourlyRate: currentHourlyRate
       };
     }
-  }, [employee, allAttendance, filteredAttendance, hourlyRate, periodOptions, selectedPeriod]);
+  }, [employee, allAttendance, filteredAttendance, periodOptions, selectedPeriod]);
 
   const handleViewSummary = () => {
     if (!employee || !payrollData) return;
@@ -501,7 +521,7 @@ export default function EmployeeProfilePage() {
       summaryMessage += `--------------------\n`;
       summaryMessage += `Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}`;
     } else { // Weekly
-      summaryMessage += `Base Pay (${(payrollData.hours || 0).toFixed(2)} hrs): ETB ${( (payrollData.hours || 0) * hourlyRate).toFixed(2)}\n`;
+      summaryMessage += `Base Pay (${(payrollData.hours || 0).toFixed(2)} hrs): ETB ${( (payrollData.hours || 0) * (payrollData.hourlyRate || 0)).toFixed(2)}\n`;
       if ((payrollData.overtimePay || 0) > 0) {
         summaryMessage += `Overtime Pay (${payrollData.overtimeHours} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
       }
@@ -665,8 +685,8 @@ export default function EmployeeProfilePage() {
                           <p className="text-muted-foreground">ETB {employee.monthlyRate || employee.dailyRate || "N/A"}</p>
                       </div>
                       <div>
-                          <p className="font-semibold">Calculated Hourly Rate</p>
-                          <p className="text-muted-foreground">ETB {hourlyRate.toFixed(2)}</p>
+                          <p className="font-semibold">Current Period Hourly Rate</p>
+                          <p className="text-muted-foreground">ETB {(payrollData.hourlyRate || hourlyRate).toFixed(2)}</p>
                       </div>
                     </div>
                   </CardContent>
@@ -734,7 +754,7 @@ export default function EmployeeProfilePage() {
                         <>
                              <div>
                                 <p className="font-semibold">Base Pay ({(payrollData.hours || 0).toFixed(2)} hrs)</p>
-                                <p className="text-2xl font-bold">ETB {( (payrollData.hours || 0) * hourlyRate).toFixed(2)}</p>
+                                <p className="text-2xl font-bold">ETB {( (payrollData.hours || 0) * (payrollData.hourlyRate || 0)).toFixed(2)}</p>
                             </div>
                             {(payrollData.overtimePay || 0) > 0 && (
                                 <div>
@@ -795,7 +815,7 @@ export default function EmployeeProfilePage() {
                                 </Badge>
                                 <p className="text-xs text-muted-foreground">{record.afternoonEntry || 'N/A'}</p>
                             </TableCell>
-                            <TableCell>{record.overtimeHours ? `${record.overtimeHours} hr(s)` : "N/A"}</TableCell>
+                            <TableCell>{record.overtimeHours ? `${record.overtimeHours} hr(s)` : "—"}</TableCell>
                         </TableRow>
                         ))
                     ) : (

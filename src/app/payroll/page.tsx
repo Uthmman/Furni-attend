@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -81,6 +80,19 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
     // Rough approximation
     const dayDiff = ((ethYear - ethToday.year) * 365.25) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
     return addDays(today, Math.round(dayDiff));
+};
+
+const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
+    const interval = { start: monthStart, end: addDays(monthStart, daysInMonth - 1) };
+    const days = eachDayOfInterval(interval);
+    let weekdays = 0;
+    let saturdays = 0;
+    days.forEach(day => {
+        const d = getDay(day);
+        if (d >= 1 && d <= 5) weekdays++;
+        else if (d === 6) saturdays++;
+    });
+    return weekdays + (saturdays * 0.5625);
 };
 
 const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
@@ -315,6 +327,8 @@ export default function PayrollPage() {
     const monthStart = selectedMonth;
     const ethDate = toEthiopian(monthStart);
     const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethDate.year}`;
+    const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
+    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonth);
 
     employees.filter(employee => employee.paymentMethod === 'Monthly').forEach(employee => {
         const baseSalary = employee.monthlyRate || 0;
@@ -333,13 +347,11 @@ export default function PayrollPage() {
         });
         const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
         const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
-        const permissionDaysUsedInYear = sortedPermissionDates.length;
         
-        const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
         const monthEnd = addDays(monthStart, daysInMonth - 1);
         
-        const dailyRate = baseSalary / 23.625;
-        const hourlyRate = dailyRate / 8;
+        // DYNAMIC RATE CALCULATION
+        const hourlyRate = baseSalary / workingUnits / 8;
         const minuteRate = hourlyRate / 60;
 
         const calculationPeriod = { start: monthStart, end: monthEnd };
@@ -387,7 +399,10 @@ export default function PayrollPage() {
         const projectedAbsenceDeduction = projectedHoursAbsent * hourlyRate;
         const lateDeduction = displayMinutesLate * minuteRate;
         
-        const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction);
+        const overtimeHours = allRecordsForMonth.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+        const overtimePay = overtimeHours * hourlyRate;
+        
+        const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction) + overtimePay;
 
         let expectedHoursToDate = 0;
         calculationPeriodDays.forEach(day => {
@@ -401,7 +416,7 @@ export default function PayrollPage() {
         });
         const actualHoursWorkedToDate = expectedHoursToDate - projectedHoursAbsent;
         const earnedAmountToDate = actualHoursWorkedToDate * hourlyRate;
-        const amountToDate = earnedAmountToDate - lateDeduction;
+        const amountToDate = earnedAmountToDate - lateDeduction + overtimePay;
 
 
         if (netSalary > 0 || allRecordsForMonth.length > 0) {
@@ -418,8 +433,10 @@ export default function PayrollPage() {
                 minutesLate: displayMinutesLate,
                 absenceDeduction: projectedAbsenceDeduction,
                 lateDeduction: lateDeduction,
-                permissionDaysUsed: Math.min(15, permissionDaysUsedInYear),
+                permissionDaysUsed: Math.min(15, sortedPermissionDates.length),
                 amountToDate: amountToDate,
+                overtimeHours: overtimeHours,
+                overtimeAmount: overtimePay
             });
         }
     });
@@ -435,6 +452,7 @@ export default function PayrollPage() {
     const ethSelected = toEthiopian(selectedMonth);
     const monthStart = selectedMonth;
     const daysInMonthCount = getEthiopianMonthDays(ethSelected.year, ethSelected.month);
+    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
     const monthEnd = addDays(monthStart, daysInMonthCount - 1);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
@@ -449,7 +467,7 @@ export default function PayrollPage() {
             const baseSalary = employee.monthlyRate || 0;
             if (baseSalary === 0) return;
 
-             const hourlyRate = employee.hourlyRate || (baseSalary / 23.625 / 8);
+             const hourlyRate = baseSalary / workingUnits / 8;
              if (!hourlyRate) return;
 
              const record = allAttendance.find(r => 
@@ -526,6 +544,7 @@ export default function PayrollPage() {
     const ethSelected = toEthiopian(selectedMonth);
     const monthStart = selectedMonth;
     const daysInMonthCount = getEthiopianMonthDays(ethSelected.year, ethSelected.month);
+    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
     const monthEnd = addDays(monthStart, daysInMonthCount - 1);
     const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
 
@@ -537,7 +556,13 @@ export default function PayrollPage() {
         const dayStr = format(day, 'yyyy-MM-dd');
 
         employees.forEach(employee => {
-            const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0) || (employee.monthlyRate ? employee.monthlyRate / 23.625 / 8 : 0);
+            let hourlyRate = 0;
+            if (employee.paymentMethod === 'Monthly') {
+                hourlyRate = (employee.monthlyRate || 0) / workingUnits / 8;
+            } else {
+                hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
+            }
+            
             if (!hourlyRate) return;
 
             const record = allAttendance.find(r => 

@@ -68,6 +68,19 @@ const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date =>
     return addDays(today, Math.round(dayDiff));
 };
 
+const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
+    const interval = { start: monthStart, end: addDays(monthStart, daysInMonth - 1) };
+    const days = eachDayOfInterval(interval);
+    let weekdays = 0;
+    let saturdays = 0;
+    days.forEach(day => {
+        const d = getDay(day);
+        if (d >= 1 && d <= 5) weekdays++;
+        else if (d === 6) saturdays++;
+    });
+    return weekdays + (saturdays * 0.5625);
+};
+
 const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
@@ -222,7 +235,10 @@ export default function DashboardPage() {
     ).length;
     
     const weekStart = startOfWeek(now, { weekStartsOn: 0 }); 
-    const monthStart = toGregorian(toEthiopian(now).year, toEthiopian(now).month, 1);
+    const ethNow = toEthiopian(now);
+    const monthStart = toGregorian(ethNow.year, ethNow.month, 1);
+    const daysInMonth = getEthiopianMonthDays(ethNow.year, ethNow.month);
+    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonth);
     
     const estWeekly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 7 : 0), 0);
     const estMonthly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : 0), 0);
@@ -239,7 +255,9 @@ export default function DashboardPage() {
     const actualMonthly = activeEmployees.reduce((acc, emp) => {
         if (emp.paymentMethod !== 'Monthly') return acc;
         const baseSalary = emp.monthlyRate || 0;
-        const hourlyRate = baseSalary / 23.625 / 8;
+        
+        // Dynamic Weighted Working Units Method
+        const hourlyRate = baseSalary / workingUnits / 8;
         const minuteRate = hourlyRate / 60;
         const empStartDate = emp.attendanceStartDate ? new Date(emp.attendanceStartDate) : new Date(0);
         
@@ -346,12 +364,14 @@ export default function DashboardPage() {
     if (!employees || !selectedMonthStart) return [];
     const monthStart = new Date(selectedMonthStart);
     const ethMonth = toEthiopian(monthStart);
-    const monthEnd = addDays(monthStart, getEthiopianMonthDays(ethMonth.year, ethMonth.month) - 1);
+    const daysInMonth = getEthiopianMonthDays(ethMonth.year, ethMonth.month);
+    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonth);
+    const monthEnd = addDays(monthStart, daysInMonth - 1);
     const today = new Date();
     
     return employees.filter(e => e.paymentMethod === 'Monthly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })))).map(emp => {
         const base = emp.monthlyRate || 0;
-        const hourly = base / 23.625 / 8;
+        const hourly = base / workingUnits / 8;
         const minuteRate = hourly / 60;
         const empStartDate = emp.attendanceStartDate ? new Date(emp.attendanceStartDate) : new Date(0);
         
@@ -405,6 +425,8 @@ export default function DashboardPage() {
 
   const dailyEarnings = useMemo(() => {
     if (!employees || !selectedDay) return [];
+    
+    // For today earnings, we still need a default rate, let's use the average 23.625 for simplicity in daily view
     return employees.filter(e => e.status !== 'Inactive' || todayAttendance?.some(r => r.employeeId === e.id)).map(emp => {
         const record = todayAttendance?.find(r => r.employeeId === emp.id);
         let amount = 0;
@@ -412,6 +434,7 @@ export default function DashboardPage() {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
             amount = record ? (calculateHoursWorked(record) + (record.overtimeHours || 0)) * (hourly || 0) : 0;
         } else {
+            // Use 23.625 as a standard daily divisor for the "today" dashboard earnings view
             const daily = (emp.monthlyRate || 0) / 23.625;
             amount = record ? daily : 0; 
         }
