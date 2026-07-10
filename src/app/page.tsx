@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useMemo, useEffect, useState } from 'react';
@@ -404,8 +403,8 @@ export default function DashboardPage() {
             }
         });
 
-        const otHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-        const otPay = otHours * hourly;
+        const overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+        const overtimePay = overtimeHours * hourly;
         const deductions = (totalHoursAbsent * hourly) + (minutesLate * minuteRate);
         const finalAmount = (base - deductions) + otPay;
 
@@ -521,11 +520,11 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-8">
       {/* Welcome & Date Section */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-2xl border">
-        <div>
+        <div className="w-full md:w-auto">
           <h2 className="text-3xl font-bold tracking-tight">Welcome back!</h2>
           <p className="text-muted-foreground mt-1">Here is what's happening today at FurnishWise.</p>
         </div>
-        <div className="flex items-center gap-4 bg-background/50 p-4 rounded-xl border shadow-sm">
+        <div className="flex items-center gap-4 bg-background/50 p-4 rounded-xl border shadow-sm w-full md:w-auto justify-between md:justify-center">
            <div className="flex flex-col items-end">
               <span className="text-sm font-semibold text-primary uppercase tracking-wider">
                 {ethiopianDateFormatter(new Date(), { month: 'long' })} {toEthiopian(new Date()).year}
@@ -544,7 +543,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <StatCard 
           title="Active Employees" 
           value={dashboardStats.totalEmployees} 
@@ -556,7 +555,7 @@ export default function DashboardPage() {
             <div className="bg-green-500/10 p-2 rounded-lg"><UserCheck className="h-5 w-5 text-green-600" /></div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="text-3xl font-bold">{dashboardStats.onSiteToday} / {dashboardStats.totalEmployees}</div>
+            <div className="text-2xl sm:text-3xl font-bold">{dashboardStats.onSiteToday} / {dashboardStats.totalEmployees}</div>
             <div className="flex flex-col gap-1">
               <Progress value={attendancePercentage} className="h-2" />
               <p className="text-[10px] text-muted-foreground font-medium uppercase tracking-tighter">
@@ -566,13 +565,13 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
         
-        <Card>
+        <Card className="col-span-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Weekly Payroll</CardTitle>
             <div className="bg-amber-500/10 p-2 rounded-lg"><HandCoins className="h-5 w-5 text-amber-600" /></div>
           </CardHeader>
           <CardContent className="space-y-1">
-            <div className="text-3xl font-bold">ETB {dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className="text-xl sm:text-2xl font-bold">ETB {dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
             <div className="flex items-center gap-2">
                <Badge variant="outline" className="text-[10px] font-medium py-0 h-4 border-amber-200 text-amber-700 bg-amber-50">
                  Est: ETB {dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -581,13 +580,13 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card>
+        <Card className="col-span-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Monthly Payroll</CardTitle>
             <div className="bg-purple-500/10 p-2 rounded-lg"><Wallet className="h-5 w-5 text-purple-600" /></div>
           </CardHeader>
           <CardContent className="space-y-1">
-            <div className="text-3xl font-bold">ETB {dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
+            <div className="text-xl sm:text-2xl font-bold">ETB {dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}</div>
             <div className="flex items-center gap-2">
                <Badge variant="outline" className="text-[10px] font-medium py-0 h-4 border-purple-200 text-purple-700 bg-purple-50">
                  Est: ETB {dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}
@@ -871,4 +870,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
