@@ -5,7 +5,7 @@ import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
 import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfDay } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfDay, endOfDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -63,8 +63,9 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
     // Robust search for the correct Gregorian date that matches the Ethiopian components
-    let date = new Date(ethYear + 7, ethMonth - 1, ethDay);
-    for (let i = 0; i < 40; i++) {
+    // Ethiopian Meskerem (1) roughly starts in September (month 8 in JS)
+    let date = new Date(ethYear + 7, ethMonth + 7, ethDay);
+    for (let i = 0; i < 60; i++) {
         const eth = toEthiopian(date);
         if (eth.year === ethYear && eth.month === ethMonth && eth.day === ethDay) {
             return startOfDay(date);
@@ -266,10 +267,9 @@ export default function DashboardPage() {
         if (emp.paymentMethod !== 'Monthly') return acc;
         const baseSalary = emp.monthlyRate || 0;
         
-        // Dynamic Weighted Working Units Method
         const hourlyRate = baseSalary / workingUnits / 8;
         const minuteRate = hourlyRate / 60;
-        const empStartDate = emp.attendanceStartDate ? new Date(emp.attendanceStartDate) : new Date(0);
+        const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
         
         const ethYear = toEthiopian(monthStart).year;
         const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
@@ -340,7 +340,7 @@ export default function DashboardPage() {
         const totalHours = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
         const otHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
         const otPay = otHours * (hourlyRate || 0);
-        const empStartDate = emp.attendanceStartDate ? new Date(emp.attendanceStartDate) : new Date(0);
+        const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
         
         let minutesLate = 0;
         let hoursAbsent = 0;
@@ -383,7 +383,7 @@ export default function DashboardPage() {
         const base = emp.monthlyRate || 0;
         const hourly = base / workingUnits / 8;
         const minuteRate = hourly / 60;
-        const empStartDate = emp.attendanceStartDate ? new Date(emp.attendanceStartDate) : new Date(0);
+        const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
         
         const ethYear = toEthiopian(monthStart).year;
         const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
@@ -425,7 +425,7 @@ export default function DashboardPage() {
             period: "Selected Month",
             amount: finalAmount, 
             status: 'Unpaid', 
-            overtimeHours: overtimeHours, 
+            overtimeHours, 
             overtimeAmount: overtimePay,
             hoursAbsent: totalHoursAbsent,
             minutesLate
@@ -436,7 +436,6 @@ export default function DashboardPage() {
   const dailyEarnings = useMemo(() => {
     if (!employees || !selectedDay) return [];
     
-    // For today earnings, we still need a default rate, let's use the average 23.625 for simplicity in daily view
     return employees.filter(e => e.status !== 'Inactive' || todayAttendance?.some(r => r.employeeId === e.id)).map(emp => {
         const record = todayAttendance?.find(r => r.employeeId === emp.id);
         let amount = 0;
@@ -444,7 +443,6 @@ export default function DashboardPage() {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
             amount = record ? (calculateHoursWorked(record) + (record.overtimeHours || 0)) * (hourly || 0) : 0;
         } else {
-            // Use 23.625 as a standard daily divisor for the "today" dashboard earnings view
             const daily = (emp.monthlyRate || 0) / 23.625;
             amount = record ? daily : 0; 
         }
@@ -524,36 +522,35 @@ export default function DashboardPage() {
     }
   };
 
-  const attendancePercentage = (dashboardStats.onSiteToday / dashboardStats.totalEmployees) * 100;
+  const attendancePercentage = dashboardStats.totalEmployees > 0 ? (dashboardStats.onSiteToday / dashboardStats.totalEmployees) * 100 : 0;
 
   return (
     <div className="flex flex-col gap-8">
-      {/* Welcome & Date Section */}
-      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-2xl border">
-        <div className="flex flex-col">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-2xl border">
+        <div className="w-full md:w-auto">
           <h2 className="text-3xl font-bold tracking-tight">Welcome back!</h2>
           <p className="text-muted-foreground mt-1">Here is what's happening today at FurnishWise.</p>
         </div>
-        <div className="flex items-center gap-4 bg-background/50 p-4 rounded-xl border shadow-sm w-full md:w-auto justify-between">
+        <div className="flex items-center gap-4 bg-background/50 p-4 rounded-xl border shadow-sm w-full md:w-auto justify-between md:justify-center">
            <div className="flex flex-col items-end">
               <span className="text-sm font-semibold text-primary uppercase tracking-wider">
-                {ethiopianDateFormatter(new Date(), { weekday: 'long' })}
+                {ethiopianDateFormatter(new Date(), { month: 'long' })} {toEthiopian(new Date()).year}
               </span>
-              <span className="text-2xl font-bold leading-none">
-                {ethiopianDateFormatter(new Date(), { month: 'long' })} {toEthiopian(new Date()).day}, {toEthiopian(new Date()).year}
+              <span className="text-2xl font-bold">
+                {ethiopianDateFormatter(new Date(), { weekday: 'long', day: 'numeric' })}
               </span>
-              <span className="text-xs text-muted-foreground mt-1">
+              <span className="text-xs text-muted-foreground">
                 {format(new Date(), "PPP")}
               </span>
            </div>
            <div className="h-12 w-[1px] bg-border mx-2" />
-           <div className="bg-primary/20 p-3 rounded-full shrink-0">
+           <div className="bg-primary/20 p-3 rounded-full">
               <CalendarDays className="h-6 w-6 text-primary" />
            </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <StatCard 
           title="Active Employees" 
           value={dashboardStats.totalEmployees} 

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
@@ -31,6 +30,8 @@ import {
   endOfWeek,
   getDay,
   eachDayOfInterval,
+  startOfDay,
+  endOfDay,
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -154,14 +155,20 @@ const toEthiopian = (date: Date) => {
 };
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
-    // This is an approximation. For exact conversion, a library is better.
-    const today = new Date();
-    const ethToday = toEthiopian(today);
-
-    // Approximate days since our epoch
-    const ethDays = (ethYear - ethToday.year) * 365.25 + (ethMonth - ethToday.month) * 30 + (ethDay - ethToday.day);
-    
-    return addDays(today, Math.round(ethDays));
+    // Robust search logic
+    let date = new Date(ethYear + 7, ethMonth + 7, ethDay);
+    for (let i = 0; i < 60; i++) {
+        const eth = toEthiopian(date);
+        if (eth.year === ethYear && eth.month === ethMonth && eth.day === ethDay) {
+            return startOfDay(date);
+        }
+        if (eth.year < ethYear || (eth.year === ethYear && eth.month < ethMonth) || (eth.year === ethYear && eth.month === ethMonth && eth.day < ethDay)) {
+            date.setDate(date.getDate() + 1);
+        } else {
+            date.setDate(date.getDate() - 1);
+        }
+    }
+    return startOfDay(date);
 };
 
 const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
@@ -242,23 +249,9 @@ export default function EmployeeProfilePage() {
     }
   }, [employee, setTitle]);
 
-  // This is a default/fallback hourly rate if no period is selected
-  const hourlyRate = useMemo(() => {
-    if (!employee) return 0;
-    if (employee.hourlyRate) return employee.hourlyRate;
-    if (employee.paymentMethod === 'Monthly' && employee.monthlyRate) {
-        // Fallback to average month if no period selected
-        return employee.monthlyRate / 23.625 / 8;
-    }
-    if (employee.paymentMethod === 'Weekly' && employee.dailyRate) {
-        return employee.dailyRate / 8;
-    }
-    return 0;
-  }, [employee]);
-
   const firstAttendanceDate = useMemo(() => {
     if (employee?.attendanceStartDate) {
-      return new Date(employee.attendanceStartDate);
+      return startOfDay(new Date(employee.attendanceStartDate));
     }
     return new Date();
   }, [employee]);
@@ -276,7 +269,6 @@ export default function EmployeeProfilePage() {
             const ethDate = toEthiopian(currentMonthStart);
             const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
             
-            // Heuristic to check if we've gone too far back in time
             if (monthStart < addDays(firstAttendanceDate, -31)) break;
 
             const monthName = ethiopianDateFormatter(monthStart, { month: 'long' });
@@ -285,7 +277,6 @@ export default function EmployeeProfilePage() {
                 label: `${monthName} ${ethDate.year}`
             });
 
-            // Go to previous month
             const prevMonthDate = addDays(monthStart, -5); 
             const prevEthDate = toEthiopian(prevMonthDate);
             currentMonthStart = toGregorian(prevEthDate.year, prevEthDate.month, 1);
@@ -335,9 +326,6 @@ export default function EmployeeProfilePage() {
 
     if (employee.paymentMethod === 'Monthly') {
         const baseSalary = employee.monthlyRate || 0;
-        if (baseSalary === 0 && filteredAttendance.length === 0) return { totalAmount: 0, periodLabel: selectedPeriodLabel };
-
-        // DYNAMIC RATE CALCULATION BASED ON MONTHLY WORKING UNITS
         const startDate = new Date(selectedPeriod);
         const ethDate = toEthiopian(startDate);
         const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
@@ -396,16 +384,16 @@ export default function EmployeeProfilePage() {
 
         const interval = { start: startDate, end: addDays(startDate, daysInMonth - 1) };
         const periodDays = eachDayOfInterval(interval);
-        const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+        const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
         const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
 
         const today = new Date();
         periodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
+            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
                     const formattedDate = format(day, 'MMM d');
-                    if (getDay(day) === 6) { // Saturday
+                    if (getDay(day) === 6) { 
                         totalHoursAbsent += 4.5;
                     } else {
                         totalHoursAbsent += 8;
@@ -461,7 +449,7 @@ export default function EmployeeProfilePage() {
           const interval = { start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 0 }) };
           const periodDays = eachDayOfInterval(interval);
           const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
-          const employeeStartDate = new Date(employee.attendanceStartDate || 0);
+          const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
           const today = new Date();
 
           periodDays.forEach(day => {
@@ -686,7 +674,7 @@ export default function EmployeeProfilePage() {
                       </div>
                       <div>
                           <p className="font-semibold">Current Period Hourly Rate</p>
-                          <p className="text-muted-foreground">ETB {(payrollData.hourlyRate || hourlyRate).toFixed(2)}</p>
+                          <p className="text-muted-foreground">ETB {payrollData.hourlyRate?.toFixed(2) || "N/A"}</p>
                       </div>
                     </div>
                   </CardContent>
