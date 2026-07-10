@@ -313,8 +313,8 @@ export default function EmployeeProfilePage() {
       interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
     } else { // monthly
       const ethDate = toEthiopian(startDate);
-      const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
-      interval = { start: startOfDay(startDate), end: endOfDay(addDays(startDate, daysInMonth - 1)) };
+      const daysInMonthCount = getEthiopianMonthDays(ethDate.year, ethDate.month);
+      interval = { start: startOfDay(startDate), end: endOfDay(addDays(startDate, daysInMonthCount - 1)) };
     }
     return employeeAttendance.filter(r => isWithinInterval(new Date(r.date), interval));
   }, [employeeAttendance, selectedPeriod, employee]);
@@ -551,7 +551,7 @@ export default function EmployeeProfilePage() {
       <Badge 
         variant={status === 'Absent' ? 'destructive' : 'outline'}
         className={cn(
-          "shadow-none",
+          "shadow-none px-1.5 h-5 text-[10px]",
           status === 'Present' && "bg-secondary text-secondary-foreground border-transparent",
           status === 'Late' && "bg-amber-100 text-amber-700 border-amber-200",
           status === 'Permission' && "bg-blue-100 text-blue-700 border-blue-200"
@@ -787,14 +787,13 @@ export default function EmployeeProfilePage() {
                <CardDescription>{payrollData.periodLabel}</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex-1">
+              <div className="overflow-x-auto">
                 <Table>
                     <TableHeader>
                     <TableRow>
-                        <TableHead>Date</TableHead>
+                        <TableHead className="min-w-[100px]">Date</TableHead>
                         <TableHead>Morning</TableHead>
                         <TableHead>Afternoon</TableHead>
-                        <TableHead>Overtime</TableHead>
                     </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -802,25 +801,35 @@ export default function EmployeeProfilePage() {
                         filteredAttendance.map((record) => (
                         <TableRow key={record.id}>
                             <TableCell>
-                                <div className="flex flex-col">
-                                    <span>{format(getDateFromRecord(record.date), 'EEE, MMM d')}</span>
-                                    <span className="text-xs text-muted-foreground">{ethiopianDateFormatter(getDateFromRecord(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                                <div className="flex flex-col min-w-[80px]">
+                                    <span className="font-medium whitespace-nowrap">{format(getDateFromRecord(record.date), 'EEE, MMM d')}</span>
+                                    <span className="text-[10px] text-muted-foreground uppercase whitespace-nowrap">{ethiopianDateFormatter(getDateFromRecord(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}</span>
                                 </div>
                             </TableCell>
                             <TableCell>
-                                {renderAttendanceBadge(record.morningStatus)}
-                                <p className="text-xs text-muted-foreground">{record.morningEntry || 'N/A'}</p>
+                                <div className="flex flex-col gap-1">
+                                  {renderAttendanceBadge(record.morningStatus)}
+                                  {record.morningEntry && <p className="text-[10px] font-mono text-muted-foreground">{record.morningEntry}</p>}
+                                </div>
                             </TableCell>
                             <TableCell>
-                                {renderAttendanceBadge(record.afternoonStatus)}
-                                <p className="text-xs text-muted-foreground">{record.afternoonEntry || 'N/A'}</p>
+                                <div className="flex flex-col gap-1">
+                                  {renderAttendanceBadge(record.afternoonStatus)}
+                                  <div className="flex flex-col">
+                                    {record.afternoonEntry && <p className="text-[10px] font-mono text-muted-foreground">{record.afternoonEntry}</p>}
+                                    {record.overtimeHours ? (
+                                        <Badge variant="secondary" className="w-fit text-[9px] h-4 px-1 mt-0.5 bg-primary/10 text-primary border-none whitespace-nowrap">
+                                            +{record.overtimeHours}h OT
+                                        </Badge>
+                                    ) : null}
+                                  </div>
+                                </div>
                             </TableCell>
-                            <TableCell>{record.overtimeHours ? `${record.overtimeHours} hr(s)` : "—"}</TableCell>
                         </TableRow>
                         ))
                     ) : (
                         <TableRow>
-                        <TableCell colSpan={5} className="text-center h-24">
+                        <TableCell colSpan={3} className="text-center h-24">
                             {selectedPeriod ? "No attendance records for this period." : "Please select a period to view records."}
                         </TableCell>
                         </TableRow>
