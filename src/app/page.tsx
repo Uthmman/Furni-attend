@@ -62,9 +62,8 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 };
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
-    // Robust search for the correct Gregorian date that matches the Ethiopian components
-    // Ethiopian Meskerem (1) roughly starts in September (month 8 in JS)
-    let date = new Date(ethYear + 7, ethMonth + 7, ethDay);
+    // Robust search logic with noon-reference to avoid timezone midnight shifts
+    let date = new Date(ethYear + 7, ethMonth + 7, ethDay, 12, 0, 0);
     for (let i = 0; i < 60; i++) {
         const eth = toEthiopian(date);
         if (eth.year === ethYear && eth.month === ethMonth && eth.day === ethDay) {
@@ -183,9 +182,10 @@ export default function DashboardPage() {
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
 
+  // Using yyyy-MM-dd format for stable state that doesn't shift between local/UTC
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), "yyyy-MM-dd"));
-  const [selectedWeekStart, setSelectedWeekStart] = useState<string>(startOfWeek(new Date(), { weekStartsOn: 0 }).toISOString());
-  const [selectedMonthStart, setSelectedMonthStart] = useState<string>(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1).toISOString());
+  const [selectedWeekStart, setSelectedWeekStart] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 0 }), "yyyy-MM-dd"));
+  const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
 
   useEffect(() => {
     const fetchAllAttendance = async () => {
@@ -248,8 +248,8 @@ export default function DashboardPage() {
     const weekStart = startOfWeek(now, { weekStartsOn: 0 }); 
     const ethNow = toEthiopian(now);
     const monthStart = toGregorian(ethNow.year, ethNow.month, 1);
-    const daysInMonth = getEthiopianMonthDays(ethNow.year, ethNow.month);
-    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonth);
+    const daysInMonthCount = getEthiopianMonthDays(ethNow.year, ethNow.month);
+    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
     
     const estWeekly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 7 : 0), 0);
     const estMonthly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : 0), 0);
@@ -314,7 +314,7 @@ export default function DashboardPage() {
         const end = addDays(start, getEthiopianMonthDays(ethDate.year, ethDate.month) - 1);
         let total = 0;
         employees.forEach(emp => {
-            const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start, end }));
+            const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: startOfDay(start), end: endOfDay(end) }));
             if (emp.paymentMethod === 'Monthly') {
                 total += emp.monthlyRate || 0; 
             } else {
@@ -330,8 +330,8 @@ export default function DashboardPage() {
 
   const weeklyPayroll = useMemo(() => {
     if (!employees || !selectedWeekStart) return [];
-    const weekStart = new Date(selectedWeekStart);
-    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
+    const weekStart = startOfDay(new Date(selectedWeekStart));
+    const weekEnd = endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
     const today = new Date();
     
     return employees.filter(e => e.paymentMethod === 'Weekly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: weekEnd })))).map(emp => {
@@ -372,11 +372,11 @@ export default function DashboardPage() {
 
   const monthlyPayroll = useMemo(() => {
     if (!employees || !selectedMonthStart) return [];
-    const monthStart = new Date(selectedMonthStart);
+    const monthStart = startOfDay(new Date(selectedMonthStart));
     const ethMonth = toEthiopian(monthStart);
-    const daysInMonth = getEthiopianMonthDays(ethMonth.year, ethMonth.month);
-    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonth);
-    const monthEnd = addDays(monthStart, daysInMonth - 1);
+    const daysInMonthCount = getEthiopianMonthDays(ethMonth.year, ethMonth.month);
+    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
+    const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
     const today = new Date();
     
     return employees.filter(e => e.paymentMethod === 'Monthly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })))).map(emp => {
@@ -459,7 +459,7 @@ export default function DashboardPage() {
       for (let i = 0; i < 8; i++) {
           const ethStart = ethiopianDateFormatter(current, { month: 'short', day: 'numeric' });
           const ethEnd = ethiopianDateFormatter(endOfWeek(current, { weekStartsOn: 0 }), { month: 'short', day: 'numeric', year: 'numeric' });
-          options.push({ value: current.toISOString(), label: `Week of ${ethStart} - ${ethEnd}` });
+          options.push({ value: format(current, "yyyy-MM-dd"), label: `Week of ${ethStart} - ${ethEnd}` });
           current = addDays(current, -7);
       }
       return options;
@@ -472,7 +472,7 @@ export default function DashboardPage() {
           const m = subMonths(today, i);
           const eth = toEthiopian(m);
           const start = toGregorian(eth.year, eth.month, 1);
-          options.push({ value: start.toISOString(), label: `${ethiopianDateFormatter(start, { month: 'long' })} ${eth.year}` });
+          options.push({ value: format(start, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(start, { month: 'long' })} ${eth.year}` });
       }
       return options;
   }, []);
@@ -502,9 +502,10 @@ export default function DashboardPage() {
       if (date) {
           const dayStr = format(date, "yyyy-MM-dd");
           setSelectedDay(dayStr);
-          setSelectedWeekStart(startOfWeek(date, { weekStartsOn: 0 }).toISOString());
+          setSelectedWeekStart(format(startOfWeek(date, { weekStartsOn: 0 }), "yyyy-MM-dd"));
           const eth = toEthiopian(date);
-          setSelectedMonthStart(toGregorian(eth.year, eth.month, 1).toISOString());
+          const monthStart = toGregorian(eth.year, eth.month, 1);
+          setSelectedMonthStart(format(monthStart, "yyyy-MM-dd"));
       }
   };
 
@@ -713,7 +714,7 @@ export default function DashboardPage() {
 
                     <TabsContent value="week" className="space-y-6">
                         <div className="flex items-center gap-2 max-w-xs">
-                             <Select value={selectedWeekStart} onValueChange={setSelectedWeekStart}>
+                             <Select value={selectedWeekStart} onValueChange={(v) => setSelectedWeekStart(v)}>
                                 <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select week" /></SelectTrigger>
                                 <SelectContent>{weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
                             </Select>
@@ -786,7 +787,7 @@ export default function DashboardPage() {
 
                     <TabsContent value="month" className="space-y-6">
                         <div className="flex items-center gap-2 max-w-xs">
-                            <Select value={selectedMonthStart} onValueChange={setSelectedMonthStart}>
+                            <Select value={selectedMonthStart} onValueChange={(v) => setSelectedMonthStart(v)}>
                                 <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
                                 <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
                             </Select>

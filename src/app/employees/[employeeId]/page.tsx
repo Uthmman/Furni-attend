@@ -133,7 +133,6 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
 const getEthiopianMonthDays = (year: number, month: number): number => {
     if (month < 1 || month > 13) return 0;
     if (month <= 12) return 30;
-    // Pagume (13th month)
     const isLeap = (year + 1) % 4 === 0;
     return isLeap ? 6 : 5;
 };
@@ -155,8 +154,8 @@ const toEthiopian = (date: Date) => {
 };
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
-    // Robust search logic
-    let date = new Date(ethYear + 7, ethMonth + 7, ethDay);
+    // Robust search logic with noon-reference
+    let date = new Date(ethYear + 7, ethMonth + 7, ethDay, 12, 0, 0);
     for (let i = 0; i < 60; i++) {
         const eth = toEthiopian(date);
         if (eth.year === ethYear && eth.month === ethMonth && eth.day === ethDay) {
@@ -273,7 +272,7 @@ export default function EmployeeProfilePage() {
 
             const monthName = ethiopianDateFormatter(monthStart, { month: 'long' });
             options.push({
-                value: monthStart.toISOString(),
+                value: format(monthStart, "yyyy-MM-dd"),
                 label: `${monthName} ${ethDate.year}`
             });
 
@@ -293,7 +292,7 @@ export default function EmployeeProfilePage() {
             const endDayEth = ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' });
             
             options.push({
-                value: weekStart.toISOString(),
+                value: format(weekStart, "yyyy-MM-dd"),
                 label: `${startDayEth} - ${endDayEth}`
             });
             currentWeekStart = addDays(currentWeekStart, -7);
@@ -306,15 +305,15 @@ export default function EmployeeProfilePage() {
   const filteredAttendance = useMemo(() => {
     if (!selectedPeriod || !employee) return [];
     
-    const startDate = new Date(selectedPeriod);
+    const startDate = startOfDay(new Date(selectedPeriod));
     let interval;
     if (employee.paymentMethod === 'Weekly') {
       const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
-      interval = { start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 0 }) };
+      interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
     } else { // monthly
       const ethDate = toEthiopian(startDate);
       const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
-      interval = { start: startDate, end: addDays(startDate, daysInMonth - 1) };
+      interval = { start: startOfDay(startDate), end: endOfDay(addDays(startDate, daysInMonth - 1)) };
     }
     return employeeAttendance.filter(r => isWithinInterval(new Date(r.date), interval));
   }, [employeeAttendance, selectedPeriod, employee]);
@@ -326,10 +325,10 @@ export default function EmployeeProfilePage() {
 
     if (employee.paymentMethod === 'Monthly') {
         const baseSalary = employee.monthlyRate || 0;
-        const startDate = new Date(selectedPeriod);
+        const startDate = startOfDay(new Date(selectedPeriod));
         const ethDate = toEthiopian(startDate);
-        const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
-        const workingUnits = getMonthlyWorkingUnits(startDate, daysInMonth);
+        const daysInMonthCount = getEthiopianMonthDays(ethDate.year, ethDate.month);
+        const workingUnits = getMonthlyWorkingUnits(startDate, daysInMonthCount);
         
         const hourlyRateCalc = baseSalary / workingUnits / 8;
         const minuteRate = hourlyRateCalc / 60;
@@ -382,7 +381,7 @@ export default function EmployeeProfilePage() {
             return acc + currentMinutesLate;
         }, 0);
 
-        const interval = { start: startDate, end: addDays(startDate, daysInMonth - 1) };
+        const interval = { start: startDate, end: addDays(startDate, daysInMonthCount - 1) };
         const periodDays = eachDayOfInterval(interval);
         const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
         const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
@@ -444,9 +443,9 @@ export default function EmployeeProfilePage() {
       let totalHoursAbsent = 0;
 
       if (selectedPeriod) {
-          const startDate = new Date(selectedPeriod);
+          const startDate = startOfDay(new Date(selectedPeriod));
           const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
-          const interval = { start: weekStart, end: endOfWeek(weekStart, { weekStartsOn: 0 }) };
+          const interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
           const periodDays = eachDayOfInterval(interval);
           const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
           const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
