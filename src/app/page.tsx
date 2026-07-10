@@ -528,7 +528,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-8">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-2xl border">
-        <div className="w-full md:w-auto">
+        <div className="w-full md:w-auto text-center md:text-left">
           <h2 className="text-3xl font-bold tracking-tight">Welcome back!</h2>
           <p className="text-muted-foreground mt-1">Here is what's happening today at FurnishWise.</p>
         </div>
@@ -642,7 +642,7 @@ export default function DashboardPage() {
                     </TabsList>
                     
                     <TabsContent value="today" className="space-y-6">
-                        <div className="flex items-center gap-3 bg-muted/30 p-2 rounded-xl w-fit">
+                        <div className="flex items-center gap-3 bg-muted/30 p-2 rounded-xl w-fit mx-auto">
                             <Button variant="ghost" size="icon" onClick={handlePrevDay} className="hover:bg-background shadow-sm">
                                 <ChevronLeft className="h-4 w-4" />
                             </Button>
@@ -713,7 +713,7 @@ export default function DashboardPage() {
                     </TabsContent>
 
                     <TabsContent value="week" className="space-y-6">
-                        <div className="flex items-center gap-2 max-w-xs">
+                        <div className="flex items-center gap-2 max-w-xs mx-auto">
                              <Select value={selectedWeekStart} onValueChange={(v) => setSelectedWeekStart(v)}>
                                 <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select week" /></SelectTrigger>
                                 <SelectContent>{weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
@@ -786,7 +786,7 @@ export default function DashboardPage() {
                     </TabsContent>
 
                     <TabsContent value="month" className="space-y-6">
-                        <div className="flex items-center gap-2 max-w-xs">
+                        <div className="flex items-center gap-2 max-w-xs mx-auto">
                             <Select value={selectedMonthStart} onValueChange={(v) => setSelectedMonthStart(v)}>
                                 <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
                                 <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
