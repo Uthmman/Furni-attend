@@ -5,7 +5,7 @@ import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
 import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -62,10 +62,20 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 };
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
-    const today = new Date();
-    const ethToday = toEthiopian(today);
-    const dayDiff = ((ethYear - ethToday.year) * 365.25) + ((ethMonth - ethToday.month) * 30) + (ethDay - ethToday.day);
-    return addDays(today, Math.round(dayDiff));
+    // Robust search for the correct Gregorian date that matches the Ethiopian components
+    let date = new Date(ethYear + 7, ethMonth - 1, ethDay);
+    for (let i = 0; i < 40; i++) {
+        const eth = toEthiopian(date);
+        if (eth.year === ethYear && eth.month === ethMonth && eth.day === ethDay) {
+            return startOfDay(date);
+        }
+        if (eth.year < ethYear || (eth.year === ethYear && eth.month < ethMonth) || (eth.year === ethYear && eth.month === ethMonth && eth.day < ethDay)) {
+            date.setDate(date.getDate() + 1);
+        } else {
+            date.setDate(date.getDate() - 1);
+        }
+    }
+    return startOfDay(date);
 };
 
 const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
@@ -519,31 +529,31 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-8">
       {/* Welcome & Date Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-2xl border">
-        <div className="w-full md:w-auto">
+      <div className="flex flex-col md:flex-row justify-between items-stretch md:items-center gap-4 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-2xl border">
+        <div className="flex flex-col">
           <h2 className="text-3xl font-bold tracking-tight">Welcome back!</h2>
           <p className="text-muted-foreground mt-1">Here is what's happening today at FurnishWise.</p>
         </div>
-        <div className="flex items-center gap-4 bg-background/50 p-4 rounded-xl border shadow-sm w-full md:w-auto justify-between md:justify-center">
+        <div className="flex items-center gap-4 bg-background/50 p-4 rounded-xl border shadow-sm w-full md:w-auto justify-between">
            <div className="flex flex-col items-end">
               <span className="text-sm font-semibold text-primary uppercase tracking-wider">
-                {ethiopianDateFormatter(new Date(), { month: 'long' })} {toEthiopian(new Date()).year}
+                {ethiopianDateFormatter(new Date(), { weekday: 'long' })}
               </span>
-              <span className="text-2xl font-bold">
-                {ethiopianDateFormatter(new Date(), { weekday: 'long', day: 'numeric' })}
+              <span className="text-2xl font-bold leading-none">
+                {ethiopianDateFormatter(new Date(), { month: 'long' })} {toEthiopian(new Date()).day}, {toEthiopian(new Date()).year}
               </span>
-              <span className="text-xs text-muted-foreground">
+              <span className="text-xs text-muted-foreground mt-1">
                 {format(new Date(), "PPP")}
               </span>
            </div>
            <div className="h-12 w-[1px] bg-border mx-2" />
-           <div className="bg-primary/20 p-3 rounded-full">
+           <div className="bg-primary/20 p-3 rounded-full shrink-0">
               <CalendarDays className="h-6 w-6 text-primary" />
            </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
         <StatCard 
           title="Active Employees" 
           value={dashboardStats.totalEmployees} 
