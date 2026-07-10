@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo, useEffect, useCallback } from "react";
@@ -23,13 +22,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { AttendanceRecord, Employee, AttendanceStatus } from "@/lib/types";
-import { format, isValid, getDay, isAfter, startOfDay } from "date-fns";
+import { format, isValid, getDay } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
 import { Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 
 type DailyAttendance = {
@@ -42,17 +42,18 @@ type DailyAttendance = {
   overtimeHours?: number;
 };
 
-const getStatusVariant = (status: AttendanceStatus) => {
+const getStatusBadge = (status: AttendanceStatus) => {
   switch (status) {
     case "Permission":
-        return "default";
+        return <Badge variant="outline" className="bg-blue-100 text-blue-700 border-blue-200">Permission</Badge>;
     case "Present":
+        return <Badge variant="secondary">Present</Badge>;
     case "Late":
-      return "secondary";
+      return <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200">Late</Badge>;
     case "Absent":
-      return "destructive";
+      return <Badge variant="destructive">Absent</Badge>;
     default:
-      return "outline";
+      return <Badge variant="outline">{status}</Badge>;
   }
 };
 
@@ -322,9 +323,9 @@ export default function AttendancePage() {
                                         <Card className="hover:bg-accent transition-colors">
                                             <CardContent className="flex items-center justify-between p-4">
                                                 <p className="font-medium">{att.employeeName}</p>
-                                                <Badge variant={getStatusVariant(overallStatus)} className="capitalize">
-                                                    {overallStatus}
-                                                </Badge>
+                                                <div className="capitalize">
+                                                    {getStatusBadge(overallStatus)}
+                                                </div>
                                             </CardContent>
                                         </Card>
                                     </button>
@@ -355,8 +356,8 @@ export default function AttendancePage() {
             <div className="grid gap-6 py-4">
               <div className="grid gap-2">
                   <Label>Morning</Label>
-                  <div className="text-sm text-muted-foreground">
-                    Status: <Badge variant={getStatusVariant(selectedEmployeeAttendance.morningStatus)}>{selectedEmployeeAttendance.morningStatus}</Badge>
+                  <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    Status: {getStatusBadge(selectedEmployeeAttendance.morningStatus)}
                     {selectedEmployeeAttendance.morningEntry && ` at ${selectedEmployeeAttendance.morningEntry}`}
                   </div>
                   <div className="flex flex-wrap gap-2 mt-2">
@@ -368,8 +369,8 @@ export default function AttendancePage() {
               </div>
               <div className="grid gap-2">
                   <Label>Afternoon</Label>
-                   <div className="text-sm text-muted-foreground">
-                    Status: <Badge variant={getStatusVariant(selectedEmployeeAttendance.afternoonStatus)}>{selectedEmployeeAttendance.afternoonStatus}</Badge>
+                   <div className="text-sm text-muted-foreground flex items-center gap-2">
+                    Status: {getStatusBadge(selectedEmployeeAttendance.afternoonStatus)}
                     {selectedEmployeeAttendance.afternoonEntry && ` at ${selectedEmployeeAttendance.afternoonEntry}`}
                   </div>
                   <div className="flex flex-wrap gap-2 mt-2">

@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
@@ -489,13 +490,20 @@ export default function DashboardPage() {
     );
   }
 
-  const getStatusVariant = (status: string) => {
-    switch (status) {
-        case 'Present': return 'secondary';
-        case 'Late': return 'outline';
-        case 'Absent': return 'destructive';
-        default: return 'outline';
-    }
+  const renderAttendanceBadge = (status: string) => {
+    return (
+      <Badge 
+        variant={status === 'Absent' ? 'destructive' : 'outline'}
+        className={cn(
+          "shadow-none",
+          status === 'Present' && "bg-secondary text-secondary-foreground border-transparent",
+          status === 'Late' && "bg-amber-100 text-amber-700 border-amber-200",
+          status === 'Permission' && "bg-blue-100 text-blue-700 border-blue-200"
+        )}
+      >
+        {status}
+      </Badge>
+    );
   };
 
   const handleGlobalDateSelect = (date: Date | undefined) => {
@@ -662,7 +670,7 @@ export default function DashboardPage() {
                                 <div key={item.employeeId} className="border rounded-xl p-4 space-y-3 bg-card shadow-sm">
                                     <div className="flex justify-between items-start">
                                         <div className="font-bold text-lg">{item.name}</div>
-                                        <Badge variant={getStatusVariant(item.status)}>{item.status}</Badge>
+                                        {renderAttendanceBadge(item.status)}
                                     </div>
                                     <div className="grid grid-cols-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
                                         <div><span className="font-semibold text-foreground">Morning:</span> {item.morning}</div>
@@ -696,7 +704,7 @@ export default function DashboardPage() {
                                             <TableCell className="font-medium">{item.name}</TableCell>
                                             <TableCell className="text-muted-foreground font-mono text-xs">{item.morning}</TableCell>
                                             <TableCell className="text-muted-foreground font-mono text-xs">{item.afternoon}</TableCell>
-                                            <TableCell><Badge variant={getStatusVariant(item.status)} className="shadow-none">{item.status}</Badge></TableCell>
+                                            <TableCell>{renderAttendanceBadge(item.status)}</TableCell>
                                             <TableCell>
                                               {item.overtimeHours > 0 ? (
                                                 <Badge variant="secondary" className="bg-primary/5 text-primary border-none">+{item.overtimeHours} hrs</Badge>
@@ -801,7 +809,7 @@ export default function DashboardPage() {
                                         <Badge variant="outline" className="text-[10px] px-2 h-5">{entry.paymentMethod}</Badge>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground bg-muted/30 p-2 rounded-lg">
-                                        {entry.minutesLate > 0 ? <span className="text-destructive font-semibold">Late: {entry.minutesLate}m</span> : <span>No late mins</span>}
+                                        {entry.minutesLate > 0 ? <span className="text-amber-600 font-semibold">Late: {entry.minutesLate}m</span> : <span>No late mins</span>}
                                         {entry.hoursAbsent > 0 ? <span className="text-destructive font-semibold">Absent: {entry.hoursAbsent.toFixed(1)}h</span> : <span>No absences</span>}
                                     </div>
                                     {entry.overtimeHours > 0 && (
@@ -835,7 +843,7 @@ export default function DashboardPage() {
                                         <TableRow key={entry.employeeId} className="hover:bg-muted/30 transition-colors">
                                             <TableCell className="font-medium">{entry.employeeName}</TableCell>
                                             <TableCell><Badge variant="outline" className="text-[10px] uppercase font-bold">{entry.paymentMethod}</Badge></TableCell>
-                                            <TableCell className={entry.minutesLate > 0 ? "text-destructive font-bold" : "text-muted-foreground/30"}>
+                                            <TableCell className={entry.minutesLate > 0 ? "text-amber-600 font-bold" : "text-muted-foreground/30"}>
                                                 {entry.minutesLate > 0 ? `${entry.minutesLate}m` : "—"}
                                             </TableCell>
                                             <TableCell className={entry.hoursAbsent > 0 ? "text-destructive font-bold" : "text-muted-foreground/30"}>

@@ -66,6 +66,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 
 
 const getInitials = (name: string) => {
@@ -545,6 +546,22 @@ export default function EmployeeProfilePage() {
     }
   };
   
+  const renderAttendanceBadge = (status: string) => {
+    return (
+      <Badge 
+        variant={status === 'Absent' ? 'destructive' : 'outline'}
+        className={cn(
+          "shadow-none",
+          status === 'Present' && "bg-secondary text-secondary-foreground border-transparent",
+          status === 'Late' && "bg-amber-100 text-amber-700 border-amber-200",
+          status === 'Permission' && "bg-blue-100 text-blue-700 border-blue-200"
+        )}
+      >
+        {status}
+      </Badge>
+    );
+  };
+
   useEffect(() => {
     if (periodOptions.length > 0 && !selectedPeriod) {
         setSelectedPeriod(periodOptions[0].value);
@@ -720,7 +737,7 @@ export default function EmployeeProfilePage() {
                             </div>
                             <div>
                                 <p className="font-semibold">Late Deduction ({payrollData.minutesLate || 0} mins)</p>
-                                <p className="text-xl font-bold text-destructive">- ETB {(payrollData.lateDeduction || 0).toFixed(2)}</p>
+                                <p className="text-xl font-bold text-amber-600">- ETB {(payrollData.lateDeduction || 0).toFixed(2)}</p>
                             </div>
                             <div>
                                 <p className="font-semibold">Absence Deduction ({(payrollData.hoursAbsent || 0).toFixed(1)} hrs)</p>
@@ -791,15 +808,11 @@ export default function EmployeeProfilePage() {
                                 </div>
                             </TableCell>
                             <TableCell>
-                                <Badge variant={record.morningStatus === 'Absent' ? 'destructive' : record.morningStatus === 'Permission' ? 'default' : 'secondary'}>
-                                    {record.morningStatus}
-                                </Badge>
+                                {renderAttendanceBadge(record.morningStatus)}
                                 <p className="text-xs text-muted-foreground">{record.morningEntry || 'N/A'}</p>
                             </TableCell>
                             <TableCell>
-                                <Badge variant={record.afternoonStatus === 'Absent' ? 'destructive' : record.afternoonStatus === 'Permission' ? 'default' : 'secondary'}>
-                                    {record.afternoonStatus}
-                                </Badge>
+                                {renderAttendanceBadge(record.afternoonStatus)}
                                 <p className="text-xs text-muted-foreground">{record.afternoonEntry || 'N/A'}</p>
                             </TableCell>
                             <TableCell>{record.overtimeHours ? `${record.overtimeHours} hr(s)` : "—"}</TableCell>
