@@ -349,15 +349,16 @@ export default function EmployeeProfilePage() {
             let isAbsent = false;
             
             const recordDateStr = format(recordDate, 'yyyy-MM-dd');
+            const isSaturday = getDay(recordDate) === 6;
 
             let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
-            let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
+            let afternoonIsUnpaidAbsence = !isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr)));
 
             if (morningIsUnpaidAbsence) {
                 totalHoursAbsent += 4.5;
                 isAbsent = true;
             }
-            if (getDay(recordDate) !== 6 && afternoonIsUnpaidAbsence) {
+            if (afternoonIsUnpaidAbsence) {
                 totalHoursAbsent += 3.5;
                 isAbsent = true;
             }
@@ -401,8 +402,11 @@ export default function EmployeeProfilePage() {
 
       const absenceDeduction = totalHoursAbsent * hourlyRateCalc;
       const lateDeduction = minutesLate * minuteRate;
+
+      const overtimeHours = filteredAttendance.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+      const overtimePay = overtimeHours * hourlyRateCalc;
       
-      const netSalary = baseSalary - (absenceDeduction + lateDeduction);
+      const netSalary = baseSalary - (absenceDeduction + lateDeduction) + overtimePay;
 
       return {
           totalAmount: netSalary,
@@ -414,6 +418,8 @@ export default function EmployeeProfilePage() {
           periodLabel: selectedPeriodLabel,
           absentDates: absentDates,
           lateDates: lateDates,
+          overtimePay: overtimePay,
+          overtimeHours: overtimeHours
       };
 
     } else { // Weekly logic
@@ -469,7 +475,8 @@ export default function EmployeeProfilePage() {
         totalAmount: totalAmount,
         periodLabel: selectedPeriodLabel,
         hoursAbsent: totalHoursAbsent,
-        minutesLate: totalMinutesLate
+        minutesLate: totalMinutesLate,
+        overtimeHours: totalOvertimeHours
       };
     }
   }, [employee, allAttendance, filteredAttendance, hourlyRate, periodOptions, selectedPeriod]);
@@ -488,12 +495,15 @@ export default function EmployeeProfilePage() {
       if ((payrollData.absenceDeduction || 0) > 0) {
         summaryMessage += `Absence Deduction (${(payrollData.hoursAbsent || 0).toFixed(1)} hrs): - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
       }
+      if ((payrollData.overtimePay || 0) > 0) {
+        summaryMessage += `Overtime Pay (${payrollData.overtimeHours} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+      }
       summaryMessage += `--------------------\n`;
       summaryMessage += `Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}`;
     } else { // Weekly
       summaryMessage += `Base Pay (${(payrollData.hours || 0).toFixed(2)} hrs): ETB ${( (payrollData.hours || 0) * hourlyRate).toFixed(2)}\n`;
       if ((payrollData.overtimePay || 0) > 0) {
-        summaryMessage += `Overtime Pay: + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+        summaryMessage += `Overtime Pay (${payrollData.overtimeHours} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
       }
       summaryMessage += `--------------------\n`;
       summaryMessage += `Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}`;
@@ -709,6 +719,12 @@ export default function EmployeeProfilePage() {
                                 <p className="font-semibold">Absence Deduction ({(payrollData.hoursAbsent || 0).toFixed(1)} hrs)</p>
                                 <p className="text-xl font-bold text-destructive">- ETB {(payrollData.absenceDeduction || 0).toFixed(2)}</p>
                             </div>
+                            {(payrollData.overtimePay || 0) > 0 && (
+                                <div>
+                                    <p className="font-semibold">Overtime Pay ({payrollData.overtimeHours} hrs)</p>
+                                    <p className="text-xl font-bold text-primary">+ ETB {(payrollData.overtimePay || 0).toFixed(2)}</p>
+                                </div>
+                            )}
                             <div>
                                 <p className="font-semibold">Net Salary</p>
                                 <p className="text-2xl font-bold text-primary">ETB {(payrollData.totalAmount || 0).toFixed(2)}</p>
@@ -722,7 +738,7 @@ export default function EmployeeProfilePage() {
                             </div>
                             {(payrollData.overtimePay || 0) > 0 && (
                                 <div>
-                                    <p className="font-semibold">Overtime Pay</p>
+                                    <p className="font-semibold">Overtime Pay ({payrollData.overtimeHours} hrs)</p>
                                     <p className="text-2xl font-bold">ETB {(payrollData.overtimePay || 0).toFixed(2)}</p>
                                 </div>
                             )}

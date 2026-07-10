@@ -153,7 +153,6 @@ export default function DashboardPage() {
   
   const { data: allEmployeesData, loading: employeesLoading } = useCollection<Employee>(employeesCollectionRef);
   
-  // Filter for active employees only for basic dashboard stats
   const activeEmployees = useMemo(() => allEmployeesData?.filter(e => e.status !== 'Inactive') || [], [allEmployeesData]);
   const employees = useMemo(() => allEmployeesData || [], [allEmployeesData]);
 
@@ -251,9 +250,13 @@ export default function DashboardPage() {
         const recordsInMonth = allAttendance.filter(r => r.employeeId === emp.id && isValid(getDateFromRecord(r.date)) && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: now }));
         let totalHoursAbsent = 0;
         const minutesLate = recordsInMonth.reduce((sum, r) => {
-            const dateStr = format(getDateFromRecord(r.date), 'yyyy-MM-dd');
+            const recordDate = getDateFromRecord(r.date);
+            const dateStr = format(recordDate, 'yyyy-MM-dd');
+            const isSaturday = getDay(recordDate) === 6;
+            
             if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
-            if (getDay(getDateFromRecord(r.date)) !== 6 && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
+            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
+            
             return sum + calculateMinutesLate(r);
         }, 0);
 
@@ -263,7 +266,10 @@ export default function DashboardPage() {
             }
         });
 
-        return acc + (baseSalary - (totalHoursAbsent * hourlyRate) - (minutesLate * minuteRate));
+        const overtimeHours = recordsInMonth.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+        const overtimePay = overtimeHours * hourlyRate;
+
+        return acc + (baseSalary - (totalHoursAbsent * hourlyRate) - (minutesLate * minuteRate) + overtimePay);
     }, 0);
 
     return { totalEmployees, onSiteToday: onSiteTodayCount, estWeekly, actualWeekly, estMonthly, actualMonthly };
@@ -299,7 +305,6 @@ export default function DashboardPage() {
     const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
     const today = new Date();
     
-    // For weekly, only show active employees or those with records in the period
     return employees.filter(e => e.paymentMethod === 'Weekly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: weekEnd })))).map(emp => {
         const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
         const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: weekEnd }));
@@ -342,7 +347,6 @@ export default function DashboardPage() {
     const monthEnd = addDays(monthStart, getEthiopianMonthDays(ethMonth.year, ethMonth.month) - 1);
     const today = new Date();
     
-    // For monthly, only show active employees or those with records in the period
     return employees.filter(e => e.paymentMethod === 'Monthly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })))).map(emp => {
         const base = emp.monthlyRate || 0;
         const hourly = base / 23.625 / 8;
@@ -360,9 +364,13 @@ export default function DashboardPage() {
         const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
 
         records.forEach(r => {
-            const dateStr = format(getDateFromRecord(r.date), 'yyyy-MM-dd');
+            const recordDate = getDateFromRecord(r.date);
+            const dateStr = format(recordDate, 'yyyy-MM-dd');
+            const isSaturday = getDay(recordDate) === 6;
+
             if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
-            if (getDay(getDateFromRecord(r.date)) !== 6 && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
+            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
+            
             minutesLate += calculateMinutesLate(r);
         });
 
@@ -394,7 +402,6 @@ export default function DashboardPage() {
 
   const dailyEarnings = useMemo(() => {
     if (!employees || !selectedDay) return [];
-    // For daily, only show active employees or those with records today
     return employees.filter(e => e.status !== 'Inactive' || todayAttendance?.some(r => r.employeeId === e.id)).map(emp => {
         const record = todayAttendance?.find(r => r.employeeId === emp.id);
         let amount = 0;
