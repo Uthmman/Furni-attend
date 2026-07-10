@@ -41,6 +41,7 @@ const employeeSchema = z.object({
   name: z.string().min(2, { message: "Name must be at least 2 characters." }),
   phone: z.string().min(9, { message: "Please enter a valid phone number." }),
   position: z.string().optional(),
+  status: z.enum(["Active", "Inactive"]),
   paymentMethod: z.enum(["Weekly", "Monthly"]),
   accountNumber: z.string().min(5, { message: "Account number is required." }),
   dailyRate: z.coerce.number().optional(),
@@ -69,6 +70,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
       name: "",
       phone: "",
       position: "",
+      status: "Active",
       paymentMethod: "Weekly",
       accountNumber: "",
       dailyRate: 0,
@@ -84,6 +86,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
         name: employee.name || "",
         phone: employee.phone || "",
         position: employee.position || "",
+        status: employee.status || "Active",
         paymentMethod: employee.paymentMethod || "Weekly",
         accountNumber: employee.accountNumber || "",
         dailyRate: employee.dailyRate || 0,
@@ -144,19 +147,42 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
         </DialogHeader>
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Full Name</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g. John Smith" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-4">
+                <FormField
+                    control={form.control}
+                    name="name"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Full Name</FormLabel>
+                        <FormControl>
+                            <Input placeholder="e.g. John Smith" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                />
+                <FormField
+                    control={form.control}
+                    name="status"
+                    render={({ field }) => (
+                        <FormItem>
+                        <FormLabel>Status</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <FormControl>
+                            <SelectTrigger>
+                                <SelectValue placeholder="Select status" />
+                            </SelectTrigger>
+                            </FormControl>
+                            <SelectContent>
+                            <SelectItem value="Active">Active</SelectItem>
+                            <SelectItem value="Inactive">Inactive</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                />
+            </div>
             <FormField
               control={form.control}
               name="phone"

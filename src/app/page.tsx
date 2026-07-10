@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo, useEffect, useState } from 'react';
@@ -150,8 +151,12 @@ export default function DashboardPage() {
     return collection(firestore, 'employees');
   }, [firestore, user]);
   
-  const { data: employees, loading: employeesLoading } = useCollection<Employee>(employeesCollectionRef);
+  const { data: allEmployeesData, loading: employeesLoading } = useCollection<Employee>(employeesCollectionRef);
   
+  // Filter for active employees only for basic dashboard stats
+  const activeEmployees = useMemo(() => allEmployeesData?.filter(e => e.status !== 'Inactive') || [], [allEmployeesData]);
+  const employees = useMemo(() => allEmployeesData || [], [allEmployeesData]);
+
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
 
@@ -205,24 +210,25 @@ export default function DashboardPage() {
   }, [setTitle]);
 
   const dashboardStats = useMemo(() => {
-    if (!employees) return { totalEmployees: 0, onSiteToday: 0, estWeekly: 0, actualWeekly: 0, estMonthly: 0, actualMonthly: 0 };
+    if (!activeEmployees) return { totalEmployees: 0, onSiteToday: 0, estWeekly: 0, actualWeekly: 0, estMonthly: 0, actualMonthly: 0 };
 
-    const totalEmployees = employees.length;
+    const totalEmployees = activeEmployees.length;
     const now = new Date();
     const todayStr = format(now, "yyyy-MM-dd");
 
     const onSiteTodayCount = allAttendance.filter(r => 
         format(getDateFromRecord(r.date), "yyyy-MM-dd") === todayStr &&
-        (r.morningStatus !== "Absent" || r.afternoonStatus !== "Absent")
+        (r.morningStatus !== "Absent" || r.afternoonStatus !== "Absent") &&
+        activeEmployees.some(e => e.id === r.employeeId)
     ).length;
     
     const weekStart = startOfWeek(now, { weekStartsOn: 0 }); 
     const monthStart = toGregorian(toEthiopian(now).year, toEthiopian(now).month, 1);
     
-    const estWeekly = employees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 7 : 0), 0);
-    const estMonthly = employees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : 0), 0);
+    const estWeekly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 7 : 0), 0);
+    const estMonthly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : 0), 0);
 
-    const actualWeekly = employees.reduce((acc, emp) => {
+    const actualWeekly = activeEmployees.reduce((acc, emp) => {
         if (emp.paymentMethod !== 'Weekly') return acc;
         const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
         if (!hourlyRate) return acc;
@@ -231,7 +237,7 @@ export default function DashboardPage() {
         return acc + (hoursWorked * hourlyRate);
     }, 0);
 
-    const actualMonthly = employees.reduce((acc, emp) => {
+    const actualMonthly = activeEmployees.reduce((acc, emp) => {
         if (emp.paymentMethod !== 'Monthly') return acc;
         const baseSalary = emp.monthlyRate || 0;
         const hourlyRate = baseSalary / 23.625 / 8;
@@ -261,7 +267,7 @@ export default function DashboardPage() {
     }, 0);
 
     return { totalEmployees, onSiteToday: onSiteTodayCount, estWeekly, actualWeekly, estMonthly, actualMonthly };
-  }, [employees, allAttendance]);
+  }, [activeEmployees, allAttendance]);
 
   const payrollHistory = useMemo(() => {
     if (!employees || allAttendance.length === 0) return [];
@@ -293,7 +299,8 @@ export default function DashboardPage() {
     const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
     const today = new Date();
     
-    return employees.filter(e => e.paymentMethod === 'Weekly').map(emp => {
+    // For weekly, only show active employees or those with records in the period
+    return employees.filter(e => e.paymentMethod === 'Weekly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: weekEnd })))).map(emp => {
         const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
         const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: weekEnd }));
         const totalHours = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
@@ -335,7 +342,8 @@ export default function DashboardPage() {
     const monthEnd = addDays(monthStart, getEthiopianMonthDays(ethMonth.year, ethMonth.month) - 1);
     const today = new Date();
     
-    return employees.filter(e => e.paymentMethod === 'Monthly').map(emp => {
+    // For monthly, only show active employees or those with records in the period
+    return employees.filter(e => e.paymentMethod === 'Monthly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })))).map(emp => {
         const base = emp.monthlyRate || 0;
         const hourly = base / 23.625 / 8;
         const minuteRate = hourly / 60;
@@ -386,8 +394,8 @@ export default function DashboardPage() {
 
   const dailyEarnings = useMemo(() => {
     if (!employees || !selectedDay) return [];
-    const date = new Date(selectedDay);
-    return employees.map(emp => {
+    // For daily, only show active employees or those with records today
+    return employees.filter(e => e.status !== 'Inactive' || todayAttendance?.some(r => r.employeeId === e.id)).map(emp => {
         const record = todayAttendance?.find(r => r.employeeId === emp.id);
         let amount = 0;
         if (emp.paymentMethod === 'Weekly') {
@@ -462,10 +470,10 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard title="Total Employees" value={dashboardStats.totalEmployees} icon={<Users className="h-5 w-5 text-muted-foreground" />} />
+        <StatCard title="Active Employees" value={dashboardStats.totalEmployees} icon={<Users className="h-5 w-5 text-muted-foreground" />} />
         <StatCard title="On-site Today" value={`${dashboardStats.onSiteToday} / ${dashboardStats.totalEmployees}`} icon={<UserCheck className="h-5 w-5 text-muted-foreground" />} />
-        <StatCard title="This Week's Payroll" value={`ETB ${dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-        <StatCard title="This Month's Payroll" value={`ETB ${dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+        <StatCard title="Weekly Payroll" value={`ETB ${dashboardStats.actualWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estWeekly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+        <StatCard title="Monthly Payroll" value={`ETB ${dashboardStats.actualMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} icon={<Wallet className="h-5 w-5 text-muted-foreground" />} description={`Est: ETB ${dashboardStats.estMonthly.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
       </div>
 
        <div className="flex flex-col gap-8">

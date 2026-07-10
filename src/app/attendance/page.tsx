@@ -84,8 +84,11 @@ export default function AttendancePage() {
     if (!firestore || !user) return null;
     return collection(firestore, 'employees');
   }, [firestore, user]);
-  const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
+  const { data: allEmployees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
   
+  // Filter for active employees only
+  const employees = useMemo(() => allEmployees?.filter(e => e.status !== 'Inactive') || [], [allEmployees]);
+
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
   const formattedDate = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
@@ -308,28 +311,34 @@ export default function AttendancePage() {
             </CardHeader>
             <CardContent>
                 {attendanceLoading && <p>Loading attendance...</p>}
-                {!attendanceLoading && <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
-                    {attendance.map((att) => {
-                        const overallStatus = getOverallStatus(att.morningStatus, att.afternoonStatus);
-                        return (
-                            <div key={att.employeeId} className="flex items-center gap-2">
-                                <button onClick={() => openAttendanceDialog(att.employeeId)} className="text-left flex-1">
-                                    <Card className="hover:bg-accent transition-colors">
-                                        <CardContent className="flex items-center justify-between p-4">
-                                            <p className="font-medium">{att.employeeName}</p>
-                                            <Badge variant={getStatusVariant(overallStatus)} className="capitalize">
-                                                {overallStatus}
-                                            </Badge>
-                                        </CardContent>
-                                    </Card>
-                                </button>
-                                <Button variant="outline" size="icon" onClick={() => openOvertimeDialog(att.employeeId)} aria-label="Log Overtime">
-                                    <Plus className="h-4 w-4"/>
-                                </Button>
-                            </div>
-                        )
-                    })}
-                </div>}
+                {!attendanceLoading && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
+                      {attendance.length > 0 ? (
+                        attendance.map((att) => {
+                            const overallStatus = getOverallStatus(att.morningStatus, att.afternoonStatus);
+                            return (
+                                <div key={att.employeeId} className="flex items-center gap-2">
+                                    <button onClick={() => openAttendanceDialog(att.employeeId)} className="text-left flex-1">
+                                        <Card className="hover:bg-accent transition-colors">
+                                            <CardContent className="flex items-center justify-between p-4">
+                                                <p className="font-medium">{att.employeeName}</p>
+                                                <Badge variant={getStatusVariant(overallStatus)} className="capitalize">
+                                                    {overallStatus}
+                                                </Badge>
+                                            </CardContent>
+                                        </Card>
+                                    </button>
+                                    <Button variant="outline" size="icon" onClick={() => openOvertimeDialog(att.employeeId)} aria-label="Log Overtime">
+                                        <Plus className="h-4 w-4"/>
+                                    </Button>
+                                </div>
+                            )
+                        })
+                      ) : (
+                        <p className="text-sm text-muted-foreground col-span-2">No active employees found.</p>
+                      )}
+                  </div>
+                )}
             </CardContent>
           </Card>
         </div>
@@ -418,7 +427,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-    
-
-    

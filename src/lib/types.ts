@@ -3,6 +3,8 @@ import { type DocumentData, type Timestamp } from 'firebase/firestore';
 
 export type PaymentMethod = "Weekly" | "Monthly";
 
+export type EmployeeStatus = "Active" | "Inactive";
+
 export interface Employee extends DocumentData {
   id:string;
   name: string;
@@ -14,6 +16,7 @@ export interface Employee extends DocumentData {
   monthlyRate?: number;
   hourlyRate?: number;
   attendanceStartDate?: string;
+  status?: EmployeeStatus;
 }
 
 export type AttendanceStatus = "Present" | "Absent" | "Late" | "Permission";
