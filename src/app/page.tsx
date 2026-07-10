@@ -291,15 +291,39 @@ export default function DashboardPage() {
     if (!employees || !selectedWeekStart) return [];
     const weekStart = new Date(selectedWeekStart);
     const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
+    const today = new Date();
+    
     return employees.filter(e => e.paymentMethod === 'Weekly').map(emp => {
         const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
         const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: weekEnd }));
         const totalHours = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
         const otHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
         const otPay = otHours * (hourlyRate || 0);
+        
+        let minutesLate = 0;
+        let hoursAbsent = 0;
+        const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        
+        eachDayOfInterval({ start: weekStart, end: weekEnd > today ? today : weekEnd }).forEach(day => {
+            if (getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
+                hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+            }
+        });
+        
+        records.forEach(r => minutesLate += calculateMinutesLate(r));
+
         return {
-            employeeId: emp.id, employeeName: emp.name, paymentMethod: emp.paymentMethod, period: "Selected Week",
-            amount: (totalHours + otHours) * (hourlyRate || 0), status: 'Unpaid', totalHours, overtimeHours: otHours, overtimeAmount: otPay
+            employeeId: emp.id, 
+            employeeName: emp.name, 
+            paymentMethod: emp.paymentMethod, 
+            period: "Selected Week",
+            amount: (totalHours + otHours) * (hourlyRate || 0), 
+            status: 'Unpaid', 
+            totalHours, 
+            overtimeHours: otHours, 
+            overtimeAmount: otPay,
+            minutesLate,
+            hoursAbsent
         };
     });
   }, [employees, allAttendance, selectedWeekStart]);
@@ -309,15 +333,53 @@ export default function DashboardPage() {
     const monthStart = new Date(selectedMonthStart);
     const ethMonth = toEthiopian(monthStart);
     const monthEnd = addDays(monthStart, getEthiopianMonthDays(ethMonth.year, ethMonth.month) - 1);
+    const today = new Date();
+    
     return employees.filter(e => e.paymentMethod === 'Monthly').map(emp => {
         const base = emp.monthlyRate || 0;
-        const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
-        const otHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
         const hourly = base / 23.625 / 8;
-        const otPay = otHours * (hourly || 0);
+        const minuteRate = hourly / 60;
+        
+        const ethYear = toEthiopian(monthStart).year;
+        const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
+                               .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
+        const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
+
+        const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
+        
+        let totalHoursAbsent = 0;
+        let minutesLate = 0;
+        const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+
+        records.forEach(r => {
+            const dateStr = format(getDateFromRecord(r.date), 'yyyy-MM-dd');
+            if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
+            if (getDay(getDateFromRecord(r.date)) !== 6 && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
+            minutesLate += calculateMinutesLate(r);
+        });
+
+        eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
+            if (getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
+                totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+            }
+        });
+
+        const otHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+        const otPay = otHours * hourly;
+        const deductions = (totalHoursAbsent * hourly) + (minutesLate * minuteRate);
+        const finalAmount = (base - deductions) + otPay;
+
         return {
-            employeeId: emp.id, employeeName: emp.name, paymentMethod: emp.paymentMethod, period: "Selected Month",
-            amount: base + otPay, status: 'Unpaid', overtimeHours: otHours, overtimeAmount: otPay
+            employeeId: emp.id, 
+            employeeName: emp.name, 
+            paymentMethod: emp.paymentMethod, 
+            period: "Selected Month",
+            amount: finalAmount, 
+            status: 'Unpaid', 
+            overtimeHours: otHours, 
+            overtimeAmount: otPay,
+            hoursAbsent: totalHoursAbsent,
+            minutesLate
         };
     });
   }, [employees, allAttendance, selectedMonthStart]);
@@ -443,7 +505,6 @@ export default function DashboardPage() {
                             <Input type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} className="w-full" />
                         </div>
                         
-                        {/* Mobile List View */}
                         <div className="grid grid-cols-1 gap-4 md:hidden">
                             {dailyEarnings.map(item => (
                                 <div key={item.employeeId} className="border rounded-lg p-4 space-y-3">
@@ -465,7 +526,6 @@ export default function DashboardPage() {
                             ))}
                         </div>
 
-                        {/* Desktop Table View */}
                         <div className="hidden md:block">
                             <Table>
                                 <TableHeader>
@@ -502,7 +562,6 @@ export default function DashboardPage() {
                             </Select>
                         </div>
 
-                        {/* Mobile List View */}
                         <div className="grid grid-cols-1 gap-4 md:hidden">
                             {weeklyPayroll.map(entry => (
                                 <div key={entry.employeeId} className="border rounded-lg p-4 space-y-2">
@@ -517,6 +576,10 @@ export default function DashboardPage() {
                                             <span>+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
                                         </div>
                                     )}
+                                    <div className="grid grid-cols-2 text-[10px] text-muted-foreground pt-1">
+                                        {entry.minutesLate > 0 && <span>Late: {entry.minutesLate}m</span>}
+                                        {entry.hoursAbsent > 0 && <span>Absent: {entry.hoursAbsent.toFixed(1)}h</span>}
+                                    </div>
                                     <div className="flex justify-between pt-2 border-t font-bold">
                                         <span>Weekly Total:</span>
                                         <span className="text-primary">ETB {entry.amount.toFixed(2)}</span>
@@ -525,13 +588,13 @@ export default function DashboardPage() {
                             ))}
                         </div>
 
-                        {/* Desktop Table View */}
                         <div className="hidden md:block">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Employee</TableHead>
                                         <TableHead>Working Hours</TableHead>
+                                        <TableHead>Late/Absent</TableHead>
                                         <TableHead>Overtime</TableHead>
                                         <TableHead className="text-right">Weekly Total</TableHead>
                                     </TableRow>
@@ -541,6 +604,11 @@ export default function DashboardPage() {
                                         <TableRow key={entry.employeeId}>
                                             <TableCell className="font-medium">{entry.employeeName}</TableCell>
                                             <TableCell>{entry.totalHours?.toFixed(1)} hrs</TableCell>
+                                            <TableCell className="text-xs text-muted-foreground">
+                                                {entry.minutesLate > 0 && <div>{entry.minutesLate}m late</div>}
+                                                {entry.hoursAbsent > 0 && <div>{entry.hoursAbsent.toFixed(1)}h absent</div>}
+                                                {entry.minutesLate === 0 && entry.hoursAbsent === 0 && "—"}
+                                            </TableCell>
                                             <TableCell>
                                                 {entry.overtimeHours > 0 ? (
                                                     <span className="text-primary font-medium">+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
@@ -562,13 +630,16 @@ export default function DashboardPage() {
                             </Select>
                         </div>
 
-                        {/* Mobile List View */}
                         <div className="grid grid-cols-1 gap-4 md:hidden">
                             {monthlyPayroll.map(entry => (
                                 <div key={entry.employeeId} className="border rounded-lg p-4 space-y-2">
                                     <div className="flex justify-between items-start">
                                         <div className="font-bold">{entry.employeeName}</div>
                                         <Badge variant="outline">{entry.paymentMethod}</Badge>
+                                    </div>
+                                    <div className="grid grid-cols-2 text-xs text-muted-foreground">
+                                        {entry.minutesLate > 0 && <span className="text-destructive">Late: {entry.minutesLate}m</span>}
+                                        {entry.hoursAbsent > 0 && <span className="text-destructive">Absent: {entry.hoursAbsent.toFixed(1)}h</span>}
                                     </div>
                                     {entry.overtimeHours > 0 && (
                                         <div className="flex justify-between text-sm text-primary">
@@ -584,13 +655,14 @@ export default function DashboardPage() {
                             ))}
                         </div>
 
-                        {/* Desktop Table View */}
                         <div className="hidden md:block">
                             <Table>
                                 <TableHeader>
                                     <TableRow>
                                         <TableHead>Employee</TableHead>
                                         <TableHead>Method</TableHead>
+                                        <TableHead>Late Time</TableHead>
+                                        <TableHead>Absent Day (Hrs)</TableHead>
                                         <TableHead>Overtime</TableHead>
                                         <TableHead className="text-right">Month To-Date</TableHead>
                                     </TableRow>
@@ -600,6 +672,12 @@ export default function DashboardPage() {
                                         <TableRow key={entry.employeeId}>
                                             <TableCell className="font-medium">{entry.employeeName}</TableCell>
                                             <TableCell><Badge variant="outline">{entry.paymentMethod}</Badge></TableCell>
+                                            <TableCell className={entry.minutesLate > 0 ? "text-destructive font-medium" : ""}>
+                                                {entry.minutesLate > 0 ? `${entry.minutesLate}m` : "—"}
+                                            </TableCell>
+                                            <TableCell className={entry.hoursAbsent > 0 ? "text-destructive font-medium" : ""}>
+                                                {entry.hoursAbsent > 0 ? `${entry.hoursAbsent.toFixed(1)}h` : "—"}
+                                            </TableCell>
                                             <TableCell>
                                                 {entry.overtimeHours > 0 ? (
                                                     <span className="text-primary font-medium">+{entry.overtimeHours} hrs (ETB {entry.overtimeAmount?.toFixed(2)})</span>
