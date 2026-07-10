@@ -28,7 +28,7 @@ import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePe
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
-import { Plus } from "lucide-react";
+import { Plus, Sunrise, Sun, Clock, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 
@@ -238,6 +238,8 @@ export default function AttendancePage() {
       }
 
       await saveAttendance(updatedAttendance);
+      // Update local state immediately for better responsiveness
+      setSelectedEmployeeAttendance(updatedAttendance);
       setIsAttendanceDialogOpen(false);
   };
 
@@ -346,39 +348,133 @@ export default function AttendancePage() {
       </div>
 
       <Dialog open={isAttendanceDialogOpen} onOpenChange={setIsAttendanceDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>
-              Log Attendance for {selectedEmployeeAttendance?.employeeName}
-            </DialogTitle>
-          </DialogHeader>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden">
+          <div className="bg-primary/5 p-6 border-b">
+            <DialogHeader>
+              <DialogTitle className="text-xl">
+                {selectedEmployeeAttendance?.employeeName}
+              </DialogTitle>
+              <DialogDescription>
+                Log attendance for {format(selectedDate, "PPPP")}
+              </DialogDescription>
+            </DialogHeader>
+          </div>
           {selectedEmployeeAttendance && (
-            <div className="grid gap-6 py-4">
-              <div className="grid gap-2">
-                  <Label>Morning</Label>
-                  <div className="text-sm text-muted-foreground flex items-center gap-2">
-                    Status: {getStatusBadge(selectedEmployeeAttendance.morningStatus)}
-                    {selectedEmployeeAttendance.morningEntry && ` at ${selectedEmployeeAttendance.morningEntry}`}
+            <div className="p-6 space-y-8">
+              {/* Morning Session */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
+                    <Sunrise className="h-4 w-4 text-orange-500" />
+                    Morning Session
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Present')} disabled={isSundayAndShouldBeDisabled}>Present</Button>
-                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Late')} disabled={isSundayAndShouldBeDisabled}>Late</Button>
-                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Absent')} disabled={isSundayAndShouldBeDisabled}>Absent</Button>
-                      {selectedEmployeeDetails?.paymentMethod === 'Monthly' && <Button variant="outline" size="sm" onClick={() => handleStatusClick('morning', 'Permission')} disabled={isSundayAndShouldBeDisabled}>Permission</Button>}
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(selectedEmployeeAttendance.morningStatus)}
+                    {selectedEmployeeAttendance.morningEntry && (
+                      <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                        {selectedEmployeeAttendance.morningEntry}
+                      </span>
+                    )}
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    variant={selectedEmployeeAttendance.morningStatus === 'Present' ? 'default' : 'outline'} 
+                    className="h-12 justify-start gap-3"
+                    onClick={() => handleStatusClick('morning', 'Present')}
+                    disabled={isSundayAndShouldBeDisabled}
+                  >
+                    <div className={cn("w-2 h-2 rounded-full", selectedEmployeeAttendance.morningStatus === 'Present' ? "bg-primary-foreground" : "bg-green-500")} />
+                    Present
+                  </Button>
+                  <Button 
+                    variant={selectedEmployeeAttendance.morningStatus === 'Late' ? 'default' : 'outline'} 
+                    className="h-12 justify-start gap-3"
+                    onClick={() => handleStatusClick('morning', 'Late')}
+                    disabled={isSundayAndShouldBeDisabled}
+                  >
+                    <div className={cn("w-2 h-2 rounded-full", selectedEmployeeAttendance.morningStatus === 'Late' ? "bg-primary-foreground" : "bg-amber-500")} />
+                    Late
+                  </Button>
+                  <Button 
+                    variant={selectedEmployeeAttendance.morningStatus === 'Absent' ? 'default' : 'outline'} 
+                    className="h-12 justify-start gap-3"
+                    onClick={() => handleStatusClick('morning', 'Absent')}
+                    disabled={isSundayAndShouldBeDisabled}
+                  >
+                    <div className={cn("w-2 h-2 rounded-full", selectedEmployeeAttendance.morningStatus === 'Absent' ? "bg-primary-foreground" : "bg-destructive")} />
+                    Absent
+                  </Button>
+                  {selectedEmployeeDetails?.paymentMethod === 'Monthly' && (
+                    <Button 
+                      variant={selectedEmployeeAttendance.morningStatus === 'Permission' ? 'default' : 'outline'} 
+                      className="h-12 justify-start gap-3"
+                      onClick={() => handleStatusClick('morning', 'Permission')}
+                      disabled={isSundayAndShouldBeDisabled}
+                    >
+                      <div className={cn("w-2 h-2 rounded-full", selectedEmployeeAttendance.morningStatus === 'Permission' ? "bg-primary-foreground" : "bg-blue-500")} />
+                      Permission
+                    </Button>
+                  )}
+                </div>
               </div>
-              <div className="grid gap-2">
-                  <Label>Afternoon</Label>
-                   <div className="text-sm text-muted-foreground flex items-center gap-2">
-                    Status: {getStatusBadge(selectedEmployeeAttendance.afternoonStatus)}
-                    {selectedEmployeeAttendance.afternoonEntry && ` at ${selectedEmployeeAttendance.afternoonEntry}`}
+
+              {/* Afternoon Session */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
+                    <Sun className="h-4 w-4 text-amber-500" />
+                    Afternoon Session
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Present')} disabled={isSundayAndShouldBeDisabled}>Present</Button>
-                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Late')} disabled={isSundayAndShouldBeDisabled}>Late</Button>
-                      <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Absent')} disabled={isSundayAndShouldBeDisabled}>Absent</Button>
-                      {selectedEmployeeDetails?.paymentMethod === 'Monthly' && <Button variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', 'Permission')} disabled={isSundayAndShouldBeDisabled}>Permission</Button>}
+                  <div className="flex items-center gap-2">
+                    {getStatusBadge(selectedEmployeeAttendance.afternoonStatus)}
+                    {selectedEmployeeAttendance.afternoonEntry && (
+                      <span className="text-xs font-mono text-muted-foreground bg-muted px-2 py-0.5 rounded">
+                        {selectedEmployeeAttendance.afternoonEntry}
+                      </span>
+                    )}
                   </div>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button 
+                    variant={selectedEmployeeAttendance.afternoonStatus === 'Present' ? 'default' : 'outline'} 
+                    className="h-12 justify-start gap-3"
+                    onClick={() => handleStatusClick('afternoon', 'Present')}
+                    disabled={isSundayAndShouldBeDisabled}
+                  >
+                    <div className={cn("w-2 h-2 rounded-full", selectedEmployeeAttendance.afternoonStatus === 'Present' ? "bg-primary-foreground" : "bg-green-500")} />
+                    Present
+                  </Button>
+                  <Button 
+                    variant={selectedEmployeeAttendance.afternoonStatus === 'Late' ? 'default' : 'outline'} 
+                    className="h-12 justify-start gap-3"
+                    onClick={() => handleStatusClick('afternoon', 'Late')}
+                    disabled={isSundayAndShouldBeDisabled}
+                  >
+                    <div className={cn("w-2 h-2 rounded-full", selectedEmployeeAttendance.afternoonStatus === 'Late' ? "bg-primary-foreground" : "bg-amber-500")} />
+                    Late
+                  </Button>
+                  <Button 
+                    variant={selectedEmployeeAttendance.afternoonStatus === 'Absent' ? 'default' : 'outline'} 
+                    className="h-12 justify-start gap-3"
+                    onClick={() => handleStatusClick('afternoon', 'Absent')}
+                    disabled={isSundayAndShouldBeDisabled}
+                  >
+                    <div className={cn("w-2 h-2 rounded-full", selectedEmployeeAttendance.afternoonStatus === 'Absent' ? "bg-primary-foreground" : "bg-destructive")} />
+                    Absent
+                  </Button>
+                  {selectedEmployeeDetails?.paymentMethod === 'Monthly' && (
+                    <Button 
+                      variant={selectedEmployeeAttendance.afternoonStatus === 'Permission' ? 'default' : 'outline'} 
+                      className="h-12 justify-start gap-3"
+                      onClick={() => handleStatusClick('afternoon', 'Permission')}
+                      disabled={isSundayAndShouldBeDisabled}
+                    >
+                      <div className={cn("w-2 h-2 rounded-full", selectedEmployeeAttendance.afternoonStatus === 'Permission' ? "bg-primary-foreground" : "bg-blue-500")} />
+                      Permission
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
           )}
