@@ -406,7 +406,7 @@ export default function DashboardPage() {
         const overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
         const overtimePay = overtimeHours * hourly;
         const deductions = (totalHoursAbsent * hourly) + (minutesLate * minuteRate);
-        const finalAmount = (base - deductions) + otPay;
+        const finalAmount = (base - deductions) + overtimePay;
 
         return {
             employeeId: emp.id, 
@@ -415,8 +415,8 @@ export default function DashboardPage() {
             period: "Selected Month",
             amount: finalAmount, 
             status: 'Unpaid', 
-            overtimeHours: otHours, 
-            overtimeAmount: otPay,
+            overtimeHours: overtimeHours, 
+            overtimeAmount: overtimePay,
             hoursAbsent: totalHoursAbsent,
             minutesLate
         };
