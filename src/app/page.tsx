@@ -241,6 +241,7 @@ export default function DashboardPage() {
         const baseSalary = emp.monthlyRate || 0;
         const hourlyRate = baseSalary / 23.625 / 8;
         const minuteRate = hourlyRate / 60;
+        const empStartDate = emp.attendanceStartDate ? new Date(emp.attendanceStartDate) : new Date(0);
         
         const ethYear = toEthiopian(monthStart).year;
         const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
@@ -261,7 +262,7 @@ export default function DashboardPage() {
         }, 0);
 
         eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
-            if (getDay(day) !== 0 && !recordsInMonth.some(r => isSameDay(getDateFromRecord(r.date), day))) {
+            if (day >= empStartDate && getDay(day) !== 0 && !recordsInMonth.some(r => isSameDay(getDateFromRecord(r.date), day))) {
                 totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
             }
         });
@@ -311,13 +312,14 @@ export default function DashboardPage() {
         const totalHours = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
         const otHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
         const otPay = otHours * (hourlyRate || 0);
+        const empStartDate = emp.attendanceStartDate ? new Date(emp.attendanceStartDate) : new Date(0);
         
         let minutesLate = 0;
         let hoursAbsent = 0;
         const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
         
         eachDayOfInterval({ start: weekStart, end: weekEnd > today ? today : weekEnd }).forEach(day => {
-            if (getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
+            if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
                 hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
             }
         });
@@ -351,6 +353,7 @@ export default function DashboardPage() {
         const base = emp.monthlyRate || 0;
         const hourly = base / 23.625 / 8;
         const minuteRate = hourly / 60;
+        const empStartDate = emp.attendanceStartDate ? new Date(emp.attendanceStartDate) : new Date(0);
         
         const ethYear = toEthiopian(monthStart).year;
         const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
@@ -375,7 +378,7 @@ export default function DashboardPage() {
         });
 
         eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
-            if (getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
+            if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
                 totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
             }
         });
