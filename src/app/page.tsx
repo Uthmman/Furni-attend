@@ -4,7 +4,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, CalendarDays, Clock } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
@@ -467,6 +467,20 @@ export default function DashboardPage() {
       }
   };
 
+  const handlePrevDay = () => {
+    const d = parse(selectedDay, "yyyy-MM-dd", new Date());
+    if (isValid(d)) {
+        handleGlobalDateSelect(addDays(d, -1));
+    }
+  };
+
+  const handleNextDay = () => {
+    const d = parse(selectedDay, "yyyy-MM-dd", new Date());
+    if (isValid(d)) {
+        handleGlobalDateSelect(addDays(d, 1));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -509,8 +523,14 @@ export default function DashboardPage() {
                     </TabsList>
                     
                     <TabsContent value="today" className="space-y-4">
-                        <div className="flex items-center gap-2 max-w-xs">
-                            <Input type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} className="w-full" />
+                        <div className="flex items-center gap-2 max-w-sm">
+                            <Button variant="outline" size="icon" onClick={handlePrevDay}>
+                                <ChevronLeft className="h-4 w-4" />
+                            </Button>
+                            <Input type="date" value={selectedDay} onChange={(e) => setSelectedDay(e.target.value)} className="w-full flex-1" />
+                            <Button variant="outline" size="icon" onClick={handleNextDay}>
+                                <ChevronRight className="h-4 w-4" />
+                            </Button>
                         </div>
                         
                         <div className="grid grid-cols-1 gap-4 md:hidden">
