@@ -1,5 +1,4 @@
 
-
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
@@ -156,9 +155,6 @@ const toEthiopian = (date: Date) => {
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
     // This is an approximation. For exact conversion, a library is better.
-    // The core idea is to find an anchor date and calculate the offset.
-    // Anchor: 1st day of Meskerem 1 EC is Sep 11, 8 AD (Julian).
-    // Let's use a simpler, albeit less accurate, approximation based on offsets from today.
     const today = new Date();
     const ethToday = toEthiopian(today);
 
@@ -275,13 +271,13 @@ export default function EmployeeProfilePage() {
             });
 
             // Go to previous month
-            const prevMonthDate = addDays(monthStart, -5); // Go back a few days to be sure we are in the previous month
+            const prevMonthDate = addDays(monthStart, -5); 
             const prevEthDate = toEthiopian(prevMonthDate);
             currentMonthStart = toGregorian(prevEthDate.year, prevEthDate.month, 1);
         }
 
     } else { // Weekly
-        let currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 0 }); // Start of current week (Sunday)
+        let currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 0 }); 
         for(let i=0; i<12; i++){
             const weekStart = currentWeekStart;
             const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
@@ -447,7 +443,6 @@ export default function EmployeeProfilePage() {
               if (day >= employeeStartDate && day <= today) {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
-                    // Do not count unrecorded sundays or saturday afternoons as absent time for weekly
                     if(getDay(day) === 6){ // Saturday
                         totalHoursAbsent += 4.5;
                     } else if (getDay(day) !== 0) {
@@ -614,7 +609,10 @@ export default function EmployeeProfilePage() {
                       </Avatar>
                       <div className="flex-grow">
                           <CardTitle>{employee.name}</CardTitle>
-                          <Badge variant="secondary" className="mt-1">{employee.position}</Badge>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge variant="secondary">{employee.position}</Badge>
+                            <Badge variant={employee.status === 'Inactive' ? 'destructive' : 'default'}>{employee.status || 'Active'}</Badge>
+                          </div>
                       </div>
                   </div>
                 </AccordionTrigger>
@@ -801,7 +799,3 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
-
-
-
-    
