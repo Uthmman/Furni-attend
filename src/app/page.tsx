@@ -104,9 +104,10 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
     }
 
     if (getDay(recordDate) === 6) { // Saturday
-        if(record.afternoonStatus !== 'Absent') {
+        if (record.morningStatus !== 'Absent') {
              return 4.5;
         }
+        return 0;
     }
 
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
@@ -353,7 +354,13 @@ export default function DashboardPage() {
             }
         });
         
-        records.forEach(r => minutesLate += calculateMinutesLate(r));
+        records.forEach(r => {
+            minutesLate += calculateMinutesLate(r);
+            // Session-aware absence tracking for recorded but absent sessions
+            const isSaturday = getDay(getDateFromRecord(r.date)) === 6;
+            if (r.morningStatus === 'Absent') hoursAbsent += 4.5;
+            if (!isSaturday && r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
+        });
 
         return {
             employeeId: emp.id, 
@@ -794,7 +801,7 @@ export default function DashboardPage() {
                     </TabsContent>
 
                     <TabsContent value="month" className="space-y-6">
-                        <div className="flex items-center gap-2 max-w-xs mx-auto">
+                        <div className="flex items-center gap-3 bg-muted/30 p-2 rounded-xl w-fit mx-auto">
                             <Select value={selectedMonthStart} onValueChange={(v) => setSelectedMonthStart(v)}>
                                 <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
                                 <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>

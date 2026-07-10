@@ -468,6 +468,10 @@ export default function EmployeeProfilePage() {
 
       filteredAttendance.forEach(record => {
           totalMinutesLate += calculateMinutesLate(record);
+          // NEW: Count recorded absences for weekly employees as well
+          const isSaturday = getDay(getDateFromRecord(record.date)) === 6;
+          if (record.morningStatus === 'Absent') totalHoursAbsent += 4.5;
+          if (!isSaturday && record.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
       });
       
       const baseAmount = totalHours * (currentHourlyRate || 0);

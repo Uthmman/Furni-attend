@@ -114,6 +114,13 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
         }
         return 0;
     }
+
+    if (getDay(recordDate) === 6) { // Saturday
+        if (record.morningStatus !== 'Absent') {
+             return 4.5;
+        }
+        return 0;
+    }
     
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
@@ -285,12 +292,16 @@ export default function PayrollPage() {
 
         relevantRecords.forEach(r => {
             minutesLate += calculateMinutesLate(r);
+            // Session-aware absence tracking for recorded absences
+            const isSaturday = getDay(getDateFromRecord(r.date)) === 6;
+            if (r.morningStatus === 'Absent') hoursAbsent += 4.5;
+            if (!isSaturday && r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
         });
 
         periodDays.forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
             if (!recordedDates.has(dayStr)) {
-                // Not recorded means absent, but don't count for pay, just for summary.
+                // Not recorded means absent
                 const isSunday = getDay(day) === 0;
                 const isSaturday = getDay(day) === 6;
                 if (!isSunday && !isSaturday) {
@@ -364,8 +375,8 @@ export default function PayrollPage() {
 
         const calculationPeriod = { start: monthStart, end: monthEnd };
         const allRecordsForMonth = allAttendance.filter(r => 
-            r.employeeId === employee.id &&
-            isValid(getDateFromRecord(r.date)) &&
+            r.employeeId === employee.id && 
+            isValid(getDateFromRecord(r.date)) && 
             isWithinInterval(getDateFromRecord(r.date), calculationPeriod)
         );
         const recordedDatesForMonth = new Set(allRecordsForMonth.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
