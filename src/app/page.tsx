@@ -3,7 +3,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins, BarChart3 } from "lucide-react";
 import type { Employee, AttendanceRecord } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfDay, endOfDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
@@ -20,6 +20,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
+import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
@@ -63,7 +64,6 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 };
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
-    // Robust search logic with noon-reference to avoid timezone midnight shifts
     let date = new Date(ethYear + 7, ethMonth + 7, ethDay, 12, 0, 0);
     for (let i = 0; i < 60; i++) {
         const eth = toEthiopian(date);
@@ -96,14 +96,14 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
 
-    if (getDay(recordDate) === 0) { // Sunday
+    if (getDay(recordDate) === 0) {
         if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') {
              return 8; 
         }
         return 0;
     }
 
-    if (getDay(recordDate) === 6) { // Saturday
+    if (getDay(recordDate) === 6) {
         if (record.morningStatus !== 'Absent') {
              return 4.5;
         }
@@ -184,7 +184,6 @@ export default function DashboardPage() {
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [attendanceLoading, setAttendanceLoading] = useState(true);
 
-  // Using yyyy-MM-dd format for stable state that doesn't shift between local/UTC
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 0 }), "yyyy-MM-dd"));
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
@@ -356,7 +355,6 @@ export default function DashboardPage() {
         
         records.forEach(r => {
             minutesLate += calculateMinutesLate(r);
-            // Session-aware absence tracking for recorded but absent sessions
             const isSaturday = getDay(getDateFromRecord(r.date)) === 6;
             if (r.morningStatus === 'Absent') hoursAbsent += 4.5;
             if (!isSaturday && r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
@@ -440,6 +438,74 @@ export default function DashboardPage() {
         };
     });
   }, [employees, allAttendance, selectedMonthStart]);
+
+  // Logic for expense breakdown charts
+  const weeklyExpenseData = useMemo(() => {
+    if (!selectedWeekStart || !employees || allAttendance.length === 0) return [];
+    const weekStart = startOfDay(new Date(selectedWeekStart));
+    const weekEnd = endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
+    const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
+
+    const ethMonthStart = toGregorian(toEthiopian(weekStart).year, toEthiopian(weekStart).month, 1);
+    const workingUnits = getMonthlyWorkingUnits(ethMonthStart, 30);
+
+    return daysInWeek.map(day => {
+        let dailyTotal = 0;
+        const dayStr = format(day, "yyyy-MM-dd");
+
+        employees.forEach(emp => {
+            let hourlyRate = 0;
+            if (emp.paymentMethod === 'Monthly') {
+                hourlyRate = (emp.monthlyRate || 0) / workingUnits / 8;
+            } else {
+                hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+            }
+            
+            const record = allAttendance.find(r => r.employeeId === emp.id && format(getDateFromRecord(r.date), "yyyy-MM-dd") === dayStr);
+            if (record) {
+                dailyTotal += (calculateHoursWorked(record, emp.paymentMethod === 'Monthly') + (record.overtimeHours || 0)) * hourlyRate;
+            } else if (emp.paymentMethod === 'Weekly' && getDay(day) === 0) {
+                if (new Date(emp.attendanceStartDate || 0) <= day) dailyTotal += 8 * hourlyRate;
+            }
+        });
+
+        return { name: ethiopianDateFormatter(day, { weekday: 'short' }), total: Math.round(dailyTotal) };
+    });
+  }, [selectedWeekStart, employees, allAttendance]);
+
+  const monthlyExpenseData = useMemo(() => {
+    if (!selectedMonthStart || !employees || allAttendance.length === 0) return [];
+    const monthStart = startOfDay(new Date(selectedMonthStart));
+    const ethMonth = toEthiopian(monthStart);
+    const daysInMonthCount = getEthiopianMonthDays(ethMonth.year, ethMonth.month);
+    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
+    const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
+    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+    return daysInMonth.map(day => {
+        let dailyTotal = 0;
+        const dayStr = format(day, "yyyy-MM-dd");
+
+        employees.forEach(emp => {
+            let hourlyRate = 0;
+            if (emp.paymentMethod === 'Monthly') {
+                hourlyRate = (emp.monthlyRate || 0) / workingUnits / 8;
+            } else {
+                hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+            }
+            
+            const record = allAttendance.find(r => r.employeeId === emp.id && format(getDateFromRecord(r.date), "yyyy-MM-dd") === dayStr);
+            if (record) {
+                dailyTotal += (calculateHoursWorked(record, emp.paymentMethod === 'Monthly') + (record.overtimeHours || 0)) * hourlyRate;
+            } else if (emp.paymentMethod === 'Weekly' && getDay(day) === 0) {
+                if (new Date(emp.attendanceStartDate || 0) <= day) dailyTotal += 8 * hourlyRate;
+            }
+        });
+
+        return { name: toEthiopian(day).day.toString(), total: Math.round(dailyTotal) };
+    });
+  }, [selectedMonthStart, employees, allAttendance]);
+
 
   const dailyEarnings = useMemo(() => {
     if (!employees || !selectedDay) return [];
@@ -727,12 +793,32 @@ export default function DashboardPage() {
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="week" className="space-y-6">
-                        <div className="flex items-center gap-2 max-w-xs mx-auto">
-                             <Select value={selectedWeekStart} onValueChange={(v) => setSelectedWeekStart(v)}>
-                                <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select week" /></SelectTrigger>
-                                <SelectContent>{weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
-                            </Select>
+                    <TabsContent value="week" className="space-y-8">
+                        <div className="flex flex-col gap-6">
+                            <div className="flex items-center gap-2 w-full max-w-sm mx-auto">
+                                 <Select value={selectedWeekStart} onValueChange={(v) => setSelectedWeekStart(v)}>
+                                    <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select week" /></SelectTrigger>
+                                    <SelectContent>{weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="bg-muted/10 p-4 rounded-2xl border border-dashed">
+                                <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-muted-foreground">
+                                    <BarChart3 className="h-4 w-4" />
+                                    Daily Expense Breakdown (Week)
+                                </div>
+                                <div className="h-[200px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={weeklyExpenseData}>
+                                            <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.3} />
+                                            <XAxis dataKey="name" stroke="#888888" fontSize={10} tickLine={false} axisLine={false} />
+                                            <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `ETB ${v}`} />
+                                            <Tooltip cursor={{fill: 'hsl(var(--primary) / 0.05)'}} contentStyle={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", borderRadius: '8px', fontSize: '12px' }} />
+                                            <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 gap-4 md:hidden">
@@ -800,12 +886,32 @@ export default function DashboardPage() {
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="month" className="space-y-6">
-                        <div className="flex items-center gap-3 bg-muted/30 p-2 rounded-xl w-fit mx-auto">
-                            <Select value={selectedMonthStart} onValueChange={(v) => setSelectedMonthStart(v)}>
-                                <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
-                                <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
-                            </Select>
+                    <TabsContent value="month" className="space-y-8">
+                        <div className="flex flex-col gap-6">
+                            <div className="flex items-center gap-3 w-full max-w-sm mx-auto">
+                                <Select value={selectedMonthStart} onValueChange={(v) => setSelectedMonthStart(v)}>
+                                    <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
+                                    <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
+                                </Select>
+                            </div>
+
+                            <div className="bg-muted/10 p-4 rounded-2xl border border-dashed">
+                                <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-muted-foreground">
+                                    <BarChart3 className="h-4 w-4" />
+                                    Daily Expense Breakdown (Month)
+                                </div>
+                                <div className="h-[200px] w-full">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                        <BarChart data={monthlyExpenseData}>
+                                            <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.3} />
+                                            <XAxis dataKey="name" stroke="#888888" fontSize={10} tickLine={false} axisLine={false} />
+                                            <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `ETB ${v}`} />
+                                            <Tooltip cursor={{fill: 'hsl(var(--primary) / 0.05)'}} contentStyle={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", borderRadius: '8px', fontSize: '12px' }} />
+                                            <Bar dataKey="total" fill="hsl(var(--chart-2))" radius={[2, 2, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </div>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-1 gap-4 md:hidden">
