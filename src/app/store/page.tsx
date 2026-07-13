@@ -29,7 +29,9 @@ import {
   ArrowDownRight, 
   History,
   Edit2,
-  AlertTriangle
+  AlertTriangle,
+  PlusCircle,
+  MinusCircle
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, orderBy, limit } from "firebase/firestore";
@@ -37,6 +39,7 @@ import type { Item, StockAdjustment } from "@/lib/types";
 import { ItemForm } from "./item-form";
 import { AdjustmentDialog } from "./adjustment-dialog";
 import { format } from "date-fns";
+import { cn } from "@/lib/utils";
 
 export default function StorePage() {
   const { setTitle } = usePageTitle();
@@ -46,6 +49,7 @@ export default function StorePage() {
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
+  const [adjustmentType, setAdjustmentType] = useState<"In" | "Out" | null>(null);
 
   useEffect(() => {
     setTitle("Store Management");
@@ -70,7 +74,7 @@ export default function StorePage() {
     return items.filter(item => 
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
-    );
+    ).sort((a, b) => a.name.localeCompare(b.name));
   }, [items, searchQuery]);
 
   const handleEditItem = (item: Item) => {
@@ -78,15 +82,42 @@ export default function StorePage() {
     setIsItemFormOpen(true);
   };
 
-  const handleAdjustStock = (item: Item) => {
+  const handleAdjustStock = (item: Item | null, type: "In" | "Out" | null) => {
     setSelectedItem(item);
+    setAdjustmentType(type);
     setIsAdjustmentOpen(true);
   };
 
   if (itemsLoading && !items) return <div className="p-8 text-center">Loading Store Inventory...</div>;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 relative min-h-[calc(100vh-200px)] pb-24">
+      {/* Floating Action Buttons */}
+      <div className="fixed bottom-24 right-6 flex flex-col gap-3 z-50 md:bottom-12 md:right-12">
+        <Button 
+          size="lg" 
+          className="rounded-full shadow-2xl bg-green-600 hover:bg-green-700 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110"
+          onClick={() => handleAdjustStock(null, "In")}
+          title="Stock In (Restock/Buy)"
+        >
+          <PlusCircle className="h-8 w-8" />
+          <span className="absolute right-full mr-3 bg-card border px-3 py-1.5 rounded-lg text-sm font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+            Stock In (Bought)
+          </span>
+        </Button>
+        <Button 
+          size="lg" 
+          className="rounded-full shadow-2xl bg-destructive hover:bg-destructive/90 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110"
+          onClick={() => handleAdjustStock(null, "Out")}
+          title="Stock Out (Use/Sold)"
+        >
+          <MinusCircle className="h-8 w-8" />
+          <span className="absolute right-full mr-3 bg-card border px-3 py-1.5 rounded-lg text-sm font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
+            Stock Out (Used)
+          </span>
+        </Button>
+      </div>
+
       <ItemForm 
         isOpen={isItemFormOpen} 
         setIsOpen={setIsItemFormOpen} 
@@ -96,51 +127,53 @@ export default function StorePage() {
       <AdjustmentDialog 
         isOpen={isAdjustmentOpen} 
         setIsOpen={setIsAdjustmentOpen} 
-        item={selectedItem} 
-        onClose={() => setSelectedItem(null)} 
+        items={items || []}
+        preSelectedItem={selectedItem} 
+        forcedType={adjustmentType}
+        onClose={() => { setSelectedItem(null); setAdjustmentType(null); }} 
       />
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="relative w-full sm:w-72">
+        <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="Search items or categories..." 
-            className="pl-10 h-10"
+            className="pl-10 h-11 bg-background border-primary/20 shadow-sm"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Button onClick={() => setIsItemFormOpen(true)} className="h-10">
-          <Plus className="mr-2 h-4 w-4" /> Add New Item
+        <Button onClick={() => setIsItemFormOpen(true)} className="h-11 shadow-sm border-dashed" variant="outline">
+          <Plus className="mr-2 h-4 w-4" /> Register New Item
         </Button>
       </div>
 
       <Tabs defaultValue="inventory" className="w-full">
-        <TabsList className="mb-4 h-12 p-1 bg-muted/50">
-          <TabsTrigger value="inventory" className="flex items-center gap-2 px-4">
+        <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full sm:w-auto">
+          <TabsTrigger value="inventory" className="flex items-center gap-2 px-6">
             <Package className="h-4 w-4" /> Inventory
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2 px-4">
-            <History className="h-4 w-4" /> Recent Activity
+          <TabsTrigger value="history" className="flex items-center gap-2 px-6">
+            <History className="h-4 w-4" /> Activity Log
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="inventory">
-          <Card className="shadow-sm border-primary/10">
-            <CardHeader>
-              <CardTitle>Current Stock Levels</CardTitle>
-              <CardDescription>Monitor hardware, paints, and workshop supplies.</CardDescription>
+        <TabsContent value="inventory" className="space-y-6">
+          <Card className="shadow-lg border-primary/10 overflow-hidden">
+            <CardHeader className="bg-primary/5 border-b">
+              <CardTitle>Current Inventory</CardTitle>
+              <CardDescription>Track and manage your hardware, wood, and production materials.</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-muted/30">
                     <TableRow>
-                      <TableHead>Item Name</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead className="text-center">Stock Level</TableHead>
-                      <TableHead>Unit</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="font-bold pl-6">Item Name</TableHead>
+                      <TableHead className="font-bold">Category</TableHead>
+                      <TableHead className="text-center font-bold">Stock Level</TableHead>
+                      <TableHead className="font-bold">Unit</TableHead>
+                      <TableHead className="text-right pr-6 font-bold">Quick Actions</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -148,46 +181,62 @@ export default function StorePage() {
                       filteredItems.map((item) => {
                         const isLowStock = item.stockLevel <= (item.lowStockThreshold || 5);
                         return (
-                          <TableRow key={item.id} className="hover:bg-muted/30 transition-colors">
-                            <TableCell className="font-medium">
+                          <TableRow key={item.id} className="hover:bg-primary/[0.02] transition-colors border-b last:border-0">
+                            <TableCell className="font-semibold py-4 pl-6">
                               <div className="flex items-center gap-2">
                                 {item.name}
                                 {isLowStock && (
-                                  <AlertTriangle className="h-4 w-4 text-destructive animate-pulse" />
+                                  <div className="flex items-center gap-1 text-[10px] text-destructive bg-destructive/10 px-2 py-0.5 rounded-full uppercase tracking-tighter">
+                                    <AlertTriangle className="h-3 w-3" /> Low Stock
+                                  </div>
                                 )}
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className="capitalize text-[10px] font-bold">
+                              <Badge variant="secondary" className="capitalize text-[10px] font-bold h-6 px-3 bg-primary/5 text-primary border-none shadow-sm">
                                 {item.category || "General"}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-center">
                               <Badge 
-                                variant={isLowStock ? "destructive" : "secondary"}
-                                className="w-16 justify-center font-bold text-sm h-7"
+                                variant={isLowStock ? "destructive" : "outline"}
+                                className={cn(
+                                  "w-20 justify-center font-black text-base h-9 shadow-sm",
+                                  !isLowStock && "border-green-200 text-green-700 bg-green-50"
+                                )}
                               >
                                 {item.stockLevel}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-muted-foreground text-xs uppercase tracking-tighter">
+                            <TableCell className="text-muted-foreground font-mono text-xs uppercase tracking-tighter">
                               {item.unitOfMeasurement}
                             </TableCell>
-                            <TableCell className="text-right">
-                              <div className="flex justify-end gap-2">
+                            <TableCell className="text-right pr-6">
+                              <div className="flex justify-end items-center gap-1">
                                 <Button 
-                                  variant="outline" 
-                                  size="sm" 
-                                  onClick={() => handleAdjustStock(item)}
-                                  className="h-8"
+                                  variant="ghost" 
+                                  size="icon" 
+                                  onClick={() => handleAdjustStock(item, "In")}
+                                  className="h-9 w-9 text-green-600 hover:text-green-700 hover:bg-green-50 rounded-full"
+                                  title="Stock In"
                                 >
-                                  Movement
+                                  <PlusCircle className="h-5 w-5" />
                                 </Button>
                                 <Button 
                                   variant="ghost" 
                                   size="icon" 
+                                  onClick={() => handleAdjustStock(item, "Out")}
+                                  className="h-9 w-9 text-destructive hover:text-destructive hover:bg-destructive/10 rounded-full"
+                                  title="Stock Out"
+                                >
+                                  <MinusCircle className="h-5 w-5" />
+                                </Button>
+                                <div className="w-[1px] h-6 bg-border mx-2" />
+                                <Button 
+                                  variant="ghost" 
+                                  size="icon" 
                                   onClick={() => handleEditItem(item)}
-                                  className="h-8 w-8"
+                                  className="h-9 w-9 rounded-full"
                                 >
                                   <Edit2 className="h-4 w-4" />
                                 </Button>
@@ -198,8 +247,12 @@ export default function StorePage() {
                       })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                          {searchQuery ? "No items match your search." : "No items found in your store."}
+                        <TableCell colSpan={5} className="h-40 text-center">
+                          <div className="flex flex-col items-center justify-center text-muted-foreground gap-2">
+                             <Package className="h-10 w-10 opacity-20" />
+                             <p>{searchQuery ? "No items match your search." : "Your store inventory is empty."}</p>
+                             <Button variant="link" onClick={() => setIsItemFormOpen(true)}>Add your first item</Button>
+                          </div>
                         </TableCell>
                       </TableRow>
                     )}
@@ -211,54 +264,56 @@ export default function StorePage() {
         </TabsContent>
 
         <TabsContent value="history">
-          <Card className="shadow-sm border-primary/10">
-            <CardHeader>
-              <CardTitle>Stock Movement Log</CardTitle>
-              <CardDescription>Audit trail of all inventory additions and usages.</CardDescription>
+          <Card className="shadow-lg border-primary/10 overflow-hidden">
+            <CardHeader className="bg-primary/5 border-b">
+              <CardTitle>Recent Activity</CardTitle>
+              <CardDescription>Full audit trail of all store movements.</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="p-0">
               <div className="overflow-x-auto">
                 <Table>
-                  <TableHeader>
+                  <TableHeader className="bg-muted/30">
                     <TableRow>
-                      <TableHead>Date</TableHead>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Type</TableHead>
+                      <TableHead className="pl-6">Timestamp</TableHead>
+                      <TableHead>Supplies</TableHead>
+                      <TableHead>Movement</TableHead>
                       <TableHead className="text-center">Quantity</TableHead>
-                      <TableHead>Reason</TableHead>
+                      <TableHead className="pr-6">Note / Reason</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {adjustments && adjustments.length > 0 ? (
                       adjustments.map((adj) => (
-                        <TableRow key={adj.id}>
-                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                            {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
-                          </TableCell>
-                          <TableCell className="font-medium">{adj.itemName || "Deleted Item"}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1">
-                              {adj.type === "In" ? (
-                                <ArrowUpRight className="h-4 w-4 text-green-500" />
-                              ) : (
-                                <ArrowDownRight className="h-4 w-4 text-destructive" />
-                              )}
-                              <span className={cn("text-[10px] font-bold uppercase", adj.type === "In" ? "text-green-600" : "text-destructive")}>
-                                {adj.type === "In" ? "Stock In" : "Stock Out"}
-                              </span>
+                        <TableRow key={adj.id} className="hover:bg-muted/10 transition-colors">
+                          <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap pl-6 py-4">
+                            <div className="flex flex-col">
+                               <span className="font-bold text-foreground">{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d") : "N/A"}</span>
+                               <span>{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "HH:mm") : "N/A"}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-center font-bold">
-                            {Math.abs(adj.adjustmentQuantity)}
+                          <TableCell className="font-semibold">{adj.itemName || "Unknown Item"}</TableCell>
+                          <TableCell>
+                            <div className={cn(
+                                "flex items-center gap-1.5 w-fit px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider",
+                                adj.type === "In" ? "bg-green-100 text-green-700" : "bg-destructive/10 text-destructive"
+                            )}>
+                              {adj.type === "In" ? <ArrowUpRight className="h-3 w-3" /> : <ArrowDownRight className="h-3 w-3" />}
+                              {adj.type === "In" ? "Bought" : "Used"}
+                            </div>
                           </TableCell>
-                          <TableCell className="text-xs italic text-muted-foreground max-w-[200px] truncate">
+                          <TableCell className="text-center">
+                            <span className={cn("font-black text-lg", adj.type === "In" ? "text-green-600" : "text-destructive")}>
+                              {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-sm italic text-muted-foreground max-w-[300px] truncate pr-6">
                             {adj.reason}
                           </TableCell>
                         </TableRow>
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                        <TableCell colSpan={5} className="h-40 text-center text-muted-foreground">
                           No stock movements recorded yet.
                         </TableCell>
                       </TableRow>

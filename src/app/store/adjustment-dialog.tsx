@@ -11,6 +11,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -22,18 +23,23 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import {
-  RadioGroup,
-  RadioGroupItem
-} from "@/components/ui/radio-group";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { Item } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { doc, writeBatch, collection } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { useState } from "react";
-import { Loader2, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Loader2, ArrowUpRight, ArrowDownRight, Package } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const adjustmentSchema = z.object({
+  itemId: z.string().min(1, { message: "Please select an item" }),
   type: z.enum(["In", "Out"]),
   quantity: z.coerce.number().min(1, { message: "Quantity must be at least 1" }),
   reason: z.string().min(5, { message: "Please provide a valid reason (min 5 chars)." }),
@@ -44,11 +50,13 @@ type AdjustmentValues = z.infer<typeof adjustmentSchema>;
 interface AdjustmentDialogProps {
   isOpen: boolean;
   setIsOpen: (open: boolean) => void;
-  item: Item | null;
+  items: Item[];
+  preSelectedItem: Item | null;
+  forcedType?: "In" | "Out" | null;
   onClose: () => void;
 }
 
-export function AdjustmentDialog({ isOpen, setIsOpen, item, onClose }: AdjustmentDialogProps) {
+export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, forcedType, onClose }: AdjustmentDialogProps) {
   const firestore = useFirestore();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -56,18 +64,32 @@ export function AdjustmentDialog({ isOpen, setIsOpen, item, onClose }: Adjustmen
   const form = useForm<AdjustmentValues>({
     resolver: zodResolver(adjustmentSchema),
     defaultValues: {
-      type: "Out",
+      itemId: preSelectedItem?.id || "",
+      type: forcedType || "Out",
       quantity: 1,
       reason: "",
     },
   });
 
+  useEffect(() => {
+    if (isOpen) {
+      form.reset({
+        itemId: preSelectedItem?.id || "",
+        type: forcedType || "Out",
+        quantity: 1,
+        reason: "",
+      });
+    }
+  }, [isOpen, preSelectedItem, forcedType, form]);
+
+  const selectedItem = items.find(i => i.id === form.watch("itemId"));
+
   const onSubmit = async (data: AdjustmentValues) => {
-    if (!firestore || !item) return;
+    if (!firestore || !selectedItem) return;
     setIsSubmitting(true);
 
     const adjustmentQuantity = data.type === "In" ? data.quantity : -data.quantity;
-    const newStockLevel = Math.max(0, item.stockLevel + adjustmentQuantity);
+    const newStockLevel = Math.max(0, selectedItem.stockLevel + adjustmentQuantity);
 
     const batch = writeBatch(firestore);
     
@@ -75,8 +97,8 @@ export function AdjustmentDialog({ isOpen, setIsOpen, item, onClose }: Adjustmen
     const adjRef = doc(collection(firestore, "stockAdjustments"));
     const adjData = {
       id: adjRef.id,
-      itemId: item.id,
-      itemName: item.name,
+      itemId: selectedItem.id,
+      itemName: selectedItem.name,
       adjustmentDate: new Date().toISOString(),
       adjustmentQuantity: adjustmentQuantity,
       type: data.type,
@@ -85,14 +107,14 @@ export function AdjustmentDialog({ isOpen, setIsOpen, item, onClose }: Adjustmen
     batch.set(adjRef, adjData);
 
     // 2. Update item stock level
-    const itemRef = doc(firestore, "items", item.id);
+    const itemRef = doc(firestore, "items", selectedItem.id);
     batch.update(itemRef, { stockLevel: newStockLevel });
 
     try {
       await batch.commit();
       toast({ 
-        title: "Stock Adjusted", 
-        description: `${item.name} is now at ${newStockLevel} ${item.unitOfMeasurement}.` 
+        title: data.type === 'In' ? "Stock Restocked" : "Stock Used", 
+        description: `${selectedItem.name} is now at ${newStockLevel} ${selectedItem.unitOfMeasurement}.` 
       });
       setIsSubmitting(false);
       setIsOpen(false);
@@ -108,69 +130,78 @@ export function AdjustmentDialog({ isOpen, setIsOpen, item, onClose }: Adjustmen
     <Dialog open={isOpen} onOpenChange={(open) => { if(!open) onClose(); setIsOpen(open); }}>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Stock Movement: {item?.name}</DialogTitle>
+          <div className="flex items-center gap-2 text-primary">
+            {form.watch("type") === "In" ? <ArrowUpRight className="h-5 w-5 text-green-600" /> : <ArrowDownRight className="h-5 w-5 text-destructive" />}
+            <DialogTitle className="text-xl">
+               {form.watch("type") === "In" ? "Stock In (Bought/Restock)" : "Stock Out (Used/Sold)"}
+            </DialogTitle>
+          </div>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6 pt-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 pt-4">
+            
             <FormField
               control={form.control}
-              name="type"
+              name="itemId"
               render={({ field }) => (
-                <FormItem className="space-y-3">
-                  <FormLabel>Movement Type</FormLabel>
-                  <FormControl>
-                    <RadioGroup
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                      className="flex gap-4"
-                    >
-                      <FormItem className="flex items-center space-x-3 space-y-0">
-                        <FormControl>
-                          <RadioGroupItem value="In" />
-                        </FormControl>
-                        <FormLabel className="font-normal flex items-center gap-1 text-green-600">
-                          <ArrowUpRight className="h-4 w-4" /> Stock In (Restock)
-                        </FormLabel>
-                      </FormItem>
-                      <FormItem className="flex items-center space-x-3 space-y-0">
-                        <FormControl>
-                          <RadioGroupItem value="Out" />
-                        </FormControl>
-                        <FormLabel className="font-normal flex items-center gap-1 text-destructive">
-                          <ArrowDownRight className="h-4 w-4" /> Stock Out (Usage)
-                        </FormLabel>
-                      </FormItem>
-                    </RadioGroup>
-                  </FormControl>
+                <FormItem>
+                  <FormLabel>Select Item</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value} disabled={!!preSelectedItem}>
+                    <FormControl>
+                      <SelectTrigger className="h-11">
+                        <SelectValue placeholder="Choose from inventory..." />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {items.map(item => (
+                        <SelectItem key={item.id} value={item.id}>
+                          {item.name} ({item.stockLevel} {item.unitOfMeasurement} in stock)
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="quantity"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Quantity ({item?.unitOfMeasurement})</FormLabel>
-                  <FormControl>
-                    <Input type="number" min="1" {...field} />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-2 gap-4">
+               <FormField
+                control={form.control}
+                name="quantity"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Quantity</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Input type="number" min="1" className="h-11 pl-4 pr-12" {...field} />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground uppercase font-bold">
+                          {selectedItem?.unitOfMeasurement || "unit"}
+                        </span>
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <div className="flex flex-col justify-end pb-2">
+                 <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">New Balance</p>
+                 <p className="font-bold text-lg">
+                    {selectedItem ? (form.watch("type") === "In" ? selectedItem.stockLevel + (Number(form.watch("quantity")) || 0) : Math.max(0, selectedItem.stockLevel - (Number(form.watch("quantity")) || 0))) : "—"}
+                 </p>
+               </div>
+            </div>
 
             <FormField
               control={form.control}
               name="reason"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Reason / Note</FormLabel>
+                  <FormLabel>Reason / Source</FormLabel>
                   <FormControl>
                     <Textarea 
-                      placeholder="e.g. Used for Order #102, Weekly restock from hardware store..." 
-                      className="resize-none"
+                      placeholder={form.watch("type") === 'In' ? "Supplier name or purchase order..." : "Usage description or order ID..."} 
+                      className="resize-none min-h-[100px]"
                       {...field} 
                     />
                   </FormControl>
@@ -179,13 +210,20 @@ export function AdjustmentDialog({ isOpen, setIsOpen, item, onClose }: Adjustmen
               )}
             />
 
-            <DialogFooter>
+            <DialogFooter className="pt-2">
               <DialogClose asChild>
-                <Button type="button" variant="outline">Cancel</Button>
+                <Button type="button" variant="outline" className="h-11">Cancel</Button>
               </DialogClose>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button 
+                type="submit" 
+                disabled={isSubmitting} 
+                className={cn(
+                  "h-11 shadow-lg",
+                  form.watch("type") === "In" ? "bg-green-600 hover:bg-green-700" : "bg-destructive hover:bg-destructive/90"
+                )}
+              >
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Log Movement
+                Confirm Log
               </Button>
             </DialogFooter>
           </form>
