@@ -386,46 +386,69 @@ export default function DashboardPage() {
     const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
     const today = new Date();
     
-    return employees.filter(e => e.paymentMethod === 'Monthly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })))).map(emp => {
-        const base = emp.monthlyRate || 0;
-        const hourly = base / workingUnits / 8;
-        const minuteRate = hourly / 60;
+    return employees.filter(e => e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }))).map(emp => {
+        const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
         const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
         
-        const ethYear = toEthiopian(monthStart).year;
-        const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
-                               .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
-        const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
-
-        const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
-        
-        let totalHoursAbsent = 0;
+        let finalAmount = 0;
+        let hoursAbsent = 0;
         let minutesLate = 0;
-        const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        let overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+        let overtimeAmount = 0;
 
-        records.forEach(r => {
-            const recordDate = getDateFromRecord(r.date);
-            if(recordDate > today) return;
-
-            const dateStr = format(recordDate, 'yyyy-MM-dd');
-            const isSaturday = getDay(recordDate) === 6;
-
-            if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
-            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
+        if (emp.paymentMethod === 'Monthly') {
+            const base = emp.monthlyRate || 0;
+            const hourly = base / workingUnits / 8;
+            const minuteRate = hourly / 60;
             
-            minutesLate += calculateMinutesLate(r);
-        });
+            const ethYear = toEthiopian(monthStart).year;
+            const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
+                                   .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
+            const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
 
-        eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
-            if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
-                totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
-            }
-        });
+            const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
 
-        const overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-        const overtimePay = overtimeHours * hourly;
-        const deductions = (totalHoursAbsent * hourly) + (minutesLate * minuteRate);
-        const finalAmount = (base - deductions) + overtimePay;
+            records.forEach(r => {
+                const recordDate = getDateFromRecord(r.date);
+                if(recordDate > today) return;
+
+                const dateStr = format(recordDate, 'yyyy-MM-dd');
+                const isSaturday = getDay(recordDate) === 6;
+
+                if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
+                if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) hoursAbsent += 3.5;
+                
+                minutesLate += calculateMinutesLate(r);
+            });
+
+            eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
+                if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
+                    hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                }
+            });
+
+            overtimeAmount = overtimeHours * hourly;
+            const deductions = (hoursAbsent * hourly) + (minutesLate * minuteRate);
+            finalAmount = (base - deductions) + overtimeAmount;
+
+        } else {
+            const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+            const totalHours = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
+            overtimeAmount = overtimeHours * (hourlyRate || 0);
+            finalAmount = (totalHours + overtimeHours) * (hourlyRate || 0);
+            
+            const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+            eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
+                if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
+                    hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                }
+            });
+            records.forEach(r => {
+                if (r.morningStatus === 'Absent') hoursAbsent += 4.5;
+                if (getDay(getDateFromRecord(r.date)) !== 6 && r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
+                minutesLate += calculateMinutesLate(r);
+            });
+        }
 
         return {
             employeeId: emp.id, 
@@ -435,8 +458,8 @@ export default function DashboardPage() {
             amount: finalAmount, 
             status: 'Unpaid', 
             overtimeHours, 
-            overtimeAmount: overtimePay,
-            hoursAbsent: totalHoursAbsent,
+            overtimeAmount,
+            hoursAbsent,
             minutesLate
         };
     });
