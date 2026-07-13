@@ -21,6 +21,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Progress } from "@/components/ui/progress";
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import Link from 'next/link';
+import { cn } from "@/lib/utils";
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
@@ -194,7 +195,7 @@ export default function DashboardPage() {
         setAttendanceLoading(false);
         return;
       }
-      setAttendanceLoading(true);
+      setAttendanceLoading(false); // Optimization: avoid double trigger
       try {
         const recordsPromises = employees.map(async (emp) => {
           const attendanceColRef = collection(firestore, 'employees', emp.id, 'attendance');
@@ -217,7 +218,7 @@ export default function DashboardPage() {
       }
     };
     
-    if (!isUserLoading && employees) {
+    if (!isUserLoading && employees && employees.length > 0) {
       fetchAllAttendance();
     }
   }, [firestore, employees, isUserLoading]);
@@ -404,6 +405,8 @@ export default function DashboardPage() {
 
         records.forEach(r => {
             const recordDate = getDateFromRecord(r.date);
+            if(recordDate > today) return;
+
             const dateStr = format(recordDate, 'yyyy-MM-dd');
             const isSaturday = getDay(recordDate) === 6;
 
@@ -909,7 +912,7 @@ export default function DashboardPage() {
                     <TabsContent value="month" className="space-y-8">
                         <div className="flex flex-col gap-6">
                             <div className="flex flex-col items-center gap-4">
-                                <div className="flex items-center gap-3 w-full max-w-sm">
+                                <div className="flex items-center gap-3 w-full max-sm:max-w-full max-w-sm">
                                     <Select value={selectedMonthStart} onValueChange={(v) => setSelectedMonthStart(v)}>
                                         <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
                                         <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
