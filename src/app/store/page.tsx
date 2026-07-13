@@ -31,7 +31,15 @@ import {
   Edit2,
   AlertTriangle,
   PlusCircle,
-  MinusCircle
+  MinusCircle,
+  Wrench,
+  Paintbrush,
+  Trees,
+  Hammer,
+  Zap,
+  Droplets,
+  Box,
+  Layers
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, orderBy, limit } from "firebase/firestore";
@@ -40,6 +48,33 @@ import { ItemForm } from "./item-form";
 import { AdjustmentDialog } from "./adjustment-dialog";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
+
+const getCategoryIcon = (category: string) => {
+  const iconClass = "h-5 w-5";
+  switch (category) {
+    case "Hardware": return <Wrench className={iconClass} />;
+    case "Paint": return <Paintbrush className={iconClass} />;
+    case "Timber": return <Trees className={iconClass} />;
+    case "Tools": return <Hammer className={iconClass} />;
+    case "Consumables": return <Zap className={iconClass} />;
+    case "Finishes": return <Droplets className={iconClass} />;
+    case "Upholstery": return <Layers className={iconClass} />;
+    default: return <Box className={iconClass} />;
+  }
+};
+
+const getCategoryColor = (category: string) => {
+  switch (category) {
+    case "Hardware": return "bg-blue-500/10 text-blue-600";
+    case "Paint": return "bg-pink-500/10 text-pink-600";
+    case "Timber": return "bg-orange-500/10 text-orange-600";
+    case "Tools": return "bg-slate-500/10 text-slate-600";
+    case "Consumables": return "bg-amber-500/10 text-amber-600";
+    case "Finishes": return "bg-cyan-500/10 text-cyan-600";
+    case "Upholstery": return "bg-purple-500/10 text-purple-600";
+    default: return "bg-muted text-muted-foreground";
+  }
+};
 
 export default function StorePage() {
   const { setTitle } = usePageTitle();
@@ -133,7 +168,7 @@ export default function StorePage() {
         onClose={() => { setSelectedItem(null); setAdjustmentType(null); }} 
       />
 
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-1">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
@@ -143,23 +178,24 @@ export default function StorePage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Button onClick={() => setIsItemFormOpen(true)} className="h-11 shadow-sm border-dashed" variant="outline">
+        <Button onClick={() => setIsItemFormOpen(true)} className="h-11 shadow-sm border-dashed w-full sm:w-auto" variant="outline">
           <Plus className="mr-2 h-4 w-4" /> Register New Item
         </Button>
       </div>
 
       <Tabs defaultValue="inventory" className="w-full">
         <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full sm:w-auto">
-          <TabsTrigger value="inventory" className="flex items-center gap-2 px-6">
+          <TabsTrigger value="inventory" className="flex items-center gap-2 flex-1 sm:flex-none px-6">
             <Package className="h-4 w-4" /> Inventory
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2 px-6">
+          <TabsTrigger value="history" className="flex items-center gap-2 flex-1 sm:flex-none px-6">
             <History className="h-4 w-4" /> Activity Log
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="inventory" className="space-y-6">
-          <Card className="shadow-lg border-primary/10 overflow-hidden">
+          {/* Desktop Table View */}
+          <Card className="hidden md:block shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b">
               <CardTitle>Current Inventory</CardTitle>
               <CardDescription>Track and manage your hardware, wood, and production materials.</CardDescription>
@@ -169,7 +205,8 @@ export default function StorePage() {
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
-                      <TableHead className="font-bold pl-6">Item Name</TableHead>
+                      <TableHead className="w-[80px] pl-6"></TableHead>
+                      <TableHead className="font-bold">Item Name</TableHead>
                       <TableHead className="font-bold">Category</TableHead>
                       <TableHead className="text-center font-bold">Stock Level</TableHead>
                       <TableHead className="font-bold">Unit</TableHead>
@@ -182,7 +219,12 @@ export default function StorePage() {
                         const isLowStock = item.stockLevel <= (item.lowStockThreshold || 5);
                         return (
                           <TableRow key={item.id} className="hover:bg-primary/[0.02] transition-colors border-b last:border-0">
-                            <TableCell className="font-semibold py-4 pl-6">
+                            <TableCell className="pl-6">
+                              <div className={cn("flex items-center justify-center h-10 w-10 rounded-xl shadow-sm", getCategoryColor(item.category || ""))}>
+                                {getCategoryIcon(item.category || "")}
+                              </div>
+                            </TableCell>
+                            <TableCell className="font-semibold py-4">
                               <div className="flex items-center gap-2">
                                 {item.name}
                                 {isLowStock && (
@@ -247,7 +289,7 @@ export default function StorePage() {
                       })
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={5} className="h-40 text-center">
+                        <TableCell colSpan={6} className="h-40 text-center">
                           <div className="flex flex-col items-center justify-center text-muted-foreground gap-2">
                              <Package className="h-10 w-10 opacity-20" />
                              <p>{searchQuery ? "No items match your search." : "Your store inventory is empty."}</p>
@@ -261,6 +303,81 @@ export default function StorePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Mobile Card View */}
+          <div className="grid grid-cols-1 gap-4 md:hidden">
+            {filteredItems.length > 0 ? (
+               filteredItems.map((item) => {
+                 const isLowStock = item.stockLevel <= (item.lowStockThreshold || 5);
+                 return (
+                   <Card key={item.id} className="relative overflow-hidden shadow-md">
+                     {isLowStock && <div className="absolute top-0 left-0 w-1 h-full bg-destructive" />}
+                     <CardContent className="p-4">
+                       <div className="flex items-start gap-3">
+                         <div className={cn("flex items-center justify-center h-12 w-12 rounded-2xl shadow-sm shrink-0", getCategoryColor(item.category || ""))}>
+                            {getCategoryIcon(item.category || "")}
+                         </div>
+                         <div className="flex-1 space-y-1">
+                            <div className="flex justify-between items-start">
+                              <h3 className="font-bold text-base leading-none">{item.name}</h3>
+                              <Button variant="ghost" size="icon" className="h-6 w-6 -mr-2 -mt-2" onClick={() => handleEditItem(item)}>
+                                <Edit2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            <Badge variant="outline" className="text-[10px] h-5 py-0 px-2 uppercase font-bold tracking-tight">
+                              {item.category || "General"}
+                            </Badge>
+                            
+                            <div className="flex items-center justify-between pt-3">
+                              <div className="flex flex-col">
+                                <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Balance</span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={cn("text-2xl font-black", isLowStock ? "text-destructive" : "text-green-600")}>
+                                    {item.stockLevel}
+                                  </span>
+                                  <span className="text-[10px] text-muted-foreground font-mono uppercase translate-y-1">
+                                    {item.unitOfMeasurement}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-9 px-3 text-green-600 border-green-600/20 bg-green-50/50 hover:bg-green-100"
+                                  onClick={() => handleAdjustStock(item, "In")}
+                                >
+                                  <PlusCircle className="h-4 w-4 mr-1.5" /> In
+                                </Button>
+                                <Button 
+                                  variant="outline" 
+                                  size="sm" 
+                                  className="h-9 px-3 text-destructive border-destructive/20 bg-destructive/5 hover:bg-destructive/10"
+                                  onClick={() => handleAdjustStock(item, "Out")}
+                                >
+                                  <MinusCircle className="h-4 w-4 mr-1.5" /> Out
+                                </Button>
+                              </div>
+                            </div>
+                         </div>
+                       </div>
+                       {isLowStock && (
+                          <div className="mt-3 bg-destructive/10 text-destructive text-[10px] font-bold py-1 px-3 rounded-lg flex items-center gap-2 animate-pulse">
+                            <AlertTriangle className="h-3 w-3" /> LOW STOCK ALERT: BELOW {item.lowStockThreshold}
+                          </div>
+                        )}
+                     </CardContent>
+                   </Card>
+                 );
+               })
+            ) : (
+              <div className="flex flex-col items-center justify-center p-12 text-muted-foreground text-center gap-4 bg-muted/20 rounded-2xl border-2 border-dashed">
+                <Package className="h-12 w-12 opacity-20" />
+                <p>{searchQuery ? "No results found." : "Empty store."}</p>
+                <Button variant="outline" onClick={() => setIsItemFormOpen(true)}>Add New Item</Button>
+              </div>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="history">
