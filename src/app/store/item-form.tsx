@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/select";
 import type { Item } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, addDoc, doc, setDoc } from "firebase/firestore";
+import { collection, doc, setDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -51,6 +51,17 @@ interface ItemFormProps {
   item?: Item | null;
   onClose?: () => void;
 }
+
+const CATEGORIES = [
+  "Hardware",
+  "Paint",
+  "Timber",
+  "Upholstery",
+  "Tools",
+  "Consumables",
+  "Finishes",
+  "Other"
+];
 
 export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
   const firestore = useFirestore();
@@ -94,7 +105,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
     setIsSubmitting(true);
 
     const handleSuccess = (action: string) => {
-      toast({ title: `Item ${action} Successfully` });
+      toast({ title: `Item ${action} Successfully`, description: `${data.name} has been saved.` });
       setIsSubmitting(false);
       setIsOpen(false);
       onClose?.();
@@ -102,10 +113,14 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
 
     if (isEditMode && item?.id) {
       const itemRef = doc(firestore, "items", item.id);
-      setDoc(itemRef, { ...data, id: item.id }, { merge: true })
+      // We merge everything except stockLevel on update to prevent accidental manual edits bypassing logs
+      const updateData = { ...data };
+      delete updateData.stockLevel; 
+
+      setDoc(itemRef, updateData, { merge: true })
         .then(() => handleSuccess("Updated"))
         .catch(async (e) => {
-          errorEmitter.emit("permission-error", new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: data }));
+          errorEmitter.emit("permission-error", new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: updateData }));
           setIsSubmitting(false);
         });
     } else {
@@ -122,12 +137,12 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => { if(!open) onClose?.(); setIsOpen(open); }}>
-      <DialogContent className="sm:max-w-[425px]">
+      <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>{isEditMode ? "Edit Store Item" : "Add Store Item"}</DialogTitle>
+          <DialogTitle className="text-xl font-bold">{isEditMode ? "Edit Item Details" : "Add Store Item"}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 pt-4">
             <FormField
               control={form.control}
               name="name"
@@ -135,7 +150,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                 <FormItem>
                   <FormLabel>Item Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Oak Wood Stain, 4x4 Hinges" {...field} />
+                    <Input placeholder="e.g. Oak Wood Stain, 4x4 Hinges" className="h-10" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -151,17 +166,14 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                     <FormLabel>Category</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-10">
                           <SelectValue placeholder="Category" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="Hardware">Hardware</SelectItem>
-                        <SelectItem value="Paint">Paint / Finishes</SelectItem>
-                        <SelectItem value="Timber">Timber</SelectItem>
-                        <SelectItem value="Upholstery">Upholstery</SelectItem>
-                        <SelectItem value="Tools">Tools</SelectItem>
-                        <SelectItem value="Other">Other</SelectItem>
+                        {CATEGORIES.map(cat => (
+                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -176,7 +188,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                     <FormLabel>Unit</FormLabel>
                     <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger className="h-10">
                           <SelectValue placeholder="Unit" />
                         </SelectTrigger>
                       </FormControl>
@@ -195,7 +207,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 bg-muted/20 p-4 rounded-xl border border-dashed">
               <FormField
                 control={form.control}
                 name="stockLevel"
@@ -203,9 +215,16 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                   <FormItem>
                     <FormLabel>Current Stock</FormLabel>
                     <FormControl>
-                      <Input type="number" {...field} disabled={isEditMode} />
+                      <Input 
+                        type="number" 
+                        {...field} 
+                        disabled={isEditMode} 
+                        title={isEditMode ? "Stock level must be edited via 'Movement' button" : ""}
+                        className="h-10 bg-background"
+                      />
                     </FormControl>
-                    <FormMessage />
+                    {!isEditMode && <FormMessage />}
+                    {isEditMode && <p className="text-[10px] text-muted-foreground">Adjust via Movement Log</p>}
                   </FormItem>
                 )}
               />
@@ -216,7 +235,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                   <FormItem>
                     <FormLabel>Low Stock Warning</FormLabel>
                     <FormControl>
-                      <Input type="number" {...field} />
+                      <Input type="number" {...field} className="h-10 bg-background" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -226,9 +245,9 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
 
             <DialogFooter className="pt-6">
               <DialogClose asChild>
-                <Button type="button" variant="outline">Cancel</Button>
+                <Button type="button" variant="outline" className="h-10">Cancel</Button>
               </DialogClose>
-              <Button type="submit" disabled={isSubmitting}>
+              <Button type="submit" disabled={isSubmitting} className="h-10">
                 {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {isEditMode ? "Save Changes" : "Create Item"}
               </Button>

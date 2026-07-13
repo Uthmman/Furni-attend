@@ -29,7 +29,6 @@ import {
   ArrowDownRight, 
   History,
   Edit2,
-  Trash2,
   AlertTriangle
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
@@ -70,7 +69,7 @@ export default function StorePage() {
     if (!items) return [];
     return items.filter(item => 
       item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.category?.toLowerCase().includes(searchQuery.toLowerCase())
+      (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
     );
   }, [items, searchQuery]);
 
@@ -106,31 +105,31 @@ export default function StorePage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="Search items or categories..." 
-            className="pl-10"
+            className="pl-10 h-10"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Button onClick={() => setIsItemFormOpen(true)}>
+        <Button onClick={() => setIsItemFormOpen(true)} className="h-10">
           <Plus className="mr-2 h-4 w-4" /> Add New Item
         </Button>
       </div>
 
       <Tabs defaultValue="inventory" className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="inventory" className="flex items-center gap-2">
+        <TabsList className="mb-4 h-12 p-1 bg-muted/50">
+          <TabsTrigger value="inventory" className="flex items-center gap-2 px-4">
             <Package className="h-4 w-4" /> Inventory
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2">
+          <TabsTrigger value="history" className="flex items-center gap-2 px-4">
             <History className="h-4 w-4" /> Recent Activity
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="inventory">
-          <Card>
+          <Card className="shadow-sm border-primary/10">
             <CardHeader>
               <CardTitle>Current Stock Levels</CardTitle>
-              <CardDescription>Monitor your hardware, paints, and workshop supplies.</CardDescription>
+              <CardDescription>Monitor hardware, paints, and workshop supplies.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -149,29 +148,29 @@ export default function StorePage() {
                       filteredItems.map((item) => {
                         const isLowStock = item.stockLevel <= (item.lowStockThreshold || 5);
                         return (
-                          <TableRow key={item.id}>
+                          <TableRow key={item.id} className="hover:bg-muted/30 transition-colors">
                             <TableCell className="font-medium">
                               <div className="flex items-center gap-2">
                                 {item.name}
                                 {isLowStock && (
-                                  <AlertTriangle className="h-4 w-4 text-destructive" />
+                                  <AlertTriangle className="h-4 w-4 text-destructive animate-pulse" />
                                 )}
                               </div>
                             </TableCell>
                             <TableCell>
-                              <Badge variant="outline" className="capitalize">
-                                {item.category || "Uncategorized"}
+                              <Badge variant="outline" className="capitalize text-[10px] font-bold">
+                                {item.category || "General"}
                               </Badge>
                             </TableCell>
                             <TableCell className="text-center">
                               <Badge 
                                 variant={isLowStock ? "destructive" : "secondary"}
-                                className="w-16 justify-center font-bold text-sm"
+                                className="w-16 justify-center font-bold text-sm h-7"
                               >
                                 {item.stockLevel}
                               </Badge>
                             </TableCell>
-                            <TableCell className="text-muted-foreground text-sm">
+                            <TableCell className="text-muted-foreground text-xs uppercase tracking-tighter">
                               {item.unitOfMeasurement}
                             </TableCell>
                             <TableCell className="text-right">
@@ -180,6 +179,7 @@ export default function StorePage() {
                                   variant="outline" 
                                   size="sm" 
                                   onClick={() => handleAdjustStock(item)}
+                                  className="h-8"
                                 >
                                   Movement
                                 </Button>
@@ -187,6 +187,7 @@ export default function StorePage() {
                                   variant="ghost" 
                                   size="icon" 
                                   onClick={() => handleEditItem(item)}
+                                  className="h-8 w-8"
                                 >
                                   <Edit2 className="h-4 w-4" />
                                 </Button>
@@ -198,7 +199,7 @@ export default function StorePage() {
                     ) : (
                       <TableRow>
                         <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
-                          No items found in your store.
+                          {searchQuery ? "No items match your search." : "No items found in your store."}
                         </TableCell>
                       </TableRow>
                     )}
@@ -210,10 +211,10 @@ export default function StorePage() {
         </TabsContent>
 
         <TabsContent value="history">
-          <Card>
+          <Card className="shadow-sm border-primary/10">
             <CardHeader>
               <CardTitle>Stock Movement Log</CardTitle>
-              <CardDescription>Track every addition and removal from your inventory.</CardDescription>
+              <CardDescription>Audit trail of all inventory additions and usages.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -231,7 +232,7 @@ export default function StorePage() {
                     {adjustments && adjustments.length > 0 ? (
                       adjustments.map((adj) => (
                         <TableRow key={adj.id}>
-                          <TableCell className="text-xs text-muted-foreground">
+                          <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
                             {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
                           </TableCell>
                           <TableCell className="font-medium">{adj.itemName || "Deleted Item"}</TableCell>
@@ -242,7 +243,7 @@ export default function StorePage() {
                               ) : (
                                 <ArrowDownRight className="h-4 w-4 text-destructive" />
                               )}
-                              <span className={adj.type === "In" ? "text-green-600" : "text-destructive"}>
+                              <span className={cn("text-[10px] font-bold uppercase", adj.type === "In" ? "text-green-600" : "text-destructive")}>
                                 {adj.type === "In" ? "Stock In" : "Stock Out"}
                               </span>
                             </div>
@@ -250,7 +251,7 @@ export default function StorePage() {
                           <TableCell className="text-center font-bold">
                             {Math.abs(adj.adjustmentQuantity)}
                           </TableCell>
-                          <TableCell className="text-sm italic text-muted-foreground max-w-[200px] truncate">
+                          <TableCell className="text-xs italic text-muted-foreground max-w-[200px] truncate">
                             {adj.reason}
                           </TableCell>
                         </TableRow>
