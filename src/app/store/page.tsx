@@ -39,7 +39,8 @@ import {
   Zap,
   Droplets,
   Box,
-  Layers
+  Layers,
+  Clock
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
 import { collection, query, orderBy, limit } from "firebase/firestore";
@@ -50,7 +51,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 const getCategoryIcon = (category: string) => {
-  const iconClass = "h-5 w-5";
+  const iconClass = "h-6 w-6"; // Enlarged icons
   switch (category) {
     case "Hardware": return <Wrench className={iconClass} />;
     case "Paint": return <Paintbrush className={iconClass} />;
@@ -219,8 +220,8 @@ export default function StorePage() {
                         const isLowStock = item.stockLevel <= (item.lowStockThreshold || 5);
                         return (
                           <TableRow key={item.id} className="hover:bg-primary/[0.02] transition-colors border-b last:border-0">
-                            <TableCell className="pl-6">
-                              <div className={cn("flex items-center justify-center h-10 w-10 rounded-xl shadow-sm", getCategoryColor(item.category || ""))}>
+                            <TableCell className="pl-6 py-4">
+                              <div className={cn("flex items-center justify-center h-12 w-12 rounded-xl shadow-sm", getCategoryColor(item.category || ""))}>
                                 {getCategoryIcon(item.category || "")}
                               </div>
                             </TableCell>
@@ -313,15 +314,15 @@ export default function StorePage() {
                    <Card key={item.id} className="relative overflow-hidden shadow-md">
                      {isLowStock && <div className="absolute top-0 left-0 w-1 h-full bg-destructive" />}
                      <CardContent className="p-4">
-                       <div className="flex items-start gap-3">
-                         <div className={cn("flex items-center justify-center h-12 w-12 rounded-2xl shadow-sm shrink-0", getCategoryColor(item.category || ""))}>
+                       <div className="flex items-start gap-4">
+                         <div className={cn("flex items-center justify-center h-16 w-16 rounded-2xl shadow-sm shrink-0", getCategoryColor(item.category || ""))}>
                             {getCategoryIcon(item.category || "")}
                          </div>
                          <div className="flex-1 space-y-1">
                             <div className="flex justify-between items-start">
-                              <h3 className="font-bold text-base leading-none">{item.name}</h3>
+                              <h3 className="font-bold text-lg leading-none">{item.name}</h3>
                               <Button variant="ghost" size="icon" className="h-6 w-6 -mr-2 -mt-2" onClick={() => handleEditItem(item)}>
-                                <Edit2 className="h-3 w-3" />
+                                <Edit2 className="h-4 w-4" />
                               </Button>
                             </div>
                             <Badge variant="outline" className="text-[10px] h-5 py-0 px-2 uppercase font-bold tracking-tight">
@@ -344,18 +345,18 @@ export default function StorePage() {
                                 <Button 
                                   variant="outline" 
                                   size="sm" 
-                                  className="h-9 px-3 text-green-600 border-green-600/20 bg-green-50/50 hover:bg-green-100"
+                                  className="h-10 px-4 text-green-600 border-green-600/20 bg-green-50/50 hover:bg-green-100"
                                   onClick={() => handleAdjustStock(item, "In")}
                                 >
-                                  <PlusCircle className="h-4 w-4 mr-1.5" /> In
+                                  <PlusCircle className="h-5 w-5 mr-1.5" /> In
                                 </Button>
                                 <Button 
                                   variant="outline" 
                                   size="sm" 
-                                  className="h-9 px-3 text-destructive border-destructive/20 bg-destructive/5 hover:bg-destructive/10"
+                                  className="h-10 px-4 text-destructive border-destructive/20 bg-destructive/5 hover:bg-destructive/10"
                                   onClick={() => handleAdjustStock(item, "Out")}
                                 >
-                                  <MinusCircle className="h-4 w-4 mr-1.5" /> Out
+                                  <MinusCircle className="h-5 w-5 mr-1.5" /> Out
                                 </Button>
                               </div>
                             </div>
@@ -380,8 +381,9 @@ export default function StorePage() {
           </div>
         </TabsContent>
 
-        <TabsContent value="history">
-          <Card className="shadow-lg border-primary/10 overflow-hidden">
+        <TabsContent value="history" className="space-y-6">
+          {/* Desktop Activity Table */}
+          <Card className="hidden md:block shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b">
               <CardTitle>Recent Activity</CardTitle>
               <CardDescription>Full audit trail of all store movements.</CardDescription>
@@ -440,6 +442,54 @@ export default function StorePage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Mobile Activity Card List */}
+          <div className="grid grid-cols-1 gap-4 md:hidden">
+            {adjustments && adjustments.length > 0 ? (
+              adjustments.map((adj) => (
+                <Card key={adj.id} className="shadow-sm border-l-4 overflow-hidden" style={{ borderLeftColor: adj.type === 'In' ? 'rgb(22, 163, 74)' : 'rgb(220, 38, 38)' }}>
+                  <CardContent className="p-4">
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <h4 className="font-bold text-base leading-tight">{adj.itemName || "Unknown Item"}</h4>
+                        <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted-foreground uppercase font-semibold">
+                          <Clock className="h-3 w-3" />
+                          {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
+                        </div>
+                      </div>
+                      <div className={cn(
+                        "flex items-center gap-1 font-black text-lg",
+                        adj.type === "In" ? "text-green-600" : "text-destructive"
+                      )}>
+                        {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 mb-3">
+                      <div className={cn(
+                          "flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
+                          adj.type === "In" ? "bg-green-100 text-green-700" : "bg-destructive/10 text-destructive"
+                      )}>
+                        {adj.type === "In" ? <ArrowUpRight className="h-2.5 w-2.5" /> : <ArrowDownRight className="h-2.5 w-2.5" />}
+                        {adj.type === "In" ? "Bought" : "Used"}
+                      </div>
+                    </div>
+
+                    <div className="bg-muted/30 p-2.5 rounded-lg border border-dashed">
+                      <p className="text-xs italic text-muted-foreground leading-relaxed">
+                        {adj.reason || "No reason provided."}
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            ) : (
+              <div className="flex flex-col items-center justify-center p-12 text-muted-foreground text-center gap-4 bg-muted/20 rounded-2xl border-2 border-dashed">
+                <History className="h-12 w-12 opacity-20" />
+                <p>No activity recorded yet.</p>
+              </div>
+            )}
+          </div>
         </TabsContent>
       </Tabs>
     </div>
