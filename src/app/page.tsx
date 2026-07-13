@@ -188,6 +188,7 @@ export default function DashboardPage() {
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), "yyyy-MM-dd"));
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 0 }), "yyyy-MM-dd"));
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
+  const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
 
   useEffect(() => {
     const fetchAllAttendance = async () => {
@@ -254,7 +255,7 @@ export default function DashboardPage() {
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
     
     const estWeekly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 7 : 0), 0);
-    const estMonthly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : (emp.dailyRate ? emp.dailyRate * 30 : 0)), 0);
+    const estMonthly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : 0), 0);
 
     const actualWeekly = activeEmployees.reduce((acc, emp) => {
         if (emp.paymentMethod !== 'Weekly') return acc;
@@ -266,58 +267,42 @@ export default function DashboardPage() {
     }, 0);
 
     const actualMonthly = activeEmployees.reduce((acc, emp) => {
+        if (emp.paymentMethod !== 'Monthly') return acc;
+        
         const recordsInMonth = allAttendance.filter(r => r.employeeId === emp.id && isValid(getDateFromRecord(r.date)) && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: now }));
         const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
 
-        if (emp.paymentMethod === 'Monthly') {
-            const baseSalary = emp.monthlyRate || 0;
-            const hourlyRate = baseSalary / workingUnits / 8;
-            const minuteRate = hourlyRate / 60;
+        const baseSalary = emp.monthlyRate || 0;
+        const hourlyRate = baseSalary / workingUnits / 8;
+        const minuteRate = hourlyRate / 60;
+        
+        const ethYear = toEthiopian(monthStart).year;
+        const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
+                               .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
+        const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
+
+        let totalHoursAbsent = 0;
+        const minutesLate = recordsInMonth.reduce((sum, r) => {
+            const recordDate = getDateFromRecord(r.date);
+            const dateStr = format(recordDate, 'yyyy-MM-dd');
+            const isSaturday = getDay(recordDate) === 6;
             
-            const ethYear = toEthiopian(monthStart).year;
-            const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
-                                   .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
-            const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
-
-            let totalHoursAbsent = 0;
-            const minutesLate = recordsInMonth.reduce((sum, r) => {
-                const recordDate = getDateFromRecord(r.date);
-                const dateStr = format(recordDate, 'yyyy-MM-dd');
-                const isSaturday = getDay(recordDate) === 6;
-                
-                if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
-                if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
-                
-                return sum + calculateMinutesLate(r);
-            }, 0);
-
-            eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
-                if (day >= empStartDate && getDay(day) !== 0 && !recordsInMonth.some(r => isSameDay(getDateFromRecord(r.date), day))) {
-                    totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
-                }
-            });
-
-            const overtimeHours = recordsInMonth.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-            const overtimePay = overtimeHours * hourlyRate;
-
-            return acc + (baseSalary - (totalHoursAbsent * hourlyRate) - (minutesLate * minuteRate) + overtimePay);
-        } else {
-            // Weekly employee calculation for current month
-            const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            if (!hourlyRate) return acc;
+            if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
+            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
             
-            let totalHoursWorked = recordsInMonth.reduce((sum, r) => sum + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
-            
-            // Add Sunday defaults if they are active
-            eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
-                if (getDay(day) === 0 && day >= empStartDate) {
-                    const record = recordsInMonth.find(r => isSameDay(getDateFromRecord(r.date), day));
-                    if (!record) totalHoursWorked += 8;
-                }
-            });
+            return sum + calculateMinutesLate(r);
+        }, 0);
 
-            return acc + (totalHoursWorked * hourlyRate);
-        }
+        eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
+            if (day >= empStartDate && getDay(day) !== 0 && !recordsInMonth.some(r => isSameDay(getDateFromRecord(r.date), day))) {
+                totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+            }
+        });
+
+        const overtimeHours = recordsInMonth.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+        const overtimePay = overtimeHours * hourlyRate;
+
+        return acc + (baseSalary - (totalHoursAbsent * hourlyRate) - (minutesLate * minuteRate) + overtimePay);
     }, 0);
 
     return { totalEmployees, onSiteToday: onSiteTodayCount, estWeekly, actualWeekly, estMonthly, actualMonthly };
@@ -443,7 +428,8 @@ export default function DashboardPage() {
     const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
     const today = new Date();
     
-    return employees.filter(e => e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }))).map(emp => {
+    // Focus strictly on Monthly employees in the Month Tab as requested
+    return employees.filter(e => e.paymentMethod === 'Monthly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })))).map(emp => {
         const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
         const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
         
@@ -451,60 +437,40 @@ export default function DashboardPage() {
         let hoursAbsent = 0;
         let minutesLate = 0;
         let overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-        let overtimeAmount = 0;
 
-        if (emp.paymentMethod === 'Monthly') {
-            const base = emp.monthlyRate || 0;
-            const hourly = base / workingUnits / 8;
-            const minuteRate = hourly / 60;
+        const base = emp.monthlyRate || 0;
+        const hourly = base / workingUnits / 8;
+        const minuteRate = hourly / 60;
+        
+        const ethYear = toEthiopian(monthStart).year;
+        const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
+                               .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
+        const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
+
+        const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+
+        records.forEach(r => {
+            const recordDate = getDateFromRecord(r.date);
+            if(recordDate > today) return;
+
+            const dateStr = format(recordDate, 'yyyy-MM-dd');
+            const isSaturday = getDay(recordDate) === 6;
+
+            if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
+            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) hoursAbsent += 3.5;
             
-            const ethYear = toEthiopian(monthStart).year;
-            const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
-                                   .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
-            const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
+            minutesLate += calculateMinutesLate(r);
+        });
 
-            const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
+            if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
+                hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+            }
+        });
 
-            records.forEach(r => {
-                const recordDate = getDateFromRecord(r.date);
-                if(recordDate > today) return;
-
-                const dateStr = format(recordDate, 'yyyy-MM-dd');
-                const isSaturday = getDay(recordDate) === 6;
-
-                if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
-                if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) hoursAbsent += 3.5;
-                
-                minutesLate += calculateMinutesLate(r);
-            });
-
-            eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
-                if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
-                    hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
-                }
-            });
-
-            overtimeAmount = overtimeHours * hourly;
-            const deductions = (hoursAbsent * hourly) + (minutesLate * minuteRate);
-            finalAmount = (base - deductions) + overtimeAmount;
-
-        } else {
-            const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            let hoursWorked = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
-            
-            const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
-            eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
-                if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
-                    hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
-                }
-                if (getDay(day) === 0 && day >= empStartDate) {
-                    const record = records.find(r => isSameDay(getDateFromRecord(r.date), day));
-                    if (!record) hoursWorked += 8;
-                }
-            });
-            overtimeAmount = overtimeHours * (hourlyRate || 0);
-            finalAmount = (hoursWorked + overtimeHours) * (hourlyRate || 0);
-        }
+        const overtimeAmount = overtimeHours * hourly;
+        const deductions = (hoursAbsent * hourly) + (minutesLate * minuteRate);
+        finalAmount = (base - deductions) + overtimeAmount;
 
         return {
             employeeId: emp.id, 
@@ -520,6 +486,62 @@ export default function DashboardPage() {
         };
     });
   }, [employees, allAttendance, selectedMonthStart]);
+
+  const unifiedMonthlyPayroll = useMemo(() => {
+    if (!employees || !selectedUnifiedMonth) return [];
+    const monthStart = startOfDay(new Date(selectedUnifiedMonth));
+    const ethMonth = toEthiopian(monthStart);
+    const daysInMonthCount = getEthiopianMonthDays(ethMonth.year, ethMonth.month);
+    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
+    const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
+    const today = new Date();
+    
+    return employees.filter(e => e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }))).map(emp => {
+        const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
+        const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
+        
+        let finalAmount = 0;
+        let overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+
+        if (emp.paymentMethod === 'Monthly') {
+            const base = emp.monthlyRate || 0;
+            const hourly = base / workingUnits / 8;
+            const minuteRate = hourly / 60;
+            const ethYear = toEthiopian(monthStart).year;
+            const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission')).map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
+            const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
+            const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+
+            let hoursAbsent = 0;
+            let minutesLate = 0;
+            records.forEach(r => {
+                const recordDate = getDateFromRecord(r.date);
+                if(recordDate > today) return;
+                const dateStr = format(recordDate, 'yyyy-MM-dd');
+                const isSaturday = getDay(recordDate) === 6;
+                if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
+                if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) hoursAbsent += 3.5;
+                minutesLate += calculateMinutesLate(r);
+            });
+            eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
+                if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+            });
+            finalAmount = (base - ((hoursAbsent * hourly) + (minutesLate * minuteRate))) + (overtimeHours * hourly);
+        } else {
+            const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+            let hoursWorked = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
+            const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+            eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
+                if (day >= empStartDate && getDay(day) === 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) hoursWorked += 8;
+            });
+            finalAmount = (hoursWorked + overtimeHours) * (hourlyRate || 0);
+        }
+
+        return { employeeId: emp.id, amount: finalAmount };
+    });
+  }, [employees, allAttendance, selectedUnifiedMonth]);
+
+  const totalUnifiedMonthly = useMemo(() => unifiedMonthlyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [unifiedMonthlyPayroll]);
 
   // Logic for expense breakdown charts
   const weeklyExpenseData = useMemo(() => {
@@ -715,7 +737,7 @@ export default function DashboardPage() {
   const attendancePercentage = dashboardStats.totalEmployees > 0 ? (dashboardStats.onSiteToday / dashboardStats.totalEmployees) * 100 : 0;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8 pb-10">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-2xl border">
         <div className="w-full md:w-auto text-center md:text-left">
           <h2 className="text-3xl font-bold tracking-tight">Welcome back!</h2>
@@ -1096,7 +1118,7 @@ export default function DashboardPage() {
                             
                             <div className="flex justify-center py-4">
                                 <div className="bg-purple-500/5 border border-purple-500/10 rounded-2xl p-6 w-full max-w-md text-center shadow-sm">
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Monthly Payroll</p>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Monthly Payroll (Monthly-paid)</p>
                                     <p className="text-4xl font-black text-purple-600">ETB {totalMonthlyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
@@ -1128,7 +1150,7 @@ export default function DashboardPage() {
             <CardHeader className="flex flex-row items-center justify-between">
                 <div>
                     <CardTitle className="text-xl">Payroll Trends</CardTitle>
-                    <CardDescription>Visualizing expenses over the last 6 months</CardDescription>
+                    <CardDescription>Visualizing unified expenses over the last 6 months</CardDescription>
                 </div>
                 <div className="bg-primary/10 p-2 rounded-lg">
                   <TrendingUp className="h-5 w-5 text-primary" />
@@ -1136,6 +1158,38 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
                 <PayrollHistoryChart data={payrollHistory} />
+            </CardContent>
+        </Card>
+
+        {/* Unified Total Section */}
+        <Card className="shadow-lg border-primary/40 bg-primary/5">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="bg-primary p-2.5 rounded-lg text-primary-foreground shadow-sm">
+                    <Wallet className="h-6 w-6" />
+                  </div>
+                  <div>
+                      <CardTitle className="text-xl">Total Workshop Expense (Unified)</CardTitle>
+                      <CardDescription>Combined payroll for both Weekly and Monthly employees</CardDescription>
+                  </div>
+                </div>
+                <div className="w-full sm:w-[240px]">
+                    <Select value={selectedUnifiedMonth} onValueChange={(v) => setSelectedUnifiedMonth(v)}>
+                        <SelectTrigger className="h-10 font-medium bg-background"><SelectValue placeholder="Select month" /></SelectTrigger>
+                        <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                </div>
+            </CardHeader>
+            <CardContent className="flex justify-center py-10">
+                <div className="text-center">
+                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-[0.2em] mb-3">Total Monthly Workshop Payout</p>
+                    <p className="text-5xl md:text-7xl font-black text-primary tracking-tighter">ETB {totalUnifiedMonthly.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    <div className="flex items-center justify-center gap-2 mt-4">
+                      <div className="h-1 w-12 bg-primary/20 rounded-full" />
+                      <div className="h-1 w-2 bg-primary rounded-full" />
+                      <div className="h-1 w-12 bg-primary/20 rounded-full" />
+                    </div>
+                </div>
             </CardContent>
         </Card>
       </div>
