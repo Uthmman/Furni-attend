@@ -19,7 +19,6 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Progress } from "@/components/ui/progress";
-import { cn } from "@/lib/utils";
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import Link from 'next/link';
 
@@ -528,10 +527,14 @@ export default function DashboardPage() {
     });
   }, [employees, todayAttendance, selectedDay]);
 
+  const totalDailyEarnings = useMemo(() => dailyEarnings.reduce((acc, curr) => acc + curr.amount, 0), [dailyEarnings]);
+  const totalWeeklyPayroll = useMemo(() => weeklyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [weeklyPayroll]);
+  const totalMonthlyPayroll = useMemo(() => monthlyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [monthlyPayroll]);
+
   const weekOptions = useMemo(() => {
       const options = [];
       let current = startOfWeek(new Date(), { weekStartsOn: 0 });
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 12; i++) {
           const ethStart = ethiopianDateFormatter(current, { month: 'short', day: 'numeric' });
           const ethEnd = ethiopianDateFormatter(endOfWeek(current, { weekStartsOn: 0 }), { month: 'short', day: 'numeric', year: 'numeric' });
           options.push({ value: format(current, "yyyy-MM-dd"), label: `Week of ${ethStart} - ${ethEnd}` });
@@ -543,7 +546,7 @@ export default function DashboardPage() {
   const monthOptions = useMemo(() => {
       const options = [];
       let today = new Date();
-      for (let i = 0; i < 6; i++) {
+      for (let i = 0; i < 12; i++) {
           const m = subMonths(today, i);
           const eth = toEthiopian(m);
           const start = toGregorian(eth.year, eth.month, 1);
@@ -724,19 +727,25 @@ export default function DashboardPage() {
                     </TabsList>
                     
                     <TabsContent value="today" className="space-y-6">
-                        <div className="flex items-center gap-3 bg-muted/30 p-2 rounded-xl w-fit mx-auto">
-                            <Button variant="ghost" size="icon" onClick={handlePrevDay} className="hover:bg-background shadow-sm">
-                                <ChevronLeft className="h-4 w-4" />
-                            </Button>
-                            <Input 
-                              type="date" 
-                              value={selectedDay} 
-                              onChange={(e) => setSelectedDay(e.target.value)} 
-                              className="border-none bg-transparent font-medium focus-visible:ring-0 w-[140px]" 
-                            />
-                            <Button variant="ghost" size="icon" onClick={handleNextDay} className="hover:bg-background shadow-sm">
-                                <ChevronRight className="h-4 w-4" />
-                            </Button>
+                        <div className="flex flex-col items-center gap-4">
+                            <div className="flex items-center gap-3 bg-muted/30 p-2 rounded-xl w-fit">
+                                <Button variant="ghost" size="icon" onClick={handlePrevDay} className="hover:bg-background shadow-sm">
+                                    <ChevronLeft className="h-4 w-4" />
+                                </Button>
+                                <Input 
+                                type="date" 
+                                value={selectedDay} 
+                                onChange={(e) => setSelectedDay(e.target.value)} 
+                                className="border-none bg-transparent font-medium focus-visible:ring-0 w-[140px]" 
+                                />
+                                <Button variant="ghost" size="icon" onClick={handleNextDay} className="hover:bg-background shadow-sm">
+                                    <ChevronRight className="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <div className="bg-primary/5 border border-primary/10 rounded-2xl p-4 w-full max-w-md text-center">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Daily Earnings</p>
+                                <p className="text-3xl font-black text-primary">ETB {totalDailyEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </div>
                         </div>
                         
                         <div className="grid grid-cols-1 gap-4 md:hidden">
@@ -798,11 +807,17 @@ export default function DashboardPage() {
 
                     <TabsContent value="week" className="space-y-8">
                         <div className="flex flex-col gap-6">
-                            <div className="flex items-center gap-2 w-full max-w-sm mx-auto">
-                                 <Select value={selectedWeekStart} onValueChange={(v) => setSelectedWeekStart(v)}>
-                                    <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select week" /></SelectTrigger>
-                                    <SelectContent>{weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
-                                </Select>
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="flex items-center gap-2 w-full max-w-sm">
+                                    <Select value={selectedWeekStart} onValueChange={(v) => setSelectedWeekStart(v)}>
+                                        <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select week" /></SelectTrigger>
+                                        <SelectContent>{weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 w-full max-w-md text-center">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Weekly Payroll</p>
+                                    <p className="text-3xl font-black text-amber-600">ETB {totalWeeklyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 gap-4 md:hidden">
@@ -893,11 +908,17 @@ export default function DashboardPage() {
 
                     <TabsContent value="month" className="space-y-8">
                         <div className="flex flex-col gap-6">
-                            <div className="flex items-center gap-3 w-full max-w-sm mx-auto">
-                                <Select value={selectedMonthStart} onValueChange={(v) => setSelectedMonthStart(v)}>
-                                    <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
-                                    <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
-                                </Select>
+                            <div className="flex flex-col items-center gap-4">
+                                <div className="flex items-center gap-3 w-full max-w-sm">
+                                    <Select value={selectedMonthStart} onValueChange={(v) => setSelectedMonthStart(v)}>
+                                        <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
+                                        <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="bg-purple-500/5 border border-purple-500/10 rounded-2xl p-4 w-full max-w-md text-center">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Monthly Payroll</p>
+                                    <p className="text-3xl font-black text-purple-600">ETB {totalMonthlyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                </div>
                             </div>
 
                             <div className="grid grid-cols-1 gap-4 md:hidden">
