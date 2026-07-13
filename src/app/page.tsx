@@ -195,7 +195,7 @@ export default function DashboardPage() {
         setAttendanceLoading(false);
         return;
       }
-      setAttendanceLoading(false); // Optimization: avoid double trigger
+      setAttendanceLoading(true);
       try {
         const recordsPromises = employees.map(async (emp) => {
           const attendanceColRef = collection(firestore, 'employees', emp.id, 'attendance');
@@ -535,28 +535,50 @@ export default function DashboardPage() {
   const totalMonthlyPayroll = useMemo(() => monthlyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [monthlyPayroll]);
 
   const weekOptions = useMemo(() => {
-      const options = [];
-      let current = startOfWeek(new Date(), { weekStartsOn: 0 });
-      for (let i = 0; i < 24; i++) {
-          const ethStart = ethiopianDateFormatter(current, { month: 'short', day: 'numeric' });
-          const ethEnd = ethiopianDateFormatter(endOfWeek(current, { weekStartsOn: 0 }), { month: 'short', day: 'numeric', year: 'numeric' });
-          options.push({ value: format(current, "yyyy-MM-dd"), label: `Week of ${ethStart} - ${ethEnd}` });
-          current = addDays(current, -7);
-      }
-      return options;
-  }, []);
+    const today = new Date();
+    const currentWeekStr = format(startOfWeek(today, { weekStartsOn: 0 }), "yyyy-MM-dd");
+    const weeks = new Set<string>([currentWeekStr]);
+    
+    allAttendance.forEach(r => {
+        const d = getDateFromRecord(r.date);
+        if (isValid(d)) {
+            weeks.add(format(startOfWeek(d, { weekStartsOn: 0 }), "yyyy-MM-dd"));
+        }
+    });
+
+    return Array.from(weeks)
+      .sort((a, b) => b.localeCompare(a))
+      .map(val => {
+          const start = new Date(val);
+          const end = endOfWeek(start, { weekStartsOn: 0 });
+          const ethStart = ethiopianDateFormatter(start, { month: 'short', day: 'numeric' });
+          const ethEnd = ethiopianDateFormatter(end, { month: 'short', day: 'numeric', year: 'numeric' });
+          return { value: val, label: `Week of ${ethStart} - ${ethEnd}` };
+      });
+  }, [allAttendance]);
 
   const monthOptions = useMemo(() => {
-      const options = [];
-      let today = new Date();
-      for (let i = 0; i < 24; i++) {
-          const m = subMonths(today, i);
-          const eth = toEthiopian(m);
-          const start = toGregorian(eth.year, eth.month, 1);
-          options.push({ value: format(start, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(start, { month: 'long' })} ${eth.year}` });
-      }
-      return options;
-  }, []);
+    const today = new Date();
+    const ethNow = toEthiopian(today);
+    const currentMonthStr = format(toGregorian(ethNow.year, ethNow.month, 1), "yyyy-MM-dd");
+    const months = new Set<string>([currentMonthStr]);
+
+    allAttendance.forEach(r => {
+        const d = getDateFromRecord(r.date);
+        if (isValid(d)) {
+            const eth = toEthiopian(d);
+            months.add(format(toGregorian(eth.year, eth.month, 1), "yyyy-MM-dd"));
+        }
+    });
+
+    return Array.from(months)
+      .sort((a, b) => b.localeCompare(a))
+      .map(val => {
+          const start = new Date(val);
+          const eth = toEthiopian(start);
+          return { value: val, label: `${ethiopianDateFormatter(start, { month: 'long' })} ${eth.year}` };
+      });
+  }, [allAttendance]);
 
   const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading;
 
@@ -704,22 +726,24 @@ export default function DashboardPage() {
                       <CardDescription>Track payments and performance across periods</CardDescription>
                   </div>
                 </div>
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" size="sm" className="h-10 px-4 flex items-center gap-2 font-medium bg-background border-primary/30 hover:bg-primary/5 transition-colors">
-                            <CalendarDays className="h-4 w-4 text-primary" />
-                            {ethiopianDateFormatter(new Date(selectedDay), { month: 'long', day: 'numeric', year: 'numeric' })}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="end">
-                        <Calendar
-                            mode="single"
-                            selected={new Date(selectedDay)}
-                            onSelect={handleGlobalDateSelect}
-                            initialFocus
-                        />
-                    </PopoverContent>
-                </Popover>
+                <div className="flex justify-center w-full sm:w-auto">
+                    <Popover>
+                        <PopoverTrigger asChild>
+                            <Button variant="outline" size="sm" className="h-10 px-4 flex items-center gap-2 font-medium bg-background border-primary/30 hover:bg-primary/5 transition-colors">
+                                <CalendarDays className="h-4 w-4 text-primary" />
+                                {ethiopianDateFormatter(new Date(selectedDay), { month: 'long', day: 'numeric', year: 'numeric' })}
+                            </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="end">
+                            <Calendar
+                                mode="single"
+                                selected={new Date(selectedDay)}
+                                onSelect={handleGlobalDateSelect}
+                                initialFocus
+                            />
+                        </PopoverContent>
+                    </Popover>
+                </div>
             </CardHeader>
             <CardContent className="pt-6">
                 <Tabs defaultValue="today">
@@ -744,10 +768,6 @@ export default function DashboardPage() {
                                 <Button variant="ghost" size="icon" onClick={handleNextDay} className="hover:bg-background shadow-sm">
                                     <ChevronRight className="h-4 w-4" />
                                 </Button>
-                            </div>
-                            <div className="bg-primary/5 border border-primary/10 rounded-2xl p-4 w-full max-w-md text-center">
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Daily Earnings</p>
-                                <p className="text-3xl font-black text-primary">ETB {totalDailyEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                             </div>
                         </div>
                         
@@ -806,20 +826,23 @@ export default function DashboardPage() {
                                 </TableBody>
                             </Table>
                         </div>
+                        
+                        <div className="flex justify-center pt-4">
+                            <div className="bg-primary/5 border border-primary/10 rounded-2xl p-6 w-full max-w-md text-center shadow-sm">
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Daily Earnings</p>
+                                <p className="text-4xl font-black text-primary">ETB {totalDailyEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            </div>
+                        </div>
                     </TabsContent>
 
                     <TabsContent value="week" className="space-y-8">
                         <div className="flex flex-col gap-6">
-                            <div className="flex flex-col items-center gap-4">
+                            <div className="flex justify-center w-full">
                                 <div className="flex items-center gap-2 w-full max-w-sm">
                                     <Select value={selectedWeekStart} onValueChange={(v) => setSelectedWeekStart(v)}>
                                         <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select week" /></SelectTrigger>
                                         <SelectContent>{weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
                                     </Select>
-                                </div>
-                                <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-4 w-full max-w-md text-center">
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Weekly Payroll</p>
-                                    <p className="text-3xl font-black text-amber-600">ETB {totalWeeklyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
 
@@ -888,6 +911,13 @@ export default function DashboardPage() {
                                     </TableBody>
                                 </Table>
                             </div>
+                            
+                            <div className="flex justify-center py-4">
+                                <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-6 w-full max-w-md text-center shadow-sm">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Weekly Payroll</p>
+                                    <p className="text-4xl font-black text-amber-600">ETB {totalWeeklyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                </div>
+                            </div>
 
                             <div className="bg-muted/10 p-4 rounded-2xl border border-dashed mt-4">
                                 <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-muted-foreground">
@@ -911,16 +941,12 @@ export default function DashboardPage() {
 
                     <TabsContent value="month" className="space-y-8">
                         <div className="flex flex-col gap-6">
-                            <div className="flex flex-col items-center gap-4">
+                            <div className="flex justify-center w-full">
                                 <div className="flex items-center gap-3 w-full max-sm:max-w-full max-w-sm">
                                     <Select value={selectedMonthStart} onValueChange={(v) => setSelectedMonthStart(v)}>
                                         <SelectTrigger className="h-10 font-medium border-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
                                         <SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
                                     </Select>
-                                </div>
-                                <div className="bg-purple-500/5 border border-purple-500/10 rounded-2xl p-4 w-full max-w-md text-center">
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Monthly Payroll</p>
-                                    <p className="text-3xl font-black text-purple-600">ETB {totalMonthlyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
 
@@ -987,6 +1013,13 @@ export default function DashboardPage() {
                                         ))}
                                     </TableBody>
                                 </Table>
+                            </div>
+                            
+                            <div className="flex justify-center py-4">
+                                <div className="bg-purple-500/5 border border-purple-500/10 rounded-2xl p-6 w-full max-w-md text-center shadow-sm">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Monthly Payroll</p>
+                                    <p className="text-4xl font-black text-purple-600">ETB {totalMonthlyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                                </div>
                             </div>
 
                             <div className="bg-muted/10 p-4 rounded-2xl border border-dashed mt-4">
