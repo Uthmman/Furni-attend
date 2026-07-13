@@ -534,7 +534,7 @@ export default function DashboardPage() {
   const weekOptions = useMemo(() => {
       const options = [];
       let current = startOfWeek(new Date(), { weekStartsOn: 0 });
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 24; i++) {
           const ethStart = ethiopianDateFormatter(current, { month: 'short', day: 'numeric' });
           const ethEnd = ethiopianDateFormatter(endOfWeek(current, { weekStartsOn: 0 }), { month: 'short', day: 'numeric', year: 'numeric' });
           options.push({ value: format(current, "yyyy-MM-dd"), label: `Week of ${ethStart} - ${ethEnd}` });
@@ -546,7 +546,7 @@ export default function DashboardPage() {
   const monthOptions = useMemo(() => {
       const options = [];
       let today = new Date();
-      for (let i = 0; i < 12; i++) {
+      for (let i = 0; i < 24; i++) {
           const m = subMonths(today, i);
           const eth = toEthiopian(m);
           const start = toGregorian(eth.year, eth.month, 1);
