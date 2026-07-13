@@ -1,4 +1,3 @@
-
 "use client";
 
 import Link from "next/link";
@@ -8,8 +7,7 @@ import {
   CalendarCheck,
   LayoutDashboard,
   Users,
-  Wallet,
-  Palette,
+  Package,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import React from 'react';
@@ -18,7 +16,7 @@ const links = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/employees", label: "Employees", icon: Users },
   { href: "/attendance", label: "Attendance", icon: CalendarCheck },
-  { href: "/payroll", label: "Payroll", icon: Wallet },
+  { href: "/store", label: "Store", icon: Package },
 ];
 
 export function MobileNav() {

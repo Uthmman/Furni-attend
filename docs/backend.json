@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "Order": {
@@ -45,7 +44,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Item",
       "type": "object",
-      "description": "Represents a furniture item in the store.",
+      "description": "Represents a furniture item or material in the store.",
       "properties": {
         "id": {
           "type": "string",
@@ -53,15 +52,23 @@
         },
         "name": {
           "type": "string",
-          "description": "Name of the item."
+          "description": "Name of the item (e.g., Oak Wood, Paint, Nails)."
         },
         "unitOfMeasurement": {
           "type": "string",
-          "description": "Unit of measurement for the item (e.g., piece, set)."
+          "description": "Unit of measurement (e.g., piece, liter, set, kg)."
         },
         "stockLevel": {
           "type": "number",
           "description": "Number of items currently in stock."
+        },
+        "category": {
+          "type": "string",
+          "description": "Category of the item (e.g., Hardware, Paint, Timber)."
+        },
+        "lowStockThreshold": {
+          "type": "number",
+          "description": "The stock level at which to trigger a warning."
         }
       },
       "required": [
@@ -83,7 +90,11 @@
         },
         "itemId": {
           "type": "string",
-          "description": "Reference to Item. (Relationship: Item 1:N StockAdjustment)"
+          "description": "Reference to Item."
+        },
+        "itemName": {
+          "type": "string",
+          "description": "Denormalized name of the item for history view."
         },
         "adjustmentDate": {
           "type": "string",
@@ -92,11 +103,16 @@
         },
         "adjustmentQuantity": {
           "type": "number",
-          "description": "Quantity of items added or removed from stock (can be positive or negative)."
+          "description": "Quantity added or removed (positive or negative)."
         },
         "reason": {
           "type": "string",
           "description": "Reason for the stock adjustment."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["In", "Out"],
+          "description": "Whether stock was added or removed."
         }
       },
       "required": [
@@ -155,7 +171,7 @@
         },
         "employeeId": {
           "type": "string",
-          "description": "Reference to Employee. (Relationship: Employee 1:N Attendance)"
+          "description": "Reference to Employee."
         },
         "attendanceDate": {
           "type": "string",
@@ -200,14 +216,8 @@
           "schema": {
             "$ref": "#/backend/entities/Employee"
           },
-          "description": "Stores all employee information for the application. This collection should be readable and writable by any authenticated user for the purpose of this internal tool.",
-          "allow": "read, write: if request.auth != null;",
-          "params": [
-            {
-              "name": "employeeId",
-              "description": "Unique identifier for the employee."
-            }
-          ]
+          "description": "Stores employee information.",
+          "allow": "read, write: if request.auth != null;"
         }
       },
       {
@@ -217,18 +227,8 @@
           "schema": {
             "$ref": "#/backend/entities/Attendance"
           },
-          "description": "Stores all attendance records for each employee. Access should be granted to authenticated users who need to manage or view attendance data.",
-          "allow": "read, write: if request.auth != null;",
-          "params": [
-            {
-              "name": "employeeId",
-              "description": "Unique identifier for the employee."
-            },
-            {
-              "name": "attendanceId",
-              "description": "Unique identifier for the attendance record."
-            }
-          ]
+          "description": "Attendance records for each employee.",
+          "allow": "read, write: if request.auth != null;"
         }
       },
       {
@@ -238,21 +238,32 @@
           "schema": {
             "$ref": "#/backend/entities/Attendance"
           },
-          "description": "Stores attendance records for a specific date, used for daily logging. Authenticated users should have full access.",
-          "allow": "read, write: if request.auth != null;",
-          "params": [
-            {
-              "name": "date",
-              "description": "The date of the records in YYYY-MM-DD format."
-            },
-            {
-              "name": "employeeId",
-              "description": "Unique identifier for the employee."
-            }
-          ]
+          "description": "Daily attendance logs.",
+          "allow": "read, write: if request.auth != null;"
+        }
+      },
+      {
+        "path": "/items/{itemId}",
+        "definition": {
+          "entityName": "Item",
+          "schema": {
+            "$ref": "#/backend/entities/Item"
+          },
+          "description": "Store items and materials.",
+          "allow": "read, write: if request.auth != null;"
+        }
+      },
+      {
+        "path": "/stockAdjustments/{adjustmentId}",
+        "definition": {
+          "entityName": "StockAdjustment",
+          "schema": {
+            "$ref": "#/backend/entities/StockAdjustment"
+          },
+          "description": "Log of stock movements.",
+          "allow": "read, write: if request.auth != null;"
         }
       }
-    ],
-    "reasoning": "To resolve persistent permission issues and facilitate rapid development, the security rules are being simplified. This new structure allows any authenticated user to read and write to the specified collections. This is a deliberate choice to unblock development and ensure the application is functional for internal use, where all authenticated users are considered trusted. This approach grants full access to logged-in users, effectively making the database public to them while keeping it private from unauthenticated access."
+    ]
   }
 }

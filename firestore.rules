@@ -1,64 +1,20 @@
-/**
- * @fileOverview Firestore Security Rules for the application.
- *
- * Core Philosophy:
- * This ruleset is in prototyping mode and designed to be completely open for development purposes.
- * All read and write operations are currently allowed to unblock development and eliminate permission errors.
- *
- * Data Structure:
- * - /employees/{employeeId}: Stores employee information.
- * - /employees/{employeeId}/attendance/{attendanceId}: Stores attendance records for each employee.
- * - /attendance/{date}/records/{employeeId}: Stores attendance records for a specific date.
- *
- * Key Security Decisions:
- * - All reads and writes are currently allowed (`allow read, write: if true;`).
- * - This is a temporary measure to facilitate rapid development and debugging.
- * - **WARNING: These rules MUST be replaced with more restrictive rules before production deployment.**
- *
- * Denormalization for Authorization:
- * Not applicable in this open prototyping mode.
- *
- * Structural Segregation:
- * Not applicable in this open prototyping mode.
- */
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /**
-     * @description Allows read and write access to employee documents for all users.
-     * @path /employees/{employeeId}
-     * @allow (get, list, create, update, delete) - Any user can perform any operation on any employee document.
-     * @deny (none) - There are no restrictions in this open prototyping mode.
-     * @principle Open access for rapid prototyping.
-     */
     match /employees/{employeeId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+      allow read, write: if true;
     }
-
-    /**
-     * @description Allows read and write access to attendance documents for all users.
-     * @path /employees/{employeeId}/attendance/{attendanceId}
-     * @allow (get, list, create, update, delete) - Any user can perform any operation on any attendance document.
-     * @deny (none) - There are no restrictions in this open prototyping mode.
-     * @principle Open access for rapid prototyping.
-     */
     match /employees/{employeeId}/attendance/{attendanceId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+      allow read, write: if true;
     }
-
-    /**
-     * @description Allows read and write access to attendance records for all users.
-     * @path /attendance/{date}/records/{employeeId}
-     * @allow (get, list, create, update, delete) - Any user can perform any operation on any attendance record.
-     * @deny (none) - There are no restrictions in this open prototyping mode.
-     * @principle Open access for rapid prototyping.
-     */
     match /attendance/{date}/records/{employeeId} {
-      allow get, list: if true;
-      allow create, update, delete: if true;
+      allow read, write: if true;
+    }
+    match /items/{itemId} {
+      allow read, write: if true;
+    }
+    match /stockAdjustments/{adjustmentId} {
+      allow read, write: if true;
     }
   }
 }
