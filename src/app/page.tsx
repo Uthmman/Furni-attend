@@ -254,7 +254,7 @@ export default function DashboardPage() {
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
     
     const estWeekly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 7 : 0), 0);
-    const estMonthly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : 0), 0);
+    const estMonthly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : (emp.dailyRate ? emp.dailyRate * 30 : 0)), 0);
 
     const actualWeekly = activeEmployees.reduce((acc, emp) => {
         if (emp.paymentMethod !== 'Weekly') return acc;
@@ -266,41 +266,58 @@ export default function DashboardPage() {
     }, 0);
 
     const actualMonthly = activeEmployees.reduce((acc, emp) => {
-        if (emp.paymentMethod !== 'Monthly') return acc;
-        const baseSalary = emp.monthlyRate || 0;
-        
-        const hourlyRate = baseSalary / workingUnits / 8;
-        const minuteRate = hourlyRate / 60;
-        const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
-        
-        const ethYear = toEthiopian(monthStart).year;
-        const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
-                               .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
-        const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
-
         const recordsInMonth = allAttendance.filter(r => r.employeeId === emp.id && isValid(getDateFromRecord(r.date)) && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: now }));
-        let totalHoursAbsent = 0;
-        const minutesLate = recordsInMonth.reduce((sum, r) => {
-            const recordDate = getDateFromRecord(r.date);
-            const dateStr = format(recordDate, 'yyyy-MM-dd');
-            const isSaturday = getDay(recordDate) === 6;
+        const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
+
+        if (emp.paymentMethod === 'Monthly') {
+            const baseSalary = emp.monthlyRate || 0;
+            const hourlyRate = baseSalary / workingUnits / 8;
+            const minuteRate = hourlyRate / 60;
             
-            if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
-            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
+            const ethYear = toEthiopian(monthStart).year;
+            const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
+                                   .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
+            const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
+
+            let totalHoursAbsent = 0;
+            const minutesLate = recordsInMonth.reduce((sum, r) => {
+                const recordDate = getDateFromRecord(r.date);
+                const dateStr = format(recordDate, 'yyyy-MM-dd');
+                const isSaturday = getDay(recordDate) === 6;
+                
+                if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
+                if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
+                
+                return sum + calculateMinutesLate(r);
+            }, 0);
+
+            eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
+                if (day >= empStartDate && getDay(day) !== 0 && !recordsInMonth.some(r => isSameDay(getDateFromRecord(r.date), day))) {
+                    totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                }
+            });
+
+            const overtimeHours = recordsInMonth.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+            const overtimePay = overtimeHours * hourlyRate;
+
+            return acc + (baseSalary - (totalHoursAbsent * hourlyRate) - (minutesLate * minuteRate) + overtimePay);
+        } else {
+            // Weekly employee calculation for current month
+            const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+            if (!hourlyRate) return acc;
             
-            return sum + calculateMinutesLate(r);
-        }, 0);
+            let totalHoursWorked = recordsInMonth.reduce((sum, r) => sum + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
+            
+            // Add Sunday defaults if they are active
+            eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
+                if (getDay(day) === 0 && day >= empStartDate) {
+                    const record = recordsInMonth.find(r => isSameDay(getDateFromRecord(r.date), day));
+                    if (!record) totalHoursWorked += 8;
+                }
+            });
 
-        eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
-            if (day >= empStartDate && getDay(day) !== 0 && !recordsInMonth.some(r => isSameDay(getDateFromRecord(r.date), day))) {
-                totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
-            }
-        });
-
-        const overtimeHours = recordsInMonth.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-        const overtimePay = overtimeHours * hourlyRate;
-
-        return acc + (baseSalary - (totalHoursAbsent * hourlyRate) - (minutesLate * minuteRate) + overtimePay);
+            return acc + (totalHoursWorked * hourlyRate);
+        }
     }, 0);
 
     return { totalEmployees, onSiteToday: onSiteTodayCount, estWeekly, actualWeekly, estMonthly, actualMonthly };
@@ -314,15 +331,55 @@ export default function DashboardPage() {
         const ethDate = toEthiopian(monthDate);
         const start = toGregorian(ethDate.year, ethDate.month, 1);
         const end = addDays(start, getEthiopianMonthDays(ethDate.year, ethDate.month) - 1);
+        const monthInterval = { start: startOfDay(start), end: endOfDay(end) };
+        const workingUnits = getMonthlyWorkingUnits(start, 30);
+
         let total = 0;
         employees.forEach(emp => {
-            const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: startOfDay(start), end: endOfDay(end) }));
+            const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), monthInterval));
+            const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
+
             if (emp.paymentMethod === 'Monthly') {
-                total += emp.monthlyRate || 0; 
+                const base = emp.monthlyRate || 0;
+                const hourly = base / workingUnits / 8;
+                const minuteRate = hourly / 60;
+                
+                const ethYear = ethDate.year;
+                const permissionDates = allAttendance.filter(r => r.employeeId === emp.id && toEthiopian(getDateFromRecord(r.date)).year === ethYear && (r.morningStatus === 'Permission' || r.afternoonStatus === 'Permission'))
+                                       .map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')).sort();
+                const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
+
+                let hoursAbsent = 0;
+                let minutesLate = 0;
+                records.forEach(r => {
+                    const recordDate = getDateFromRecord(r.date);
+                    const dateStr = format(recordDate, 'yyyy-MM-dd');
+                    const isSaturday = getDay(recordDate) === 6;
+                    if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
+                    if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) hoursAbsent += 3.5;
+                    minutesLate += calculateMinutesLate(r);
+                });
+
+                eachDayOfInterval(monthInterval).forEach(day => {
+                    if (day >= empStartDate && getDay(day) !== 0 && !records.some(r => isSameDay(getDateFromRecord(r.date), day))) {
+                        hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                    }
+                });
+
+                const overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+                total += (base - (hoursAbsent * hourly) - (minutesLate * minuteRate) + (overtimeHours * hourly));
             } else {
                 const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-                const hours = records.reduce((sum, r) => sum + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
-                total += hours * (hourly || 0);
+                let hoursWorked = records.reduce((sum, r) => sum + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
+                
+                eachDayOfInterval(monthInterval).forEach(day => {
+                    if (getDay(day) === 0 && day >= empStartDate) {
+                        const record = records.find(r => isSameDay(getDateFromRecord(r.date), day));
+                        if (!record) hoursWorked += 8;
+                    }
+                });
+
+                total += hoursWorked * (hourly || 0);
             }
         });
         history.push({ month: format(start, 'MMM'), total });
@@ -433,21 +490,20 @@ export default function DashboardPage() {
 
         } else {
             const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            const totalHours = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
-            overtimeAmount = overtimeHours * (hourlyRate || 0);
-            finalAmount = (totalHours + overtimeHours) * (hourlyRate || 0);
+            let hoursWorked = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
             
             const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
             eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
                 if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
                     hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
                 }
+                if (getDay(day) === 0 && day >= empStartDate) {
+                    const record = records.find(r => isSameDay(getDateFromRecord(r.date), day));
+                    if (!record) hoursWorked += 8;
+                }
             });
-            records.forEach(r => {
-                if (r.morningStatus === 'Absent') hoursAbsent += 4.5;
-                if (getDay(getDateFromRecord(r.date)) !== 6 && r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
-                minutesLate += calculateMinutesLate(r);
-            });
+            overtimeAmount = overtimeHours * (hourlyRate || 0);
+            finalAmount = (hoursWorked + overtimeHours) * (hourlyRate || 0);
         }
 
         return {
@@ -541,10 +597,10 @@ export default function DashboardPage() {
         let amount = 0;
         if (emp.paymentMethod === 'Weekly') {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            amount = record ? (calculateHoursWorked(record) + (record.overtimeHours || 0)) * (hourly || 0) : 0;
+            amount = record ? (calculateHoursWorked(record) + (record.overtimeHours || 0)) * (hourly || 0) : (getDay(new Date(selectedDay)) === 0 ? (hourly || 0) * 8 : 0);
         } else {
             const daily = (emp.monthlyRate || 0) / 23.625;
-            amount = record ? daily : 0; 
+            amount = record ? daily : (getDay(new Date(selectedDay)) === 0 ? 0 : 0); 
         }
         return { 
             employeeId: emp.id, name: emp.name, morning: record?.morningEntry || "—", afternoon: record?.afternoonEntry || "—",
