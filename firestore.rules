@@ -1,12 +1,12 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Shared validation for authenticated users
+    // Basic authentication check
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Employees and their nested attendance subcollections
+    // Employees and their nested attendance logs
     match /employees/{employeeId} {
       allow read, write: if isAuthenticated();
       
@@ -15,18 +15,19 @@ service cloud.firestore {
       }
     }
 
-    // Daily attendance collection organized by date
+    // Direct access to daily attendance records
     match /attendance/{date}/records/{employeeId} {
       allow read, write: if isAuthenticated();
     }
 
-    // Items registry for store management
+    // Supplies and items registry
     match /items/{itemId} {
       allow read, write: if isAuthenticated();
     }
 
-    // Stock adjustments / Audit logs for inventory movements
+    // Inventory movement logs (Stock In / Stock Out)
     match /stockAdjustments/{adjustmentId} {
+      // Explicitly allow both individual read (get) and collection queries (list)
       allow read, write: if isAuthenticated();
     }
   }
