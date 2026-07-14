@@ -112,7 +112,7 @@ export default function StorePage() {
   }, [setTitle]);
 
   const itemsCollectionRef = useMemoFirebase(() => {
-    // Only attempt query when auth state is fully ready and user is present
+    // Critical: Only attempt query when auth state is fully ready and user is present
     if (!firestore || isUserLoading || !user) return null;
     return collection(firestore, "items");
   }, [firestore, user, isUserLoading]);
@@ -120,9 +120,13 @@ export default function StorePage() {
   const { data: items, isLoading: itemsLoading } = useCollection<Item>(itemsCollectionRef);
 
   const adjustmentsCollectionRef = useMemoFirebase(() => {
-    // Only attempt query when auth state is fully ready and user is present
+    // Critical: Only attempt query when auth state is fully ready and user is present
     if (!firestore || isUserLoading || !user) return null;
-    return query(collection(firestore, "stockAdjustments"), orderBy("adjustmentDate", "desc"), limit(100));
+    return query(
+      collection(firestore, "stockAdjustments"), 
+      orderBy("adjustmentDate", "desc"), 
+      limit(100)
+    );
   }, [firestore, user, isUserLoading]);
 
   const { data: adjustments, isLoading: adjustmentsLoading } = useCollection<StockAdjustment>(adjustmentsCollectionRef);
@@ -164,7 +168,7 @@ export default function StorePage() {
     }
   };
 
-  const isLoadingData = (itemsLoading && !items) || (adjustmentsLoading && !adjustments) || isUserLoading;
+  const isLoadingData = itemsLoading || adjustmentsLoading || isUserLoading;
 
   if (isLoadingData) {
     return (
@@ -248,7 +252,6 @@ export default function StorePage() {
           </TabsTrigger>
         </TabsList>
 
-        {/* Tab 1: Inventory Overview */}
         <TabsContent value="inventory" className="space-y-6">
            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
              {filteredItems.map(item => {
@@ -303,7 +306,6 @@ export default function StorePage() {
            </div>
         </TabsContent>
 
-        {/* Tab 2: Manage Items Registry */}
         <TabsContent value="items" className="space-y-6">
            <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b flex flex-row items-center justify-between">
@@ -316,14 +318,12 @@ export default function StorePage() {
               </Button>
             </CardHeader>
             <CardContent className="p-0">
-               {/* Mobile only add button */}
                <div className="p-4 sm:hidden border-b bg-primary/5">
                  <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="w-full border-dashed shadow-sm h-11">
                     <Plus className="mr-2 h-4 w-4" /> Register New Supply
                  </Button>
                </div>
 
-               {/* Mobile Cards for Items */}
                <div className="md:hidden grid grid-cols-1 gap-0 divide-y">
                   {filteredItems.map(item => (
                     <div 
@@ -363,7 +363,6 @@ export default function StorePage() {
                   ))}
                </div>
 
-               {/* Desktop Table for Items */}
                <div className="hidden md:block">
                 <Table>
                     <TableHeader className="bg-muted/30">
@@ -415,7 +414,6 @@ export default function StorePage() {
            </Card>
         </TabsContent>
 
-        {/* Tab 3: Movement Log (Activity) */}
         <TabsContent value="history" className="space-y-6">
           <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b">
@@ -423,7 +421,6 @@ export default function StorePage() {
               <CardDescription className="hidden sm:block">Full audit trail of all quantity changes.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-               {/* Mobile View for History */}
                <div className="md:hidden divide-y">
                   {adjustments && adjustments.length > 0 ? (
                     adjustments.map((adj) => (
@@ -457,7 +454,6 @@ export default function StorePage() {
                   )}
                </div>
 
-               {/* Desktop Table for History */}
                <div className="hidden md:block">
                 <Table>
                     <TableHeader className="bg-muted/30">
@@ -505,7 +501,6 @@ export default function StorePage() {
           </Card>
         </TabsContent>
 
-        {/* Tab 4: Expense History (Purchases) */}
         <TabsContent value="expenses" className="space-y-6">
            <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b">
@@ -513,7 +508,6 @@ export default function StorePage() {
               <CardDescription className="hidden sm:block">Financial record of supply restocking expenses.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-               {/* Mobile View for Expenses */}
                <div className="md:hidden divide-y">
                   {purchaseHistory.length > 0 ? (
                     purchaseHistory.map((buy) => (
@@ -546,7 +540,6 @@ export default function StorePage() {
                   )}
                </div>
 
-               {/* Desktop Table for Expenses */}
                <div className="hidden md:block overflow-x-auto">
                  <Table>
                     <TableHeader className="bg-muted/30">

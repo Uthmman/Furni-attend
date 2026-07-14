@@ -44,15 +44,15 @@ export default function ItemProfilePage() {
   const [isEditFormOpen, setIsEditFormOpen] = useState(false);
 
   const itemDocRef = useMemoFirebase(() => {
-    // Standardize query gate to resolve permission issues during initial auth mount
+    // Critical: Only attempt query when auth state is fully ready and user is present
     if (!firestore || !itemId || !user || isUserLoading) return null;
     return doc(firestore, "items", itemId);
   }, [firestore, itemId, user, isUserLoading]);
 
-  const { data: item, loading: itemLoading } = useDoc<Item>(itemDocRef);
+  const { data: item, isLoading: itemLoading } = useDoc<Item>(itemDocRef);
 
   const adjustmentsColRef = useMemoFirebase(() => {
-    // Standardize query gate to resolve permission issues during initial auth mount
+    // Critical: Only attempt query when auth state is fully ready and user is present
     if (!firestore || !itemId || !user || isUserLoading) return null;
     return query(
       collection(firestore, "stockAdjustments"),
@@ -61,7 +61,7 @@ export default function ItemProfilePage() {
     );
   }, [firestore, itemId, user, isUserLoading]);
 
-  const { data: allAdjustments, loading: adjustmentsLoading } = useCollection<StockAdjustment>(adjustmentsColRef);
+  const { data: allAdjustments, isLoading: adjustmentsLoading } = useCollection<StockAdjustment>(adjustmentsColRef);
 
   useEffect(() => {
     if (item) {
@@ -71,7 +71,6 @@ export default function ItemProfilePage() {
 
   const priceHistory = useMemo(() => {
     if (!allAdjustments) return [];
-    // Only "In" type movements usually have unitPrice for historical cost analysis
     return allAdjustments
       .filter(adj => adj.type === "In" && adj.unitPrice !== undefined)
       .map(adj => ({
@@ -79,7 +78,7 @@ export default function ItemProfilePage() {
         price: adj.unitPrice || 0,
         fullDate: adj.adjustmentDate
       }))
-      .reverse(); // Display in chronological order for chart
+      .reverse(); 
   }, [allAdjustments]);
 
   const purchaseLogs = useMemo(() => {
@@ -240,7 +239,6 @@ export default function ItemProfilePage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-         {/* Purchase History Table */}
          <Card className="shadow-sm border-primary/10">
             <CardHeader className="bg-primary/5 border-b py-3 px-6">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
@@ -273,7 +271,6 @@ export default function ItemProfilePage() {
             </CardContent>
          </Card>
 
-         {/* Usage History Table */}
          <Card className="shadow-sm border-primary/10">
             <CardHeader className="bg-primary/5 border-b py-3 px-6">
               <CardTitle className="text-sm font-bold flex items-center gap-2">
