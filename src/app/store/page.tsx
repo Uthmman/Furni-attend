@@ -213,9 +213,6 @@ export default function StorePage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Button onClick={() => setIsItemFormOpen(true)} className="h-11 shadow-sm border-dashed w-full sm:w-auto" variant="outline">
-          <Plus className="mr-2 h-4 w-4" /> Register New Supply
-        </Button>
       </div>
 
       <Tabs defaultValue="inventory" className="w-full">
@@ -292,11 +289,22 @@ export default function StorePage() {
         {/* Tab 2: Manage Items Registry */}
         <TabsContent value="items" className="space-y-6">
            <Card className="shadow-lg border-primary/10 overflow-hidden">
-            <CardHeader className="bg-primary/5 border-b">
-              <CardTitle>Registry Management</CardTitle>
-              <CardDescription>Add, update, or remove supply item definitions from your registry.</CardDescription>
+            <CardHeader className="bg-primary/5 border-b flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Registry Management</CardTitle>
+                <CardDescription>Add, update, or remove supply item definitions from your registry.</CardDescription>
+              </div>
+              <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="hidden sm:flex border-dashed shadow-sm">
+                 <Plus className="mr-2 h-4 w-4" /> Register New Supply
+              </Button>
             </CardHeader>
             <CardContent className="p-0">
+               {/* Mobile only add button */}
+               <div className="p-4 sm:hidden border-b bg-primary/5">
+                 <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="w-full border-dashed shadow-sm">
+                    <Plus className="mr-2 h-4 w-4" /> Register New Supply
+                 </Button>
+               </div>
                <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
