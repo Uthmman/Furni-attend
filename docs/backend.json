@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "Order": {
@@ -82,7 +83,7 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "StockAdjustment",
       "type": "object",
-      "description": "Represents an adjustment to the stock level of an item.",
+      "description": "Represents an adjustment to the stock level of an item, including financial details for purchases.",
       "properties": {
         "id": {
           "type": "string",
@@ -113,6 +114,23 @@
           "type": "string",
           "enum": ["In", "Out"],
           "description": "Whether stock was added or removed."
+        },
+        "unitPrice": {
+          "type": "number",
+          "description": "Price per unit for purchases."
+        },
+        "totalPrice": {
+          "type": "number",
+          "description": "Computed total cost of the purchase."
+        },
+        "supplier": {
+          "type": "string",
+          "description": "Who the stock was bought from."
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["Paid", "Unpaid"],
+          "description": "Whether the purchase has been paid for."
         }
       },
       "required": [

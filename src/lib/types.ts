@@ -72,14 +72,25 @@ export interface Order {
 export interface Item {
     id: string;
     name: string;
+    category: string;
     unitOfMeasurement: string;
     stockLevel: number;
+    lowStockThreshold?: number;
 }
+
+export type PaymentStatus = "Paid" | "Unpaid";
 
 export interface StockAdjustment {
     id: string;
     itemId: string;
+    itemName: string;
     adjustmentDate: string;
     adjustmentQuantity: number;
+    type: "In" | "Out";
     reason: string;
+    // New fields for financial tracking
+    unitPrice?: number;
+    totalPrice?: number;
+    supplier?: string;
+    paymentStatus?: PaymentStatus;
 }
