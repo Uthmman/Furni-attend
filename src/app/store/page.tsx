@@ -25,8 +25,6 @@ import {
   Package, 
   Plus, 
   Search, 
-  ArrowUpRight, 
-  ArrowDownRight, 
   History,
   Edit2,
   AlertTriangle,
@@ -65,8 +63,6 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 
 export const getCategoryIcon = (category: string) => {
   const iconClass = "h-8 w-8";
@@ -100,7 +96,6 @@ export default function StorePage() {
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
-  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
@@ -112,7 +107,6 @@ export default function StorePage() {
   }, [setTitle]);
 
   const itemsCollectionRef = useMemoFirebase(() => {
-    // Critical: Only attempt query when auth state is fully ready and user is present
     if (!firestore || isUserLoading || !user) return null;
     return collection(firestore, "items");
   }, [firestore, user, isUserLoading]);
@@ -120,7 +114,6 @@ export default function StorePage() {
   const { data: items, isLoading: itemsLoading } = useCollection<Item>(itemsCollectionRef);
 
   const adjustmentsCollectionRef = useMemoFirebase(() => {
-    // Critical: Only attempt query when auth state is fully ready and user is present
     if (!firestore || isUserLoading || !user) return null;
     return query(
       collection(firestore, "stockAdjustments"), 
@@ -238,17 +231,17 @@ export default function StorePage() {
 
       <Tabs defaultValue="inventory" className="w-full">
         <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center">
-          <TabsTrigger value="inventory" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <Package className="h-4 w-4 shrink-0" /> <span className="text-[10px] sm:text-sm font-bold tracking-tight">Stock</span>
+          <TabsTrigger value="inventory" className="flex items-center gap-2 px-6">
+            <Package className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Stock</span>
           </TabsTrigger>
-          <TabsTrigger value="items" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <Settings2 className="h-4 w-4 shrink-0" /> <span className="text-[10px] sm:text-sm font-bold tracking-tight">Items</span>
+          <TabsTrigger value="items" className="flex items-center gap-2 px-6">
+            <Settings2 className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Items</span>
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <History className="h-4 w-4 shrink-0" /> <span className="text-[10px] sm:text-sm font-bold tracking-tight">Log</span>
+          <TabsTrigger value="history" className="flex items-center gap-2 px-6">
+            <History className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Log</span>
           </TabsTrigger>
-          <TabsTrigger value="expenses" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <CreditCard className="h-4 w-4 shrink-0" /> <span className="text-[10px] sm:text-sm font-bold tracking-tight">Costs</span>
+          <TabsTrigger value="expenses" className="flex items-center gap-2 px-6">
+            <CreditCard className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Costs</span>
           </TabsTrigger>
         </TabsList>
 
@@ -257,15 +250,15 @@ export default function StorePage() {
              {filteredItems.map(item => {
                const isLowStock = item.stockLevel <= (item.lowStockThreshold || 5);
                return (
-                 <Card key={item.id} className="overflow-hidden shadow-md group border-primary/5 hover:border-primary/20 transition-all">
+                 <Card key={item.id} className="overflow-hidden shadow-md group border-primary/5 transition-all">
                     <CardContent className="p-4">
                        <div className="flex items-start gap-4">
-                          <Link href={`/store/${item.id}`} className="flex items-start gap-4 flex-1 min-w-0 hover:opacity-80 transition-opacity group/info">
+                          <div className="flex items-start gap-4 flex-1 min-w-0">
                             <div className={cn("flex items-center justify-center h-20 w-20 rounded-2xl shadow-sm shrink-0", getCategoryColor(item.category))}>
                               {getCategoryIcon(item.category)}
                             </div>
                             <div className="flex-1 space-y-1 min-w-0">
-                               <h3 className="font-bold text-lg truncate leading-none mb-1 group-hover/info:underline">{item.name}</h3>
+                               <h3 className="font-bold text-lg truncate leading-none mb-1">{item.name}</h3>
                                <div className="flex items-center justify-between">
                                   <Badge variant="outline" className="text-[9px] h-4 py-0 px-2 uppercase font-black tracking-tight border-primary/20">
                                   {item.category}
@@ -284,7 +277,7 @@ export default function StorePage() {
                                   </div>
                                </div>
                             </div>
-                          </Link>
+                          </div>
                           <div className="flex flex-col gap-1 shrink-0">
                             <Button variant="outline" size="icon" className="h-9 w-9 rounded-full text-green-600" onClick={(e) => handleAdjustStock(e, item, "In")} title="Add Stock">
                               <PlusCircle className="h-5 w-5" />
@@ -326,11 +319,7 @@ export default function StorePage() {
 
                <div className="md:hidden grid grid-cols-1 gap-0 divide-y">
                   {filteredItems.map(item => (
-                    <div 
-                      key={item.id} 
-                      className="p-4 flex items-center gap-4 hover:bg-muted/10 transition-colors cursor-pointer"
-                      onClick={() => router.push(`/store/${item.id}`)}
-                    >
+                    <div key={item.id} className="p-4 flex items-center gap-4">
                       <div className={cn("flex items-center justify-center h-16 w-16 rounded-xl shadow-sm shrink-0", getCategoryColor(item.category))}>
                         {getCategoryIcon(item.category)}
                       </div>
@@ -376,11 +365,7 @@ export default function StorePage() {
                     </TableHeader>
                     <TableBody>
                       {filteredItems.map(item => (
-                        <TableRow 
-                          key={item.id} 
-                          className="hover:bg-muted/10 transition-colors cursor-pointer"
-                          onClick={() => router.push(`/store/${item.id}`)}
-                        >
+                        <TableRow key={item.id} className="hover:bg-muted/10 transition-colors">
                           <TableCell className="font-bold pl-6">{item.name}</TableCell>
                           <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
                           <TableCell className="text-right font-mono font-bold text-xs">ETB {item.currentPrice?.toFixed(2) || "0.00"}</TableCell>
@@ -424,7 +409,7 @@ export default function StorePage() {
                <div className="md:hidden divide-y">
                   {adjustments && adjustments.length > 0 ? (
                     adjustments.map((adj) => (
-                      <div key={adj.id} className="p-4 space-y-2 hover:bg-muted/10 transition-colors cursor-pointer" onClick={() => router.push(`/store/${adj.itemId}`)}>
+                      <div key={adj.id} className="p-4 space-y-2 hover:bg-muted/10 transition-colors">
                         <div className="flex justify-between items-start">
                           <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1.5">
                             <Calendar className="h-3 w-3" /> {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "—"}
@@ -468,7 +453,7 @@ export default function StorePage() {
                     <TableBody>
                       {adjustments && adjustments.length > 0 ? (
                         adjustments.map((adj) => (
-                          <TableRow key={adj.id} className="hover:bg-muted/10 transition-colors cursor-pointer" onClick={() => router.push(`/store/${adj.itemId}`)}>
+                          <TableRow key={adj.id} className="hover:bg-muted/10 transition-colors">
                             <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap pl-6 py-4">
                               {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
                             </TableCell>
@@ -511,7 +496,7 @@ export default function StorePage() {
                <div className="md:hidden divide-y">
                   {purchaseHistory.length > 0 ? (
                     purchaseHistory.map((buy) => (
-                      <div key={buy.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors cursor-pointer" onClick={() => router.push(`/store/${buy.itemId}`)}>
+                      <div key={buy.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors">
                         <div className="flex justify-between items-start">
                           <div className="space-y-1">
                             <span className="text-[10px] text-muted-foreground font-semibold block">{buy.adjustmentDate ? format(new Date(buy.adjustmentDate), "MMM d, yyyy") : "—"}</span>
@@ -555,7 +540,7 @@ export default function StorePage() {
                     <TableBody>
                       {purchaseHistory.length > 0 ? (
                         purchaseHistory.map((buy) => (
-                          <TableRow key={buy.id} className="hover:bg-muted/10 transition-colors cursor-pointer" onClick={() => router.push(`/store/${buy.itemId}`)}>
+                          <TableRow key={buy.id} className="hover:bg-muted/10 transition-colors">
                             <TableCell className="text-[11px] text-muted-foreground pl-6">
                               {buy.adjustmentDate ? format(new Date(buy.adjustmentDate), "MMM d, yyyy") : "—"}
                             </TableCell>

@@ -26,7 +26,6 @@ service cloud.firestore {
     }
 
     // Inventory movement and financial tracking audit log
-    // Standard document matching pattern allows both single-doc read and collection-level list
     match /stockAdjustments/{adjustmentId} {
       allow read, write: if isAuthenticated();
     }
