@@ -93,7 +93,7 @@
     },
     "/stockAdjustments/{adjustmentId}": {
       "schema": { "$ref": "#/backend/entities/StockAdjustment" },
-      "description": "Inventory movement audit log."
+      "description": "Inventory movement and cost history audit log."
     }
   }
 }

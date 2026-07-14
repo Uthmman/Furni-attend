@@ -15,22 +15,20 @@ service cloud.firestore {
       }
     }
 
-    // Direct access to daily attendance records
+    // Direct access to daily attendance records (top-level collection)
     match /attendance/{date}/records/{employeeId} {
       allow read, write: if isAuthenticated();
     }
 
-    // Supplies registry and movement logs
-    // Robust access control for Store Management
-    match /items/{document=**} {
+    // Supplies registry management
+    match /items/{itemId} {
       allow read, write: if isAuthenticated();
     }
 
-    match /stockAdjustments/{document=**} {
+    // Inventory movement audit log and financial tracking
+    // Using a recursive wildcard ensures list operations and complex queries are allowed
+    match /stockAdjustments/{allPaths=**} {
       allow read, write: if isAuthenticated();
     }
-    
-    // Deployment hash: 1759405622000
-    // This comment ensures the rules are re-propagated to resolve any stuck permission states.
   }
 }
