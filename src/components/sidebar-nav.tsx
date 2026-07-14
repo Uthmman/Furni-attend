@@ -16,6 +16,7 @@ import {
   LayoutDashboard,
   Users,
   Package,
+  ShoppingBag,
 } from "lucide-react";
 
 const links = [
@@ -23,6 +24,7 @@ const links = [
   { href: "/employees", label: "Employees", icon: Users },
   { href: "/attendance", label: "Attendance", icon: CalendarCheck },
   { href: "/store", label: "Store", icon: Package },
+  { href: "/orders", label: "Orders", icon: ShoppingBag },
 ];
 
 export function SidebarNav() {

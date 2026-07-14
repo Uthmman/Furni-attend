@@ -22,7 +22,7 @@ export interface Employee extends DocumentData {
 export type AttendanceStatus = "Present" | "Absent" | "Late" | "Permission";
 
 export interface AttendanceRecord extends DocumentData {
-  id?: string; // id is the doc id, so it's not in the data
+  id?: string;
   employeeId: string;
   date: string | Timestamp;
   morningEntry?: string;
@@ -37,36 +37,34 @@ export interface PayrollEntry {
   employeeName: string;
   paymentMethod: "Weekly" | "Monthly";
   period: string;
-  amount: number; // Net Salary for both
+  amount: number;
   status: "Paid" | "Unpaid";
   amountToDate?: number;
-
-  // For weekly, these fields are used
   workingDays?: number;
   expectedHours?: number;
   totalHours?: number;
-  baseAmount?: number; // Calculated weekly base
+  baseAmount?: number;
   overtimeAmount?: number;
-
-  // For monthly, these are used.
   baseSalary?: number;
   hoursAbsent?: number;
   minutesLate?: number;
   absenceDeduction?: number;
   lateDeduction?: number; 
-  overtimeHours?: number; // weekly and monthly
+  overtimeHours?: number;
   absentDates?: string[];
   lateDates?: string[];
   permissionDaysUsed?: number;
 };
 
-export interface Order {
+export interface Order extends DocumentData {
     id: string;
-    customerName: string;
-    orderDate: string;
+    customerName?: string;
+    orderDate?: string;
     orderDescription?: string;
-    orderStatus: string;
+    orderStatus?: string;
     productPictureUrl?: string;
+    // Allow for other dynamic fields from the secondary project
+    [key: string]: any;
 }
 
 export interface Item {
@@ -89,7 +87,6 @@ export interface StockAdjustment {
     adjustmentQuantity: number;
     type: "In" | "Out";
     reason: string;
-    // New fields for financial tracking
     unitPrice?: number;
     totalPrice?: number;
     supplier?: string;

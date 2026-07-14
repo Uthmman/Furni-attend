@@ -8,15 +8,17 @@ import {
   LayoutDashboard,
   Users,
   Package,
+  ShoppingBag,
 } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import React from 'react';
 
 const links = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/", label: "Home", icon: LayoutDashboard },
   { href: "/employees", label: "Employees", icon: Users },
-  { href: "/attendance", label: "Attendance", icon: CalendarCheck },
+  { href: "/attendance", label: "Logs", icon: CalendarCheck },
   { href: "/store", label: "Store", icon: Package },
+  { href: "/orders", label: "Orders", icon: ShoppingBag },
 ];
 
 export function MobileNav() {
@@ -44,16 +46,16 @@ export function MobileNav() {
                             key={link.href}
                             href={link.href}
                             className={cn(
-                                "flex flex-col items-center justify-center gap-1 p-2 rounded-lg transition-colors duration-200",
+                                "flex flex-col items-center justify-center gap-1 p-1 rounded-lg transition-colors duration-200",
                                 isActive
                                 ? "bg-primary text-primary-foreground"
                                 : "text-muted-foreground hover:bg-accent"
                             )}
-                            style={{ minWidth: '64px' }}
+                            style={{ minWidth: '50px' }}
                         >
-                            <link.icon className="h-6 w-6" />
+                            <link.icon className="h-5 w-5" />
                             <span className={cn(
-                                "text-xs font-medium",
+                                "text-[10px] font-bold uppercase tracking-tighter",
                                 isActive ? "block" : "hidden"
                             )}>
                                 {link.label}
