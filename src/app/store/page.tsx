@@ -40,14 +40,12 @@ import {
   Droplets,
   Box,
   Layers,
-  Clock,
   Trash2,
   Settings2,
   CreditCard,
   Wallet,
-  ChevronRight,
-  ShoppingCart,
-  Calendar
+  Calendar,
+  ChevronRight
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
@@ -68,8 +66,10 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 
-const getCategoryIcon = (category: string) => {
+export const getCategoryIcon = (category: string) => {
   const iconClass = "h-8 w-8";
   switch (category) {
     case "Hardware": return <Wrench className={iconClass} />;
@@ -83,7 +83,7 @@ const getCategoryIcon = (category: string) => {
   }
 };
 
-const getCategoryColor = (category: string) => {
+export const getCategoryColor = (category: string) => {
   switch (category) {
     case "Hardware": return "bg-blue-500/10 text-blue-600";
     case "Paint": return "bg-pink-500/10 text-pink-600";
@@ -101,6 +101,7 @@ export default function StorePage() {
   const firestore = useFirestore();
   const { user } = useUser();
   const { toast } = useToast();
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
@@ -138,18 +139,21 @@ export default function StorePage() {
     return adjustments.filter(adj => adj.type === "In");
   }, [adjustments]);
 
-  const handleEditItem = (item: Item) => {
+  const handleEditItem = (e: React.MouseEvent, item: Item) => {
+    e.stopPropagation();
     setSelectedItem(item);
     setIsItemFormOpen(true);
   };
 
-  const handleAdjustStock = (item: Item | null, type: "In" | "Out" | null) => {
+  const handleAdjustStock = (e: React.MouseEvent | null, item: Item | null, type: "In" | "Out" | null) => {
+    if (e) e.stopPropagation();
     setSelectedItem(item);
     setAdjustmentType(type);
     setIsAdjustmentOpen(true);
   };
 
-  const handleDeleteItem = async (itemId: string) => {
+  const handleDeleteItem = async (e: React.MouseEvent, itemId: string) => {
+    e.stopPropagation();
     if (!firestore) return;
     try {
         await deleteDoc(doc(firestore, "items", itemId));
@@ -168,7 +172,7 @@ export default function StorePage() {
         <Button 
           size="lg" 
           className="rounded-full shadow-2xl bg-green-600 hover:bg-green-700 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110"
-          onClick={() => handleAdjustStock(null, "In")}
+          onClick={() => handleAdjustStock(null, null, "In")}
           title="Log Purchase / Restock"
         >
           <PlusCircle className="h-8 w-8" />
@@ -179,7 +183,7 @@ export default function StorePage() {
         <Button 
           size="lg" 
           className="rounded-full shadow-2xl bg-destructive hover:bg-destructive/90 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110"
-          onClick={() => handleAdjustStock(null, "Out")}
+          onClick={() => handleAdjustStock(null, null, "Out")}
           title="Log Usage"
         >
           <MinusCircle className="h-8 w-8" />
@@ -219,16 +223,16 @@ export default function StorePage() {
       <Tabs defaultValue="inventory" className="w-full">
         <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center">
           <TabsTrigger value="inventory" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <Package className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase tracking-tight">Stock</span>
+            <Package className="h-4 w-4" /> <span className="text-xs sm:text-sm font-bold tracking-tight">Stock</span>
           </TabsTrigger>
           <TabsTrigger value="items" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <Settings2 className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase tracking-tight">Items</span>
+            <Settings2 className="h-4 w-4" /> <span className="text-xs sm:text-sm font-bold tracking-tight">Items</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <History className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase tracking-tight">Log</span>
+            <History className="h-4 w-4" /> <span className="text-xs sm:text-sm font-bold tracking-tight">Log</span>
           </TabsTrigger>
           <TabsTrigger value="expenses" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <CreditCard className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase tracking-tight">Costs</span>
+            <CreditCard className="h-4 w-4" /> <span className="text-xs sm:text-sm font-bold tracking-tight">Costs</span>
           </TabsTrigger>
         </TabsList>
 
@@ -241,19 +245,19 @@ export default function StorePage() {
                  <Card key={item.id} className="overflow-hidden shadow-md group border-primary/5 hover:border-primary/20 transition-all">
                     <CardContent className="p-4">
                        <div className="flex items-start gap-4">
-                          <div className={cn("flex items-center justify-center h-20 w-20 rounded-2xl shadow-sm shrink-0", getCategoryColor(item.category))}>
-                            {getCategoryIcon(item.category)}
-                          </div>
-                          <div className="flex-1 space-y-1 min-w-0">
-                             <h3 className="font-bold text-lg truncate leading-none mb-1">{item.name}</h3>
-                             <div className="flex items-center justify-between">
-                                <Badge variant="outline" className="text-[9px] h-4 py-0 px-2 uppercase font-black tracking-tight border-primary/20">
-                                {item.category}
-                                </Badge>
-                                <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
-                             </div>
-                             <div className="flex items-center justify-between pt-3">
-                                <div className="flex flex-col">
+                          <Link href={`/store/${item.id}`} className="flex items-start gap-4 flex-1 min-w-0 hover:opacity-80 transition-opacity group/info">
+                            <div className={cn("flex items-center justify-center h-20 w-20 rounded-2xl shadow-sm shrink-0", getCategoryColor(item.category))}>
+                              {getCategoryIcon(item.category)}
+                            </div>
+                            <div className="flex-1 space-y-1 min-w-0">
+                               <h3 className="font-bold text-lg truncate leading-none mb-1 group-hover/info:underline">{item.name}</h3>
+                               <div className="flex items-center justify-between">
+                                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-2 uppercase font-black tracking-tight border-primary/20">
+                                  {item.category}
+                                  </Badge>
+                                  <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
+                               </div>
+                               <div className="pt-3">
                                   <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest">In Stock</span>
                                   <div className="flex items-center gap-1.5">
                                     <span className={cn("text-2xl font-black tabular-nums", isLowStock ? "text-destructive" : "text-green-600")}>
@@ -263,21 +267,21 @@ export default function StorePage() {
                                       {item.unitOfMeasurement}
                                     </span>
                                   </div>
-                                </div>
-                                <div className="flex gap-1">
-                                  <Button variant="outline" size="icon" className="h-9 w-9 rounded-full text-green-600" onClick={() => handleAdjustStock(item, "In")} title="Add Stock">
-                                    <PlusCircle className="h-5 w-5" />
-                                  </Button>
-                                  <Button variant="outline" size="icon" className="h-9 w-9 rounded-full text-destructive" onClick={() => handleAdjustStock(item, "Out")} title="Use Stock">
-                                    <MinusCircle className="h-5 w-5" />
-                                  </Button>
-                                </div>
-                             </div>
+                               </div>
+                            </div>
+                          </Link>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full text-green-600" onClick={(e) => handleAdjustStock(e, item, "In")} title="Add Stock">
+                              <PlusCircle className="h-5 w-5" />
+                            </Button>
+                            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full text-destructive" onClick={(e) => handleAdjustStock(e, item, "Out")} title="Use Stock">
+                              <MinusCircle className="h-5 w-5" />
+                            </Button>
                           </div>
                        </div>
                        {isLowStock && (
                           <div className="mt-3 bg-destructive/10 text-destructive text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-2">
-                            <AlertTriangle className="h-3 w-3" /> LOW STOCK ALERT (BELOW {item.lowStockThreshold})
+                            <AlertTriangle className="h-3 w-3" /> LOW STOCK ALERT
                           </div>
                         )}
                     </CardContent>
@@ -293,7 +297,7 @@ export default function StorePage() {
             <CardHeader className="bg-primary/5 border-b flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="text-xl">Registry Management</CardTitle>
-                <CardDescription className="hidden sm:block">Add, update, or remove supply item definitions from your registry.</CardDescription>
+                <CardDescription className="hidden sm:block">Add, update, or remove supply item definitions.</CardDescription>
               </div>
               <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="hidden sm:flex border-dashed shadow-sm h-10">
                  <Plus className="mr-2 h-4 w-4" /> Register New Supply
@@ -310,7 +314,11 @@ export default function StorePage() {
                {/* Mobile Cards for Items */}
                <div className="md:hidden grid grid-cols-1 gap-0 divide-y">
                   {filteredItems.map(item => (
-                    <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-muted/10 transition-colors">
+                    <div 
+                      key={item.id} 
+                      className="p-4 flex items-center gap-4 hover:bg-muted/10 transition-colors cursor-pointer"
+                      onClick={() => router.push(`/store/${item.id}`)}
+                    >
                       <div className={cn("flex items-center justify-center h-16 w-16 rounded-xl shadow-sm shrink-0", getCategoryColor(item.category))}>
                         {getCategoryIcon(item.category)}
                       </div>
@@ -321,11 +329,11 @@ export default function StorePage() {
                           <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2)}</span>
                         </div>
                       </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => handleEditItem(item)}><Edit2 className="h-4 w-4" /></Button>
+                      <div className="flex gap-1 shrink-0">
+                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={(e) => handleEditItem(e, item)}><Edit2 className="h-4 w-4" /></Button>
                         <AlertDialog>
                           <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                            <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={(e) => e.stopPropagation()}><Trash2 className="h-4 w-4" /></Button>
                           </AlertDialogTrigger>
                           <AlertDialogContent className="max-w-[90vw] rounded-2xl">
                             <AlertDialogHeader>
@@ -334,7 +342,7 @@ export default function StorePage() {
                             </AlertDialogHeader>
                             <AlertDialogFooter>
                               <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteItem(item.id)} className="bg-destructive hover:bg-destructive/90 rounded-xl">Delete</AlertDialogAction>
+                              <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90 rounded-xl">Delete</AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
@@ -357,17 +365,21 @@ export default function StorePage() {
                     </TableHeader>
                     <TableBody>
                       {filteredItems.map(item => (
-                        <TableRow key={item.id} className="hover:bg-muted/10 transition-colors">
+                        <TableRow 
+                          key={item.id} 
+                          className="hover:bg-muted/10 transition-colors cursor-pointer"
+                          onClick={() => router.push(`/store/${item.id}`)}
+                        >
                           <TableCell className="font-bold pl-6">{item.name}</TableCell>
                           <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
-                          <TableCell className="text-right font-mono font-bold text-xs">{item.currentPrice?.toFixed(2) || "0.00"}</TableCell>
+                          <TableCell className="text-right font-mono font-bold text-xs">ETB {item.currentPrice?.toFixed(2) || "0.00"}</TableCell>
                           <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold || 5}</TableCell>
                           <TableCell className="text-right pr-6">
                               <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditItem(item)}><Edit2 className="h-4 w-4" /></Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => handleEditItem(e, item)}><Edit2 className="h-4 w-4" /></Button>
                                 <AlertDialog>
                                     <AlertDialogTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => e.stopPropagation()}><Trash2 className="h-4 w-4" /></Button>
                                     </AlertDialogTrigger>
                                     <AlertDialogContent>
                                       <AlertDialogHeader>
@@ -376,7 +388,7 @@ export default function StorePage() {
                                       </AlertDialogHeader>
                                       <AlertDialogFooter>
                                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteItem(item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                                        <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
                                       </AlertDialogFooter>
                                     </AlertDialogContent>
                                 </AlertDialog>
@@ -403,7 +415,7 @@ export default function StorePage() {
                <div className="md:hidden divide-y">
                   {adjustments && adjustments.length > 0 ? (
                     adjustments.map((adj) => (
-                      <div key={adj.id} className="p-4 space-y-2 hover:bg-muted/10 transition-colors">
+                      <div key={adj.id} className="p-4 space-y-2 hover:bg-muted/10 transition-colors cursor-pointer" onClick={() => router.push(`/store/${adj.itemId}`)}>
                         <div className="flex justify-between items-start">
                           <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1.5">
                             <Calendar className="h-3 w-3" /> {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "—"}
@@ -448,7 +460,7 @@ export default function StorePage() {
                     <TableBody>
                       {adjustments && adjustments.length > 0 ? (
                         adjustments.map((adj) => (
-                          <TableRow key={adj.id} className="hover:bg-muted/10 transition-colors">
+                          <TableRow key={adj.id} className="hover:bg-muted/10 transition-colors cursor-pointer" onClick={() => router.push(`/store/${adj.itemId}`)}>
                             <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap pl-6 py-4">
                               {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
                             </TableCell>
@@ -485,15 +497,15 @@ export default function StorePage() {
         <TabsContent value="expenses" className="space-y-6">
            <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b">
-              <CardTitle className="text-xl">Purchase Expenses</CardTitle>
-              <CardDescription className="hidden sm:block">Financial record of all supply purchases and restocking costs.</CardDescription>
+              <CardTitle className="text-xl">Purchase Costs</CardTitle>
+              <CardDescription className="hidden sm:block">Financial record of supply restocking expenses.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
                {/* Mobile View for Expenses */}
                <div className="md:hidden divide-y">
                   {purchaseHistory.length > 0 ? (
                     purchaseHistory.map((buy) => (
-                      <div key={buy.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors">
+                      <div key={buy.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors cursor-pointer" onClick={() => router.push(`/store/${buy.itemId}`)}>
                         <div className="flex justify-between items-start">
                           <div className="space-y-1">
                             <span className="text-[10px] text-muted-foreground font-semibold block">{buy.adjustmentDate ? format(new Date(buy.adjustmentDate), "MMM d, yyyy") : "—"}</span>
@@ -538,7 +550,7 @@ export default function StorePage() {
                     <TableBody>
                       {purchaseHistory.length > 0 ? (
                         purchaseHistory.map((buy) => (
-                          <TableRow key={buy.id} className="hover:bg-muted/10 transition-colors">
+                          <TableRow key={buy.id} className="hover:bg-muted/10 transition-colors cursor-pointer" onClick={() => router.push(`/store/${buy.itemId}`)}>
                             <TableCell className="text-[11px] text-muted-foreground pl-6">
                               {buy.adjustmentDate ? format(new Date(buy.adjustmentDate), "MMM d, yyyy") : "—"}
                             </TableCell>
@@ -549,7 +561,7 @@ export default function StorePage() {
                                </div>
                             </TableCell>
                             <TableCell className="text-xs font-medium">{buy.supplier || "—"}</TableCell>
-                            <TableCell className="text-right tabular-nums text-xs">ETB {buy.unitPrice?.toFixed(2) || "0.00"}</TableCell>
+                            <TableCell className="text-right tabular-nums text-xs font-bold">ETB {buy.unitPrice?.toFixed(2) || "0.00"}</TableCell>
                             <TableCell className="text-right tabular-nums font-black text-primary">ETB {buy.totalPrice?.toFixed(2) || "0.00"}</TableCell>
                             <TableCell className="text-center pr-6">
                                <Badge 
@@ -562,7 +574,7 @@ export default function StorePage() {
                           </TableRow>
                         ))
                       ) : (
-                        <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">No purchase expenses recorded.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">No records.</TableCell></TableRow>
                       )}
                     </TableBody>
                  </Table>
@@ -572,7 +584,7 @@ export default function StorePage() {
            
            <div className="flex justify-end pr-4">
               <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 w-full max-w-sm text-center shadow-md">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">Total Stock Spending (Last 100 Logged)</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">Total Stock Spending (Last 100)</p>
                   <p className="text-3xl sm:text-4xl font-black text-primary">
                     ETB {purchaseHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
