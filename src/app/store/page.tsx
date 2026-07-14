@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -45,6 +44,7 @@ import {
   Trash2,
   Settings2,
   CreditCard,
+  Wallet,
   ChevronRight,
   TrendingDown
 } from "lucide-react";
