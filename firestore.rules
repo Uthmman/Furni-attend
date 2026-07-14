@@ -26,9 +26,13 @@ service cloud.firestore {
     }
 
     // Inventory movement audit log and financial tracking
-    // Using a recursive wildcard ensures list operations and complex queries are allowed
-    match /stockAdjustments/{allPaths=**} {
+    // Explicitly matching both the collection and individual documents for maximum compatibility
+    match /stockAdjustments/{adjustmentId} {
       allow read, write: if isAuthenticated();
+    }
+    
+    match /stockAdjustments {
+      allow list: if isAuthenticated();
     }
   }
 }

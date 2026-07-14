@@ -39,25 +39,25 @@ export default function ItemProfilePage() {
   const itemId = params.itemId as string;
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   
   const [isEditFormOpen, setIsEditFormOpen] = useState(false);
 
   const itemDocRef = useMemoFirebase(() => {
-    if (!firestore || !itemId || !user) return null;
+    if (!firestore || !itemId || !user || isUserLoading) return null;
     return doc(firestore, "items", itemId);
-  }, [firestore, itemId, user]);
+  }, [firestore, itemId, user, isUserLoading]);
 
   const { data: item, loading: itemLoading } = useDoc<Item>(itemDocRef);
 
   const adjustmentsColRef = useMemoFirebase(() => {
-    if (!firestore || !itemId || !user) return null;
+    if (!firestore || !itemId || !user || isUserLoading) return null;
     return query(
       collection(firestore, "stockAdjustments"),
       where("itemId", "==", itemId),
       orderBy("adjustmentDate", "desc")
     );
-  }, [firestore, itemId, user]);
+  }, [firestore, itemId, user, isUserLoading]);
 
   const { data: allAdjustments, loading: adjustmentsLoading } = useCollection<StockAdjustment>(adjustmentsColRef);
 
@@ -90,8 +90,20 @@ export default function ItemProfilePage() {
     return allAdjustments.filter(adj => adj.type === "Out");
   }, [allAdjustments]);
 
-  if (itemLoading || adjustmentsLoading) return <div className="p-8 text-center">Loading Item Profile...</div>;
-  if (!item) return <div className="p-8 text-center">Item not found in registry.</div>;
+  const isGlobalLoading = itemLoading || adjustmentsLoading || isUserLoading;
+
+  if (isGlobalLoading) {
+    return (
+      <div className="flex h-[400px] w-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" />
+          <p className="text-sm font-medium text-muted-foreground">Syncing Profile...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!item && !itemLoading) return <div className="p-8 text-center">Item not found in registry.</div>;
 
   return (
     <div className="flex flex-col gap-6 pb-12">
@@ -106,10 +118,10 @@ export default function ItemProfilePage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="flex-1 min-w-0">
-          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">{item.name}</h2>
+          <h2 className="text-2xl sm:text-3xl font-bold tracking-tight truncate">{item?.name}</h2>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="outline" className="uppercase font-black tracking-tight">{item.category}</Badge>
-            <Badge variant="secondary" className="hidden sm:inline-flex">Reference: {item.id.slice(0, 8)}</Badge>
+            <Badge variant="outline" className="uppercase font-black tracking-tight">{item?.category}</Badge>
+            <Badge variant="secondary" className="hidden sm:inline-flex">Reference: {item?.id.slice(0, 8)}</Badge>
           </div>
         </div>
         <Button onClick={() => setIsEditFormOpen(true)} variant="outline" size="sm" className="hidden sm:flex">
@@ -124,8 +136,8 @@ export default function ItemProfilePage() {
               <CardContent className="p-4 sm:p-6">
                 <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">Stock Level</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-4xl font-black text-primary tabular-nums">{item.stockLevel}</span>
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase">{item.unitOfMeasurement}</span>
+                  <span className="text-2xl sm:text-4xl font-black text-primary tabular-nums">{item?.stockLevel}</span>
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase">{item?.unitOfMeasurement}</span>
                 </div>
               </CardContent>
             </Card>
@@ -133,8 +145,8 @@ export default function ItemProfilePage() {
               <CardContent className="p-4 sm:p-6">
                 <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest mb-1">Latest Market Price</p>
                 <div className="flex items-baseline gap-1">
-                  <span className="text-2xl sm:text-4xl font-black text-green-600 tabular-nums">ETB {item.currentPrice?.toFixed(0)}</span>
-                  <span className="text-[10px] font-bold text-muted-foreground uppercase">/ {item.unitOfMeasurement}</span>
+                  <span className="text-2xl sm:text-4xl font-black text-green-600 tabular-nums">ETB {item?.currentPrice?.toFixed(0)}</span>
+                  <span className="text-[10px] font-bold text-muted-foreground uppercase">/ {item?.unitOfMeasurement}</span>
                 </div>
               </CardContent>
             </Card>
@@ -183,20 +195,20 @@ export default function ItemProfilePage() {
 
         <div className="space-y-6">
           <Card className="shadow-md overflow-hidden">
-            <div className={cn("p-6 flex flex-col items-center gap-4 text-center", getCategoryColor(item.category))}>
+            <div className={cn("p-6 flex flex-col items-center gap-4 text-center", item ? getCategoryColor(item.category) : "")}>
                 <div className="p-4 bg-background/80 backdrop-blur rounded-full shadow-lg">
-                  {getCategoryIcon(item.category)}
+                  {item ? getCategoryIcon(item.category) : <Package className="h-8 w-8" />}
                 </div>
                 <div>
                   <p className="text-[10px] font-black uppercase tracking-[0.2em] opacity-60">Classification</p>
-                  <p className="text-lg font-bold">{item.category}</p>
+                  <p className="text-lg font-bold">{item?.category}</p>
                 </div>
             </div>
             <CardContent className="pt-6 space-y-4">
               <div className="flex justify-between items-center text-xs">
                 <span className="text-muted-foreground font-bold uppercase tracking-wider">Replenish Limit</span>
                 <Badge variant="destructive" className="font-bold tabular-nums">
-                   {item.lowStockThreshold || 5} {item.unitOfMeasurement}
+                   {item?.lowStockThreshold || 5} {item?.unitOfMeasurement}
                 </Badge>
               </div>
               <div className="flex justify-between items-center text-xs border-t pt-4">

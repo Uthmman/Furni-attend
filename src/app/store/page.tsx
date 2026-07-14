@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -114,7 +113,7 @@ export default function StorePage() {
   }, [setTitle]);
 
   const itemsCollectionRef = useMemoFirebase(() => {
-    // Only attempt query when auth state is fully ready
+    // Only attempt query when auth state is fully ready and user is present
     if (!firestore || isUserLoading || !user) return null;
     return collection(firestore, "items");
   }, [firestore, user, isUserLoading]);
@@ -122,7 +121,7 @@ export default function StorePage() {
   const { data: items, isLoading: itemsLoading } = useCollection<Item>(itemsCollectionRef);
 
   const adjustmentsCollectionRef = useMemoFirebase(() => {
-    // Only attempt query when auth state is fully ready
+    // Only attempt query when auth state is fully ready and user is present
     if (!firestore || isUserLoading || !user) return null;
     return query(collection(firestore, "stockAdjustments"), orderBy("adjustmentDate", "desc"), limit(100));
   }, [firestore, user, isUserLoading]);
@@ -166,7 +165,18 @@ export default function StorePage() {
     }
   };
 
-  if ((itemsLoading && !items) || (adjustmentsLoading && !adjustments) || isUserLoading) return <div className="p-8 text-center">Loading Store Inventory...</div>;
+  const isLoadingData = (itemsLoading && !items) || (adjustmentsLoading && !adjustments) || isUserLoading;
+
+  if (isLoadingData) {
+    return (
+      <div className="flex h-[400px] w-full items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" />
+          <p className="text-sm font-medium text-muted-foreground">Initializing Inventory...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 relative min-h-[calc(100vh-200px)] pb-24">
