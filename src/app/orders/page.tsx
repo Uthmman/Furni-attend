@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import {
   Card,
@@ -80,7 +80,7 @@ export default function OrdersPage() {
               Recent Orders
             </CardTitle>
             <CardDescription>
-              Orders fetched from your course-registration-cce07 project.
+              Orders fetched from your registration system (course-registration-cce07).
             </CardDescription>
           </div>
           <Badge variant="secondary" className="px-3 py-1 font-bold">
@@ -135,7 +135,7 @@ export default function OrdersPage() {
               <PackageSearch className="h-12 w-12 text-muted-foreground/40" />
               <div className="space-y-1">
                 <p className="text-lg font-bold text-muted-foreground">No orders found</p>
-                <p className="text-sm text-muted-foreground/60">Connect to your primary system to sync orders.</p>
+                <p className="text-sm text-muted-foreground/60">Ensure the "orders" collection exists in your secondary project.</p>
               </div>
             </div>
           )}

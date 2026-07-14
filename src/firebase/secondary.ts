@@ -16,16 +16,15 @@ const secondaryFirebaseConfig = {
 
 /**
  * Initializes and returns the secondary Firestore instance.
- * Uses a unique app name to avoid conflict with the primary app.
+ * Uses a unique app name to avoid conflict with the primary [DEFAULT] app.
  */
 function getSecondaryFirestore() {
   const appName = "secondary-orders-app";
-  let app;
+  const apps = getApps();
+  let app = apps.find(a => a.name === appName);
   
-  if (!getApps().find(a => a.name === appName)) {
+  if (!app) {
     app = initializeApp(secondaryFirebaseConfig, appName);
-  } else {
-    app = getApp(appName);
   }
   
   return getFirestore(app);
