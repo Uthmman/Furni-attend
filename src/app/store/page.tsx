@@ -51,7 +51,7 @@ import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 
 const getCategoryIcon = (category: string) => {
-  const iconClass = "h-6 w-6"; // Enlarged icons
+  const iconClass = "h-8 w-8"; // Increased from h-6
   switch (category) {
     case "Hardware": return <Wrench className={iconClass} />;
     case "Paint": return <Paintbrush className={iconClass} />;
@@ -206,7 +206,7 @@ export default function StorePage() {
                 <Table>
                   <TableHeader className="bg-muted/30">
                     <TableRow>
-                      <TableHead className="w-[80px] pl-6"></TableHead>
+                      <TableHead className="w-[100px] pl-6"></TableHead>
                       <TableHead className="font-bold">Item Name</TableHead>
                       <TableHead className="font-bold">Category</TableHead>
                       <TableHead className="text-center font-bold">Stock Level</TableHead>
@@ -221,7 +221,7 @@ export default function StorePage() {
                         return (
                           <TableRow key={item.id} className="hover:bg-primary/[0.02] transition-colors border-b last:border-0">
                             <TableCell className="pl-6 py-4">
-                              <div className={cn("flex items-center justify-center h-12 w-12 rounded-xl shadow-sm", getCategoryColor(item.category || ""))}>
+                              <div className={cn("flex items-center justify-center h-16 w-16 rounded-xl shadow-sm", getCategoryColor(item.category || ""))}>
                                 {getCategoryIcon(item.category || "")}
                               </div>
                             </TableCell>
@@ -315,7 +315,7 @@ export default function StorePage() {
                      {isLowStock && <div className="absolute top-0 left-0 w-1 h-full bg-destructive" />}
                      <CardContent className="p-4">
                        <div className="flex items-start gap-4">
-                         <div className={cn("flex items-center justify-center h-16 w-16 rounded-2xl shadow-sm shrink-0", getCategoryColor(item.category || ""))}>
+                         <div className={cn("flex items-center justify-center h-20 w-20 rounded-2xl shadow-sm shrink-0", getCategoryColor(item.category || ""))}>
                             {getCategoryIcon(item.category || "")}
                          </div>
                          <div className="flex-1 space-y-1">
