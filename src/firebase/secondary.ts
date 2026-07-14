@@ -1,9 +1,10 @@
 'use client';
 
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { initializeApp, getApps } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
 // Secondary Firebase Project Configuration (course-registration-cce07)
+// Updated with user-provided credentials
 const secondaryFirebaseConfig = {
   apiKey: "AIzaSyCOTBiGBKbvXQYK1YE4tBVupjiPACDpN0Y",
   authDomain: "course-registration-cce07.firebaseapp.com",

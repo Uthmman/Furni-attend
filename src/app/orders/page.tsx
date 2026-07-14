@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { secondaryDb } from "@/firebase/secondary";
-import { collection, query, orderBy } from "firebase/firestore";
+import { collection } from "firebase/firestore";
 import { useCollection, useMemoFirebase } from "@/firebase";
 import { format, isValid } from "date-fns";
 import { ShoppingBag, Calendar, User, PackageSearch } from "lucide-react";
@@ -33,8 +33,9 @@ export default function OrdersPage() {
   }, [setTitle]);
 
   // Memoize the collection reference from the SECONDARY database
+  // Simplified query to ensure all documents are fetched even if fields like orderDate are missing
   const ordersCollectionRef = useMemoFirebase(() => {
-    return query(collection(secondaryDb, "orders"), orderBy("orderDate", "desc"));
+    return collection(secondaryDb, "orders");
   }, []);
 
   const { data: orders, isLoading } = useCollection<Order>(ordersCollectionRef);
@@ -53,10 +54,15 @@ export default function OrdersPage() {
     }
   };
 
-  const formatDate = (dateStr: string) => {
-    if (!dateStr) return "N/A";
-    const d = new Date(dateStr);
-    return isValid(d) ? format(d, "MMM d, yyyy") : "Invalid Date";
+  const formatDate = (date: any) => {
+    if (!date) return "N/A";
+    let d: Date;
+    if (date?.toDate) {
+        d = date.toDate();
+    } else {
+        d = new Date(date);
+    }
+    return isValid(d) ? format(d, "MMM d, yyyy") : "N/A";
   };
 
   if (isLoading) {
@@ -64,7 +70,7 @@ export default function OrdersPage() {
       <div className="flex h-[400px] w-full items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" />
-          <p className="text-sm font-medium text-muted-foreground">Fetching orders from secondary project...</p>
+          <p className="text-sm font-medium text-muted-foreground">Fetching orders from registration system...</p>
         </div>
       </div>
     );
@@ -80,7 +86,7 @@ export default function OrdersPage() {
               Recent Orders
             </CardTitle>
             <CardDescription>
-              Orders fetched from your registration system (course-registration-cce07).
+              Orders fetched from your secondary project (course-registration-cce07).
             </CardDescription>
           </div>
           <Badge variant="secondary" className="px-3 py-1 font-bold">
@@ -107,23 +113,23 @@ export default function OrdersPage() {
                           <div className="bg-primary/10 p-2 rounded-lg">
                             <User className="h-4 w-4 text-primary" />
                           </div>
-                          <span className="font-bold">{order.customerName || "Anonymous"}</span>
+                          <span className="font-bold">{order.customerName || order.name || "Anonymous"}</span>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-col max-w-[300px]">
-                          <span className="text-sm text-foreground line-clamp-1">{order.orderDescription || "No description provided"}</span>
+                          <span className="text-sm text-foreground line-clamp-1">{order.orderDescription || order.description || order.productName || "No description"}</span>
                           <span className="text-[10px] text-muted-foreground font-mono uppercase">ID: {order.id.slice(0, 8)}</span>
                         </div>
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium">
                           <Calendar className="h-3 w-3" />
-                          {formatDate(order.orderDate)}
+                          {formatDate(order.orderDate || order.date || order.createdAt)}
                         </div>
                       </TableCell>
                       <TableCell>
-                        {getStatusBadge(order.orderStatus)}
+                        {getStatusBadge(order.orderStatus || order.status)}
                       </TableCell>
                     </TableRow>
                   ))}
@@ -135,7 +141,7 @@ export default function OrdersPage() {
               <PackageSearch className="h-12 w-12 text-muted-foreground/40" />
               <div className="space-y-1">
                 <p className="text-lg font-bold text-muted-foreground">No orders found</p>
-                <p className="text-sm text-muted-foreground/60">Ensure the "orders" collection exists in your secondary project.</p>
+                <p className="text-sm text-muted-foreground/60">We connected to the project, but the "orders" collection appears to be empty or fields differ.</p>
               </div>
             </div>
           )}
