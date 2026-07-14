@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -43,7 +42,6 @@ const adjustmentSchema = z.object({
   type: z.enum(["In", "Out"]),
   quantity: z.coerce.number().min(1, { message: "Quantity must be at least 1" }),
   reason: z.string().min(2, { message: "Please provide a reason." }),
-  // New fields for Stock In
   unitPrice: z.coerce.number().optional(),
   supplier: z.string().optional(),
   paymentStatus: z.enum(["Paid", "Unpaid"]).optional(),
@@ -78,6 +76,17 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     },
   });
 
+  const watchedItemId = form.watch("itemId");
+  const selectedItem = items.find(i => i.id === watchedItemId);
+  const currentType = form.watch("type");
+
+  // Sync unit price when item is selected
+  useEffect(() => {
+    if (selectedItem && currentType === 'In') {
+        form.setValue("unitPrice", selectedItem.currentPrice || 0);
+    }
+  }, [selectedItem?.id, currentType, form]);
+
   useEffect(() => {
     if (isOpen) {
       form.reset({
@@ -85,15 +94,12 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
         type: forcedType || "Out",
         quantity: 1,
         reason: "",
-        unitPrice: 0,
+        unitPrice: preSelectedItem?.currentPrice || 0,
         supplier: "",
         paymentStatus: "Paid",
       });
     }
   }, [isOpen, preSelectedItem, forcedType, form]);
-
-  const selectedItem = items.find(i => i.id === form.watch("itemId"));
-  const currentType = form.watch("type");
 
   const onSubmit = async (data: AdjustmentValues) => {
     if (!firestore || !selectedItem) return;
@@ -126,9 +132,16 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     batch.set(adjRef, adjData);
 
-    // 2. Update item stock level
+    // 2. Update item stock level and price if it changed
     const itemRef = doc(firestore, "items", selectedItem.id);
-    batch.update(itemRef, { stockLevel: newStockLevel });
+    const itemUpdate: any = { stockLevel: newStockLevel };
+    
+    // Sync price to item if Stock In price was edited
+    if (data.type === 'In' && data.unitPrice !== undefined) {
+        itemUpdate.currentPrice = data.unitPrice;
+    }
+
+    batch.update(itemRef, itemUpdate);
 
     try {
       await batch.commit();
@@ -227,11 +240,12 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                           <FormControl>
                             <Input type="number" step="0.01" className="h-10 bg-background" {...field} />
                           </FormControl>
+                          <p className="text-[9px] text-muted-foreground mt-1">Updates item master price</p>
                           <FormMessage />
                         </FormItem>
                       )}
                     />
-                    <div className="flex flex-col justify-end">
+                    <div className="flex flex-col justify-end pb-4">
                        <p className="text-[10px] text-muted-foreground font-semibold uppercase">Total Cost</p>
                        <p className="font-bold text-lg text-primary">
                           ETB {((Number(form.watch("quantity")) || 0) * (Number(form.watch("unitPrice")) || 0)).toFixed(2)}

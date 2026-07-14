@@ -219,18 +219,18 @@ export default function StorePage() {
       </div>
 
       <Tabs defaultValue="inventory" className="w-full">
-        <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:w-auto">
-          <TabsTrigger value="inventory" className="flex items-center gap-2 px-6">
-            <Package className="h-4 w-4" /> Stock
+        <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center">
+          <TabsTrigger value="inventory" className="flex items-center gap-2 px-3 sm:px-6">
+            <Package className="h-4 w-4" /> <span className="hidden sm:inline">Stock</span>
           </TabsTrigger>
-          <TabsTrigger value="items" className="flex items-center gap-2 px-6">
-            <Settings2 className="h-4 w-4" /> Manage Items
+          <TabsTrigger value="items" className="flex items-center gap-2 px-3 sm:px-6">
+            <Settings2 className="h-4 w-4" /> <span className="hidden sm:inline">Items</span>
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2 px-6">
-            <History className="h-4 w-4" /> Movement
+          <TabsTrigger value="history" className="flex items-center gap-2 px-3 sm:px-6">
+            <History className="h-4 w-4" /> <span className="hidden sm:inline">Log</span>
           </TabsTrigger>
-          <TabsTrigger value="expenses" className="flex items-center gap-2 px-6">
-            <CreditCard className="h-4 w-4" /> Expenses
+          <TabsTrigger value="expenses" className="flex items-center gap-2 px-3 sm:px-6">
+            <CreditCard className="h-4 w-4" /> <span className="hidden sm:inline">Expenses</span>
           </TabsTrigger>
         </TabsList>
 
@@ -248,9 +248,12 @@ export default function StorePage() {
                           </div>
                           <div className="flex-1 space-y-1 min-w-0">
                              <h3 className="font-bold text-lg truncate leading-none mb-1">{item.name}</h3>
-                             <Badge variant="outline" className="text-[9px] h-4 py-0 px-2 uppercase font-black tracking-tight border-primary/20">
-                               {item.category}
-                             </Badge>
+                             <div className="flex items-center justify-between">
+                                <Badge variant="outline" className="text-[9px] h-4 py-0 px-2 uppercase font-black tracking-tight border-primary/20">
+                                {item.category}
+                                </Badge>
+                                <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
+                             </div>
                              <div className="flex items-center justify-between pt-3">
                                 <div className="flex flex-col">
                                   <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest">In Stock</span>
@@ -299,7 +302,7 @@ export default function StorePage() {
                     <TableRow>
                       <TableHead className="pl-6">Item</TableHead>
                       <TableHead>Category</TableHead>
-                      <TableHead>Unit</TableHead>
+                      <TableHead className="text-right">Price (ETB)</TableHead>
                       <TableHead className="text-center">Limit</TableHead>
                       <TableHead className="text-right pr-6">Actions</TableHead>
                     </TableRow>
@@ -309,7 +312,7 @@ export default function StorePage() {
                       <TableRow key={item.id} className="hover:bg-muted/10 transition-colors">
                          <TableCell className="font-bold pl-6">{item.name}</TableCell>
                          <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
-                         <TableCell className="text-muted-foreground font-mono text-xs uppercase">{item.unitOfMeasurement}</TableCell>
+                         <TableCell className="text-right font-mono font-bold text-xs">{item.currentPrice?.toFixed(2) || "0.00"}</TableCell>
                          <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold || 5}</TableCell>
                          <TableCell className="text-right pr-6">
                             <div className="flex justify-end gap-2">

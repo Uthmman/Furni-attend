@@ -1,4 +1,3 @@
-
 {
   "entities": {
     "Order": {
@@ -70,6 +69,10 @@
         "lowStockThreshold": {
           "type": "number",
           "description": "The stock level at which to trigger a warning."
+        },
+        "currentPrice": {
+          "type": "number",
+          "description": "The latest purchase price per unit."
         }
       },
       "required": [

@@ -76,6 +76,7 @@ export interface Item {
     unitOfMeasurement: string;
     stockLevel: number;
     lowStockThreshold?: number;
+    currentPrice?: number;
 }
 
 export type PaymentStatus = "Paid" | "Unpaid";

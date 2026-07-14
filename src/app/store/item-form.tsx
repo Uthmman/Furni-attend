@@ -41,6 +41,7 @@ const itemSchema = z.object({
   unitOfMeasurement: z.string().min(1, { message: "Unit is required." }),
   stockLevel: z.coerce.number().min(0),
   lowStockThreshold: z.coerce.number().min(0),
+  currentPrice: z.coerce.number().min(0).optional(),
 });
 
 type ItemFormValues = z.infer<typeof itemSchema>;
@@ -77,6 +78,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
       unitOfMeasurement: "piece",
       stockLevel: 0,
       lowStockThreshold: 5,
+      currentPrice: 0,
     },
   });
 
@@ -88,6 +90,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
         unitOfMeasurement: item.unitOfMeasurement || "piece",
         stockLevel: item.stockLevel || 0,
         lowStockThreshold: item.lowStockThreshold || 5,
+        currentPrice: item.currentPrice || 0,
       });
     } else {
       form.reset({
@@ -96,6 +99,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
         unitOfMeasurement: "piece",
         stockLevel: 0,
         lowStockThreshold: 5,
+        currentPrice: 0,
       });
     }
   }, [item, form, isOpen]);
@@ -207,13 +211,13 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4 bg-muted/20 p-4 rounded-xl border border-dashed">
+            <div className="grid grid-cols-3 gap-4 bg-muted/20 p-4 rounded-xl border border-dashed">
               <FormField
                 control={form.control}
                 name="stockLevel"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Current Stock</FormLabel>
+                    <FormLabel className="text-xs">Current Stock</FormLabel>
                     <FormControl>
                       <Input 
                         type="number" 
@@ -224,7 +228,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                       />
                     </FormControl>
                     {!isEditMode && <FormMessage />}
-                    {isEditMode && <p className="text-[10px] text-muted-foreground">Adjust via Movement Log</p>}
+                    {isEditMode && <p className="text-[9px] text-muted-foreground">Adjust via Log</p>}
                   </FormItem>
                 )}
               />
@@ -233,9 +237,22 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                 name="lowStockThreshold"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Low Stock Warning</FormLabel>
+                    <FormLabel className="text-xs">Alert Limit</FormLabel>
                     <FormControl>
                       <Input type="number" {...field} className="h-10 bg-background" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+               <FormField
+                control={form.control}
+                name="currentPrice"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs">Base Price</FormLabel>
+                    <FormControl>
+                      <Input type="number" step="0.01" {...field} className="h-10 bg-background" />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
