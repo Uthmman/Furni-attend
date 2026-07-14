@@ -114,19 +114,20 @@ export default function StorePage() {
   }, [setTitle]);
 
   const itemsCollectionRef = useMemoFirebase(() => {
-    // Crucially wait for user auth state to be resolved before attempting query
+    // Only attempt query when auth state is fully ready
     if (!firestore || isUserLoading || !user) return null;
     return collection(firestore, "items");
   }, [firestore, user, isUserLoading]);
 
-  const { data: items, loading: itemsLoading } = useCollection<Item>(itemsCollectionRef);
+  const { data: items, isLoading: itemsLoading } = useCollection<Item>(itemsCollectionRef);
 
   const adjustmentsCollectionRef = useMemoFirebase(() => {
+    // Only attempt query when auth state is fully ready
     if (!firestore || isUserLoading || !user) return null;
     return query(collection(firestore, "stockAdjustments"), orderBy("adjustmentDate", "desc"), limit(100));
   }, [firestore, user, isUserLoading]);
 
-  const { data: adjustments, loading: adjustmentsLoading } = useCollection<StockAdjustment>(adjustmentsCollectionRef);
+  const { data: adjustments, isLoading: adjustmentsLoading } = useCollection<StockAdjustment>(adjustmentsCollectionRef);
 
   const filteredItems = useMemo(() => {
     if (!items) return [];
@@ -165,7 +166,7 @@ export default function StorePage() {
     }
   };
 
-  if ((itemsLoading && !items) || isUserLoading) return <div className="p-8 text-center">Loading Store Inventory...</div>;
+  if ((itemsLoading && !items) || (adjustmentsLoading && !adjustments) || isUserLoading) return <div className="p-8 text-center">Loading Store Inventory...</div>;
 
   return (
     <div className="flex flex-col gap-6 relative min-h-[calc(100vh-200px)] pb-24">

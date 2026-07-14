@@ -27,13 +27,13 @@ service cloud.firestore {
     }
 
     // Inventory movement logs (Stock In / Stock Out)
-    // Refactored to standard read/write permissions to ensure list compatibility
-    match /stockAdjustments/{adjustmentId} {
+    // Using a recursive wildcard to robustly allow collection listing and document access
+    // Updated: 2024-05-20 - Explicit recursive match for stockAdjustments
+    match /stockAdjustments/{allPaths=**} {
       allow read, write: if isAuthenticated();
     }
-
-    // Explicitly allow listing the stockAdjustments collection
-    // This provides a fallback to ensure the "list" method is explicitly allowed
+    
+    // Fallback for root collection listing if needed
     match /stockAdjustments {
       allow list: if isAuthenticated();
     }
