@@ -217,17 +217,17 @@ export default function StorePage() {
 
       <Tabs defaultValue="inventory" className="w-full">
         <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center">
-          <TabsTrigger value="inventory" className="flex items-center gap-2 px-3 sm:px-6">
-            <Package className="h-4 w-4" /> <span className="hidden sm:inline">Stock</span>
+          <TabsTrigger value="inventory" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
+            <Package className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase sm:capitalize tracking-tight">Stock</span>
           </TabsTrigger>
-          <TabsTrigger value="items" className="flex items-center gap-2 px-3 sm:px-6">
-            <Settings2 className="h-4 w-4" /> <span className="hidden sm:inline">Items</span>
+          <TabsTrigger value="items" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
+            <Settings2 className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase sm:capitalize tracking-tight">Items</span>
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2 px-3 sm:px-6">
-            <History className="h-4 w-4" /> <span className="hidden sm:inline">Log</span>
+          <TabsTrigger value="history" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
+            <History className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase sm:capitalize tracking-tight">Log</span>
           </TabsTrigger>
-          <TabsTrigger value="expenses" className="flex items-center gap-2 px-3 sm:px-6">
-            <CreditCard className="h-4 w-4" /> <span className="hidden sm:inline">Expenses</span>
+          <TabsTrigger value="expenses" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
+            <CreditCard className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase sm:capitalize tracking-tight">Costs</span>
           </TabsTrigger>
         </TabsList>
 
