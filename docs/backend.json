@@ -1,149 +1,5 @@
 {
   "entities": {
-    "Order": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Order",
-      "type": "object",
-      "description": "Represents a furniture order.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the order."
-        },
-        "customerName": {
-          "type": "string",
-          "description": "Name of the customer who placed the order."
-        },
-        "orderDate": {
-          "type": "string",
-          "description": "Date the order was placed.",
-          "format": "date-time"
-        },
-        "orderDescription": {
-          "type": "string",
-          "description": "Description of the order."
-        },
-        "orderStatus": {
-          "type": "string",
-          "description": "Status of the order (e.g., pending, processing, completed)."
-        },
-        "productPictureUrl": {
-          "type": "string",
-          "description": "URL of the product picture associated with the order.",
-          "format": "uri"
-        }
-      },
-      "required": [
-        "id",
-        "customerName",
-        "orderDate",
-        "orderStatus"
-      ]
-    },
-    "Item": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "Item",
-      "type": "object",
-      "description": "Represents a furniture item or material in the store.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the item."
-        },
-        "name": {
-          "type": "string",
-          "description": "Name of the item (e.g., Oak Wood, Paint, Nails)."
-        },
-        "unitOfMeasurement": {
-          "type": "string",
-          "description": "Unit of measurement (e.g., piece, liter, set, kg)."
-        },
-        "stockLevel": {
-          "type": "number",
-          "description": "Number of items currently in stock."
-        },
-        "category": {
-          "type": "string",
-          "description": "Category of the item (e.g., Hardware, Paint, Timber)."
-        },
-        "lowStockThreshold": {
-          "type": "number",
-          "description": "The stock level at which to trigger a warning."
-        },
-        "currentPrice": {
-          "type": "number",
-          "description": "The latest purchase price per unit."
-        }
-      },
-      "required": [
-        "id",
-        "name",
-        "unitOfMeasurement",
-        "stockLevel"
-      ]
-    },
-    "StockAdjustment": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "StockAdjustment",
-      "type": "object",
-      "description": "Represents an adjustment to the stock level of an item, including financial details for purchases.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the stock adjustment."
-        },
-        "itemId": {
-          "type": "string",
-          "description": "Reference to Item."
-        },
-        "itemName": {
-          "type": "string",
-          "description": "Denormalized name of the item for history view."
-        },
-        "adjustmentDate": {
-          "type": "string",
-          "description": "Date the stock adjustment was made.",
-          "format": "date-time"
-        },
-        "adjustmentQuantity": {
-          "type": "number",
-          "description": "Quantity added or removed (positive or negative)."
-        },
-        "reason": {
-          "type": "string",
-          "description": "Reason for the stock adjustment."
-        },
-        "type": {
-          "type": "string",
-          "enum": ["In", "Out"],
-          "description": "Whether stock was added or removed."
-        },
-        "unitPrice": {
-          "type": "number",
-          "description": "Price per unit for purchases."
-        },
-        "totalPrice": {
-          "type": "number",
-          "description": "Computed total cost of the purchase."
-        },
-        "supplier": {
-          "type": "string",
-          "description": "Who the stock was bought from."
-        },
-        "paymentStatus": {
-          "type": "string",
-          "enum": ["Paid", "Unpaid"],
-          "description": "Whether the purchase has been paid for."
-        }
-      },
-      "required": [
-        "id",
-        "itemId",
-        "adjustmentDate",
-        "adjustmentQuantity",
-        "reason"
-      ]
-    },
     "Employee": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Employee",
@@ -154,27 +10,53 @@
           "type": "string",
           "description": "Unique identifier for the employee."
         },
-        "phoneNumber": {
+        "name": {
+          "type": "string",
+          "description": "Full name of the employee."
+        },
+        "phone": {
           "type": "string",
           "description": "Employee's phone number."
         },
+        "position": {
+          "type": "string",
+          "description": "Job title or position."
+        },
+        "status": {
+          "type": "string",
+          "enum": ["Active", "Inactive"],
+          "description": "Whether the employee is currently employed."
+        },
         "paymentMethod": {
           "type": "string",
-          "description": "Payment method (e.g., weekly, monthly)."
+          "enum": ["Weekly", "Monthly"],
+          "description": "How the employee is paid."
         },
         "accountNumber": {
           "type": "string",
           "description": "Employee's bank account number."
         },
+        "dailyRate": {
+          "type": "number",
+          "description": "Daily pay rate for weekly employees."
+        },
+        "monthlyRate": {
+          "type": "number",
+          "description": "Monthly salary for monthly employees."
+        },
+        "hourlyRate": {
+          "type": "number",
+          "description": "Optional hourly rate override."
+        },
         "attendanceStartDate": {
           "type": "string",
-          "description": "The date the employee's attendance tracking should start.",
+          "description": "The date tracking began.",
           "format": "date"
         }
       },
       "required": [
-        "id",
-        "phoneNumber",
+        "name",
+        "phone",
         "paymentMethod",
         "accountNumber",
         "attendanceStartDate"
@@ -184,41 +66,128 @@
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Attendance",
       "type": "object",
-      "description": "Represents an employee's attendance record for a specific date.",
+      "description": "Represents an employee's attendance record for a specific session.",
       "properties": {
         "id": {
-          "type": "string",
-          "description": "Unique identifier for the attendance record."
+          "type": "string"
         },
         "employeeId": {
-          "type": "string",
-          "description": "Reference to Employee."
+          "type": "string"
         },
-        "attendanceDate": {
+        "date": {
           "type": "string",
-          "description": "Date of the attendance record.",
           "format": "date-time"
         },
-        "morningEntryTime": {
-          "type": "string",
-          "description": "Time the employee entered in the morning.",
-          "format": "date-time"
+        "morningEntry": {
+          "type": "string"
         },
-        "afternoonEntryTime": {
-          "type": "string",
-          "description": "Time the employee entered in the afternoon.",
-          "format": "date-time"
+        "afternoonEntry": {
+          "type": "string"
         },
-        "status": {
+        "morningStatus": {
           "type": "string",
-          "description": "Attendance status (e.g., present, absent, late)."
+          "enum": ["Present", "Absent", "Late", "Permission"]
+        },
+        "afternoonStatus": {
+          "type": "string",
+          "enum": ["Present", "Absent", "Late", "Permission"]
+        },
+        "overtimeHours": {
+          "type": "number"
+        }
+      },
+      "required": [
+        "employeeId",
+        "date",
+        "morningStatus",
+        "afternoonStatus"
+      ]
+    },
+    "Item": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Item",
+      "type": "object",
+      "description": "Represents a furniture supply or material.",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "category": {
+          "type": "string"
+        },
+        "unitOfMeasurement": {
+          "type": "string"
+        },
+        "stockLevel": {
+          "type": "number"
+        },
+        "lowStockThreshold": {
+          "type": "number"
+        },
+        "currentPrice": {
+          "type": "number"
         }
       },
       "required": [
         "id",
-        "employeeId",
-        "attendanceDate",
-        "status"
+        "name",
+        "category",
+        "unitOfMeasurement",
+        "stockLevel"
+      ]
+    },
+    "StockAdjustment": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "StockAdjustment",
+      "type": "object",
+      "description": "Represents a movement of stock (In or Out).",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "itemId": {
+          "type": "string"
+        },
+        "itemName": {
+          "type": "string"
+        },
+        "adjustmentDate": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "adjustmentQuantity": {
+          "type": "number"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["In", "Out"]
+        },
+        "reason": {
+          "type": "string"
+        },
+        "unitPrice": {
+          "type": "number"
+        },
+        "totalPrice": {
+          "type": "number"
+        },
+        "supplier": {
+          "type": "string"
+        },
+        "paymentStatus": {
+          "type": "string",
+          "enum": ["Paid", "Unpaid"]
+        }
+      },
+      "required": [
+        "id",
+        "itemId",
+        "adjustmentDate",
+        "adjustmentQuantity",
+        "reason"
       ]
     }
   },
@@ -229,62 +198,25 @@
     ]
   },
   "firestore": {
-    "structure": [
-      {
-        "path": "/employees/{employeeId}",
-        "definition": {
-          "entityName": "Employee",
-          "schema": {
-            "$ref": "#/backend/entities/Employee"
-          },
-          "description": "Stores employee information.",
-          "allow": "read, write: if request.auth != null;"
-        }
-      },
-      {
-        "path": "/employees/{employeeId}/attendance/{attendanceId}",
-        "definition": {
-          "entityName": "Attendance",
-          "schema": {
-            "$ref": "#/backend/entities/Attendance"
-          },
-          "description": "Attendance records for each employee.",
-          "allow": "read, write: if request.auth != null;"
-        }
-      },
-      {
-        "path": "/attendance/{date}/records/{employeeId}",
-        "definition": {
-          "entityName": "Attendance",
-          "schema": {
-            "$ref": "#/backend/entities/Attendance"
-          },
-          "description": "Daily attendance logs.",
-          "allow": "read, write: if request.auth != null;"
-        }
-      },
-      {
-        "path": "/items/{itemId}",
-        "definition": {
-          "entityName": "Item",
-          "schema": {
-            "$ref": "#/backend/entities/Item"
-          },
-          "description": "Store items and materials.",
-          "allow": "read, write: if request.auth != null;"
-        }
-      },
-      {
-        "path": "/stockAdjustments/{adjustmentId}",
-        "definition": {
-          "entityName": "StockAdjustment",
-          "schema": {
-            "$ref": "#/backend/entities/StockAdjustment"
-          },
-          "description": "Log of stock movements.",
-          "allow": "read, write: if request.auth != null;"
-        }
-      }
-    ]
+    "/employees/{employeeId}": {
+      "schema": { "$ref": "#/backend/entities/Employee" },
+      "description": "Employee directory."
+    },
+    "/employees/{employeeId}/attendance/{date}": {
+      "schema": { "$ref": "#/backend/entities/Attendance" },
+      "description": "Personal attendance logs."
+    },
+    "/attendance/{date}/records/{employeeId}": {
+      "schema": { "$ref": "#/backend/entities/Attendance" },
+      "description": "Daily workshop attendance logs."
+    },
+    "/items/{itemId}": {
+      "schema": { "$ref": "#/backend/entities/Item" },
+      "description": "Supplies registry."
+    },
+    "/stockAdjustments/{adjustmentId}": {
+      "schema": { "$ref": "#/backend/entities/StockAdjustment" },
+      "description": "Inventory movement audit log."
+    }
   }
 }

@@ -1,20 +1,33 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Shared validation for authenticated users
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Employees and their nested attendance subcollections
     match /employees/{employeeId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
+      
+      match /attendance/{date} {
+        allow read, write: if isAuthenticated();
+      }
     }
-    match /employees/{employeeId}/attendance/{attendanceId} {
-      allow read, write: if true;
-    }
+
+    // Daily attendance collection organized by date
     match /attendance/{date}/records/{employeeId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
+
+    // Items registry for store management
     match /items/{itemId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
+
+    // Stock adjustments / Audit logs for inventory movements
     match /stockAdjustments/{adjustmentId} {
-      allow read, write: if true;
+      allow read, write: if isAuthenticated();
     }
   }
 }
