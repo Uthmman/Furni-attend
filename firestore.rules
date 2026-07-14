@@ -25,14 +25,10 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
-    // Inventory movement audit log and financial tracking
-    // Explicitly matching both the collection and individual documents for maximum compatibility
-    match /stockAdjustments/{adjustmentId} {
+    // Inventory movement and financial tracking
+    // Using recursive wildcard to reliably allow collection-level list and filtered queries
+    match /stockAdjustments/{allPaths=**} {
       allow read, write: if isAuthenticated();
-    }
-    
-    match /stockAdjustments {
-      allow list: if isAuthenticated();
     }
   }
 }

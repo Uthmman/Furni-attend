@@ -44,6 +44,7 @@ export default function ItemProfilePage() {
   const [isEditFormOpen, setIsEditFormOpen] = useState(false);
 
   const itemDocRef = useMemoFirebase(() => {
+    // Standardize query gate to resolve permission issues during initial auth mount
     if (!firestore || !itemId || !user || isUserLoading) return null;
     return doc(firestore, "items", itemId);
   }, [firestore, itemId, user, isUserLoading]);
@@ -51,6 +52,7 @@ export default function ItemProfilePage() {
   const { data: item, loading: itemLoading } = useDoc<Item>(itemDocRef);
 
   const adjustmentsColRef = useMemoFirebase(() => {
+    // Standardize query gate to resolve permission issues during initial auth mount
     if (!firestore || !itemId || !user || isUserLoading) return null;
     return query(
       collection(firestore, "stockAdjustments"),

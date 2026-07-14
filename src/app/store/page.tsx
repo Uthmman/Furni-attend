@@ -45,7 +45,6 @@ import {
   CreditCard,
   Wallet,
   Calendar,
-  ChevronRight
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";

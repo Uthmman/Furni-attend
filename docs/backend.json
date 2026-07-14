@@ -63,10 +63,10 @@
         "adjustmentQuantity": { "type": "number" },
         "type": { "type": "string", "enum": ["In", "Out"] },
         "reason": { "type": "string" },
-        "unitPrice": { "type": "number" },
-        "totalPrice": { "type": "number" },
-        "supplier": { "type": "string" },
-        "paymentStatus": { "type": "string", "enum": ["Paid", "Unpaid"] }
+        "unitPrice": { "type": "number", "description": "Cost per unit for purchases" },
+        "totalPrice": { "type": "number", "description": "Total cost of the movement" },
+        "supplier": { "type": "string", "description": "Vendor name for stock In" },
+        "paymentStatus": { "type": "string", "enum": ["Paid", "Unpaid"], "description": "Financial status of the restock" }
       },
       "required": ["itemId", "adjustmentDate", "adjustmentQuantity", "type", "reason"]
     }
