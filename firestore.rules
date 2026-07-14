@@ -1,3 +1,4 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
@@ -26,9 +27,9 @@ service cloud.firestore {
     }
 
     // Inventory movement logs (Stock In / Stock Out)
+    // Updated to be more explicit to resolve list permissions issues
     match /stockAdjustments/{adjustmentId} {
-      // Explicitly allow both individual read (get) and collection queries (list)
-      allow read, write: if isAuthenticated();
+      allow get, list, create, update, delete: if isAuthenticated();
     }
   }
 }
