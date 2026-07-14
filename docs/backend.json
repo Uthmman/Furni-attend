@@ -7,196 +7,73 @@
       "type": "object",
       "description": "Represents an employee of the company.",
       "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the employee."
-        },
-        "name": {
-          "type": "string",
-          "description": "Full name of the employee."
-        },
-        "phone": {
-          "type": "string",
-          "description": "Employee's phone number."
-        },
-        "position": {
-          "type": "string",
-          "description": "Job title or position."
-        },
-        "status": {
-          "type": "string",
-          "enum": ["Active", "Inactive"],
-          "description": "Whether the employee is currently employed."
-        },
-        "paymentMethod": {
-          "type": "string",
-          "enum": ["Weekly", "Monthly"],
-          "description": "How the employee is paid."
-        },
-        "accountNumber": {
-          "type": "string",
-          "description": "Employee's bank account number."
-        },
-        "dailyRate": {
-          "type": "number",
-          "description": "Daily pay rate for weekly employees."
-        },
-        "monthlyRate": {
-          "type": "number",
-          "description": "Monthly salary for monthly employees."
-        },
-        "hourlyRate": {
-          "type": "number",
-          "description": "Optional hourly rate override."
-        },
-        "attendanceStartDate": {
-          "type": "string",
-          "description": "The date tracking began.",
-          "format": "date"
-        }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "position": { "type": "string" },
+        "status": { "type": "string", "enum": ["Active", "Inactive"] },
+        "paymentMethod": { "type": "string", "enum": ["Weekly", "Monthly"] },
+        "accountNumber": { "type": "string" },
+        "dailyRate": { "type": "number" },
+        "monthlyRate": { "type": "number" },
+        "hourlyRate": { "type": "number" },
+        "attendanceStartDate": { "type": "string", "format": "date" }
       },
-      "required": [
-        "name",
-        "phone",
-        "paymentMethod",
-        "accountNumber",
-        "attendanceStartDate"
-      ]
+      "required": ["name", "phone", "paymentMethod", "accountNumber", "attendanceStartDate"]
     },
     "Attendance": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Attendance",
       "type": "object",
-      "description": "Represents an employee's attendance record for a specific session.",
       "properties": {
-        "id": {
-          "type": "string"
-        },
-        "employeeId": {
-          "type": "string"
-        },
-        "date": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "morningEntry": {
-          "type": "string"
-        },
-        "afternoonEntry": {
-          "type": "string"
-        },
-        "morningStatus": {
-          "type": "string",
-          "enum": ["Present", "Absent", "Late", "Permission"]
-        },
-        "afternoonStatus": {
-          "type": "string",
-          "enum": ["Present", "Absent", "Late", "Permission"]
-        },
-        "overtimeHours": {
-          "type": "number"
-        }
+        "id": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "date": { "type": "string", "format": "date-time" },
+        "morningEntry": { "type": "string" },
+        "afternoonEntry": { "type": "string" },
+        "morningStatus": { "type": "string", "enum": ["Present", "Absent", "Late", "Permission"] },
+        "afternoonStatus": { "type": "string", "enum": ["Present", "Absent", "Late", "Permission"] },
+        "overtimeHours": { "type": "number" }
       },
-      "required": [
-        "employeeId",
-        "date",
-        "morningStatus",
-        "afternoonStatus"
-      ]
+      "required": ["employeeId", "date", "morningStatus", "afternoonStatus"]
     },
     "Item": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Item",
       "type": "object",
-      "description": "Represents a furniture supply or material.",
       "properties": {
-        "id": {
-          "type": "string"
-        },
-        "name": {
-          "type": "string"
-        },
-        "category": {
-          "type": "string"
-        },
-        "unitOfMeasurement": {
-          "type": "string"
-        },
-        "stockLevel": {
-          "type": "number"
-        },
-        "lowStockThreshold": {
-          "type": "number"
-        },
-        "currentPrice": {
-          "type": "number"
-        }
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "unitOfMeasurement": { "type": "string" },
+        "stockLevel": { "type": "number" },
+        "lowStockThreshold": { "type": "number" },
+        "currentPrice": { "type": "number" }
       },
-      "required": [
-        "id",
-        "name",
-        "category",
-        "unitOfMeasurement",
-        "stockLevel"
-      ]
+      "required": ["name", "category", "unitOfMeasurement", "stockLevel"]
     },
     "StockAdjustment": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "StockAdjustment",
       "type": "object",
-      "description": "Represents a movement of stock (In or Out).",
       "properties": {
-        "id": {
-          "type": "string"
-        },
-        "itemId": {
-          "type": "string"
-        },
-        "itemName": {
-          "type": "string"
-        },
-        "adjustmentDate": {
-          "type": "string",
-          "format": "date-time"
-        },
-        "adjustmentQuantity": {
-          "type": "number"
-        },
-        "type": {
-          "type": "string",
-          "enum": ["In", "Out"]
-        },
-        "reason": {
-          "type": "string"
-        },
-        "unitPrice": {
-          "type": "number"
-        },
-        "totalPrice": {
-          "type": "number"
-        },
-        "supplier": {
-          "type": "string"
-        },
-        "paymentStatus": {
-          "type": "string",
-          "enum": ["Paid", "Unpaid"]
-        }
+        "id": { "type": "string" },
+        "itemId": { "type": "string" },
+        "itemName": { "type": "string" },
+        "adjustmentDate": { "type": "string", "format": "date-time" },
+        "adjustmentQuantity": { "type": "number" },
+        "type": { "type": "string", "enum": ["In", "Out"] },
+        "reason": { "type": "string" },
+        "unitPrice": { "type": "number" },
+        "totalPrice": { "type": "number" },
+        "supplier": { "type": "string" },
+        "paymentStatus": { "type": "string", "enum": ["Paid", "Unpaid"] }
       },
-      "required": [
-        "id",
-        "itemId",
-        "adjustmentDate",
-        "adjustmentQuantity",
-        "reason"
-      ]
+      "required": ["itemId", "adjustmentDate", "adjustmentQuantity", "type", "reason"]
     }
   },
   "auth": {
-    "providers": [
-      "password",
-      "anonymous"
-    ]
+    "providers": ["password", "anonymous"]
   },
   "firestore": {
     "/employees/{employeeId}": {

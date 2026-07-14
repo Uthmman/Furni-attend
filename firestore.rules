@@ -27,9 +27,15 @@ service cloud.firestore {
     }
 
     // Inventory movement logs (Stock In / Stock Out)
-    // Updated to be more explicit to resolve list permissions issues
+    // Refactored to standard read/write permissions to ensure list compatibility
     match /stockAdjustments/{adjustmentId} {
-      allow get, list, create, update, delete: if isAuthenticated();
+      allow read, write: if isAuthenticated();
+    }
+
+    // Explicitly allow listing the stockAdjustments collection
+    // This provides a fallback to ensure the "list" method is explicitly allowed
+    match /stockAdjustments {
+      allow list: if isAuthenticated();
     }
   }
 }

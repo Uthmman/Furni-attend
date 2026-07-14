@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -99,7 +100,7 @@ export const getCategoryColor = (category: string) => {
 export default function StorePage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
@@ -113,16 +114,17 @@ export default function StorePage() {
   }, [setTitle]);
 
   const itemsCollectionRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
+    // Crucially wait for user auth state to be resolved before attempting query
+    if (!firestore || isUserLoading || !user) return null;
     return collection(firestore, "items");
-  }, [firestore, user]);
+  }, [firestore, user, isUserLoading]);
 
   const { data: items, loading: itemsLoading } = useCollection<Item>(itemsCollectionRef);
 
   const adjustmentsCollectionRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
+    if (!firestore || isUserLoading || !user) return null;
     return query(collection(firestore, "stockAdjustments"), orderBy("adjustmentDate", "desc"), limit(100));
-  }, [firestore, user]);
+  }, [firestore, user, isUserLoading]);
 
   const { data: adjustments, loading: adjustmentsLoading } = useCollection<StockAdjustment>(adjustmentsCollectionRef);
 
@@ -163,7 +165,7 @@ export default function StorePage() {
     }
   };
 
-  if (itemsLoading && !items) return <div className="p-8 text-center">Loading Store Inventory...</div>;
+  if ((itemsLoading && !items) || isUserLoading) return <div className="p-8 text-center">Loading Store Inventory...</div>;
 
   return (
     <div className="flex flex-col gap-6 relative min-h-[calc(100vh-200px)] pb-24">
@@ -223,16 +225,16 @@ export default function StorePage() {
       <Tabs defaultValue="inventory" className="w-full">
         <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center">
           <TabsTrigger value="inventory" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <Package className="h-4 w-4" /> <span className="text-xs sm:text-sm font-bold tracking-tight">Stock</span>
+            <Package className="h-4 w-4 shrink-0" /> <span className="text-[10px] sm:text-sm font-bold tracking-tight">Stock</span>
           </TabsTrigger>
           <TabsTrigger value="items" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <Settings2 className="h-4 w-4" /> <span className="text-xs sm:text-sm font-bold tracking-tight">Items</span>
+            <Settings2 className="h-4 w-4 shrink-0" /> <span className="text-[10px] sm:text-sm font-bold tracking-tight">Items</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <History className="h-4 w-4" /> <span className="text-xs sm:text-sm font-bold tracking-tight">Log</span>
+            <History className="h-4 w-4 shrink-0" /> <span className="text-[10px] sm:text-sm font-bold tracking-tight">Log</span>
           </TabsTrigger>
           <TabsTrigger value="expenses" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <CreditCard className="h-4 w-4" /> <span className="text-xs sm:text-sm font-bold tracking-tight">Costs</span>
+            <CreditCard className="h-4 w-4 shrink-0" /> <span className="text-[10px] sm:text-sm font-bold tracking-tight">Costs</span>
           </TabsTrigger>
         </TabsList>
 
