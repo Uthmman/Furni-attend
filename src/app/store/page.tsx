@@ -46,7 +46,8 @@ import {
   CreditCard,
   Wallet,
   ChevronRight,
-  TrendingDown
+  ShoppingCart,
+  Calendar
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
@@ -218,16 +219,16 @@ export default function StorePage() {
       <Tabs defaultValue="inventory" className="w-full">
         <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center">
           <TabsTrigger value="inventory" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <Package className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase sm:capitalize tracking-tight">Stock</span>
+            <Package className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase tracking-tight">Stock</span>
           </TabsTrigger>
           <TabsTrigger value="items" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <Settings2 className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase sm:capitalize tracking-tight">Items</span>
+            <Settings2 className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase tracking-tight">Items</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <History className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase sm:capitalize tracking-tight">Log</span>
+            <History className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase tracking-tight">Log</span>
           </TabsTrigger>
           <TabsTrigger value="expenses" className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-6 min-w-fit">
-            <CreditCard className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase sm:capitalize tracking-tight">Costs</span>
+            <CreditCard className="h-4 w-4" /> <span className="text-[10px] sm:text-sm font-bold uppercase tracking-tight">Costs</span>
           </TabsTrigger>
         </TabsList>
 
@@ -291,61 +292,101 @@ export default function StorePage() {
            <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b flex flex-row items-center justify-between">
               <div>
-                <CardTitle>Registry Management</CardTitle>
-                <CardDescription>Add, update, or remove supply item definitions from your registry.</CardDescription>
+                <CardTitle className="text-xl">Registry Management</CardTitle>
+                <CardDescription className="hidden sm:block">Add, update, or remove supply item definitions from your registry.</CardDescription>
               </div>
-              <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="hidden sm:flex border-dashed shadow-sm">
+              <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="hidden sm:flex border-dashed shadow-sm h-10">
                  <Plus className="mr-2 h-4 w-4" /> Register New Supply
               </Button>
             </CardHeader>
             <CardContent className="p-0">
                {/* Mobile only add button */}
                <div className="p-4 sm:hidden border-b bg-primary/5">
-                 <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="w-full border-dashed shadow-sm">
+                 <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="w-full border-dashed shadow-sm h-11">
                     <Plus className="mr-2 h-4 w-4" /> Register New Supply
                  </Button>
                </div>
-               <Table>
-                  <TableHeader className="bg-muted/30">
-                    <TableRow>
-                      <TableHead className="pl-6">Item</TableHead>
-                      <TableHead>Category</TableHead>
-                      <TableHead className="text-right">Price (ETB)</TableHead>
-                      <TableHead className="text-center">Limit</TableHead>
-                      <TableHead className="text-right pr-6">Actions</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {filteredItems.map(item => (
-                      <TableRow key={item.id} className="hover:bg-muted/10 transition-colors">
-                         <TableCell className="font-bold pl-6">{item.name}</TableCell>
-                         <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
-                         <TableCell className="text-right font-mono font-bold text-xs">{item.currentPrice?.toFixed(2) || "0.00"}</TableCell>
-                         <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold || 5}</TableCell>
-                         <TableCell className="text-right pr-6">
-                            <div className="flex justify-end gap-2">
-                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditItem(item)}><Edit2 className="h-4 w-4" /></Button>
-                               <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>Delete {item.name}?</AlertDialogTitle>
-                                      <AlertDialogDescription>This will remove the item from your registry. Historical movements will remain, but the item definition will be gone.</AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                      <AlertDialogAction onClick={() => handleDeleteItem(item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                               </AlertDialog>
-                            </div>
-                         </TableCell>
+
+               {/* Mobile Cards for Items */}
+               <div className="md:hidden grid grid-cols-1 gap-0 divide-y">
+                  {filteredItems.map(item => (
+                    <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-muted/10 transition-colors">
+                      <div className={cn("flex items-center justify-center h-16 w-16 rounded-xl shadow-sm shrink-0", getCategoryColor(item.category))}>
+                        {getCategoryIcon(item.category)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <h4 className="font-bold text-sm truncate">{item.name}</h4>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="secondary" className="text-[9px] h-4 py-0">{item.category}</Badge>
+                          <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2)}</span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={() => handleEditItem(item)}><Edit2 className="h-4 w-4" /></Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="max-w-[90vw] rounded-2xl">
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete Item?</AlertDialogTitle>
+                              <AlertDialogDescription>Remove {item.name} from registry?</AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteItem(item.id)} className="bg-destructive hover:bg-destructive/90 rounded-xl">Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                  ))}
+               </div>
+
+               {/* Desktop Table for Items */}
+               <div className="hidden md:block">
+                <Table>
+                    <TableHeader className="bg-muted/30">
+                      <TableRow>
+                        <TableHead className="pl-6">Item</TableHead>
+                        <TableHead>Category</TableHead>
+                        <TableHead className="text-right">Price (ETB)</TableHead>
+                        <TableHead className="text-center">Limit</TableHead>
+                        <TableHead className="text-right pr-6">Actions</TableHead>
                       </TableRow>
-                    ))}
-                  </TableBody>
-               </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredItems.map(item => (
+                        <TableRow key={item.id} className="hover:bg-muted/10 transition-colors">
+                          <TableCell className="font-bold pl-6">{item.name}</TableCell>
+                          <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
+                          <TableCell className="text-right font-mono font-bold text-xs">{item.currentPrice?.toFixed(2) || "0.00"}</TableCell>
+                          <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold || 5}</TableCell>
+                          <TableCell className="text-right pr-6">
+                              <div className="flex justify-end gap-2">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditItem(item)}><Edit2 className="h-4 w-4" /></Button>
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle>Delete {item.name}?</AlertDialogTitle>
+                                        <AlertDialogDescription>This will remove the item from your registry. Historical movements will remain, but the item definition will be gone.</AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                        <AlertDialogAction onClick={() => handleDeleteItem(item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+                              </div>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                </Table>
+               </div>
             </CardContent>
            </Card>
         </TabsContent>
@@ -354,51 +395,88 @@ export default function StorePage() {
         <TabsContent value="history" className="space-y-6">
           <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b">
-              <CardTitle>Movement History</CardTitle>
-              <CardDescription>Full audit trail of all quantity changes.</CardDescription>
+              <CardTitle className="text-xl">Movement History</CardTitle>
+              <CardDescription className="hidden sm:block">Full audit trail of all quantity changes.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-               <Table>
-                  <TableHeader className="bg-muted/30">
-                    <TableRow>
-                      <TableHead className="pl-6">Date</TableHead>
-                      <TableHead>Supplies</TableHead>
-                      <TableHead>Type</TableHead>
-                      <TableHead className="text-center">Qty</TableHead>
-                      <TableHead className="pr-6">Note</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {adjustments && adjustments.length > 0 ? (
-                      adjustments.map((adj) => (
-                        <TableRow key={adj.id} className="hover:bg-muted/10 transition-colors">
-                          <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap pl-6 py-4">
-                            {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
-                          </TableCell>
-                          <TableCell className="font-semibold">{adj.itemName || "Unknown Item"}</TableCell>
-                          <TableCell>
-                            <div className={cn(
-                                "flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
-                                adj.type === "In" ? "bg-green-100 text-green-700" : "bg-destructive/10 text-destructive"
-                            )}>
-                              {adj.type === "In" ? "Restock" : "Used"}
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-center font-black">
-                            <span className={adj.type === "In" ? "text-green-600" : "text-destructive"}>
-                              {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
-                            </span>
-                          </TableCell>
-                          <TableCell className="text-xs italic text-muted-foreground max-w-[200px] truncate pr-6">
-                            {adj.reason}
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow><TableCell colSpan={5} className="h-40 text-center text-muted-foreground">No records.</TableCell></TableRow>
-                    )}
-                  </TableBody>
-               </Table>
+               {/* Mobile View for History */}
+               <div className="md:hidden divide-y">
+                  {adjustments && adjustments.length > 0 ? (
+                    adjustments.map((adj) => (
+                      <div key={adj.id} className="p-4 space-y-2 hover:bg-muted/10 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1.5">
+                            <Calendar className="h-3 w-3" /> {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "—"}
+                          </span>
+                          <div className={cn(
+                              "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
+                              adj.type === "In" ? "bg-green-100 text-green-700" : "bg-destructive/10 text-destructive"
+                          )}>
+                            {adj.type === "In" ? "Restock" : "Used"}
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="font-bold text-sm">{adj.itemName}</span>
+                          <span className={cn("text-lg font-black tabular-nums", adj.type === "In" ? "text-green-600" : "text-destructive")}>
+                             {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
+                          </span>
+                        </div>
+                        {adj.reason && (
+                          <div className="text-[11px] text-muted-foreground italic bg-muted/30 p-2 rounded-lg border border-dashed flex items-start gap-2">
+                             <History className="h-3 w-3 mt-0.5 shrink-0" /> {adj.reason}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-12 text-center text-muted-foreground text-sm">No activity recorded.</div>
+                  )}
+               </div>
+
+               {/* Desktop Table for History */}
+               <div className="hidden md:block">
+                <Table>
+                    <TableHeader className="bg-muted/30">
+                      <TableRow>
+                        <TableHead className="pl-6">Date</TableHead>
+                        <TableHead>Supplies</TableHead>
+                        <TableHead>Type</TableHead>
+                        <TableHead className="text-center">Qty</TableHead>
+                        <TableHead className="pr-6">Note</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {adjustments && adjustments.length > 0 ? (
+                        adjustments.map((adj) => (
+                          <TableRow key={adj.id} className="hover:bg-muted/10 transition-colors">
+                            <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap pl-6 py-4">
+                              {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
+                            </TableCell>
+                            <TableCell className="font-semibold">{adj.itemName || "Unknown Item"}</TableCell>
+                            <TableCell>
+                              <div className={cn(
+                                  "flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
+                                  adj.type === "In" ? "bg-green-100 text-green-700" : "bg-destructive/10 text-destructive"
+                              )}>
+                                {adj.type === "In" ? "Restock" : "Used"}
+                              </div>
+                            </TableCell>
+                            <TableCell className="text-center font-black">
+                              <span className={adj.type === "In" ? "text-green-600" : "text-destructive"}>
+                                {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
+                              </span>
+                            </TableCell>
+                            <TableCell className="text-xs italic text-muted-foreground max-w-[200px] truncate pr-6">
+                              {adj.reason}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow><TableCell colSpan={5} className="h-40 text-center text-muted-foreground">No records.</TableCell></TableRow>
+                      )}
+                    </TableBody>
+                </Table>
+               </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -407,11 +485,45 @@ export default function StorePage() {
         <TabsContent value="expenses" className="space-y-6">
            <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b">
-              <CardTitle>Purchase Expenses</CardTitle>
-              <CardDescription>Financial record of all supply purchases and restocking costs.</CardDescription>
+              <CardTitle className="text-xl">Purchase Expenses</CardTitle>
+              <CardDescription className="hidden sm:block">Financial record of all supply purchases and restocking costs.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-               <div className="overflow-x-auto">
+               {/* Mobile View for Expenses */}
+               <div className="md:hidden divide-y">
+                  {purchaseHistory.length > 0 ? (
+                    purchaseHistory.map((buy) => (
+                      <div key={buy.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors">
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-1">
+                            <span className="text-[10px] text-muted-foreground font-semibold block">{buy.adjustmentDate ? format(new Date(buy.adjustmentDate), "MMM d, yyyy") : "—"}</span>
+                            <h4 className="font-bold text-sm">{buy.itemName}</h4>
+                          </div>
+                          <Badge 
+                            variant={buy.paymentStatus === 'Paid' ? 'outline' : 'destructive'} 
+                            className={cn("text-[9px] uppercase font-bold", buy.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}
+                          >
+                            {buy.paymentStatus || 'Paid'}
+                          </Badge>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-[11px] bg-muted/30 p-2 rounded-lg">
+                          <div><span className="text-muted-foreground">Supplier:</span> <span className="font-bold">{buy.supplier || "—"}</span></div>
+                          <div><span className="text-muted-foreground">Qty:</span> <span className="font-bold">{buy.adjustmentQuantity}</span></div>
+                          <div><span className="text-muted-foreground">Unit Price:</span> <span className="font-bold">ETB {buy.unitPrice?.toFixed(2)}</span></div>
+                        </div>
+                        <div className="flex justify-between items-center pt-1 border-t border-dashed">
+                           <span className="text-xs font-semibold text-muted-foreground">Total Paid:</span>
+                           <span className="text-lg font-black text-primary">ETB {buy.totalPrice?.toFixed(2)}</span>
+                        </div>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="p-12 text-center text-muted-foreground text-sm">No expenses recorded.</div>
+                  )}
+               </div>
+
+               {/* Desktop Table for Expenses */}
+               <div className="hidden md:block overflow-x-auto">
                  <Table>
                     <TableHeader className="bg-muted/30">
                       <TableRow>
@@ -461,7 +573,7 @@ export default function StorePage() {
            <div className="flex justify-end pr-4">
               <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 w-full max-w-sm text-center shadow-md">
                   <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">Total Stock Spending (Last 100 Logged)</p>
-                  <p className="text-4xl font-black text-primary">
+                  <p className="text-3xl sm:text-4xl font-black text-primary">
                     ETB {purchaseHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                   <div className="flex items-center justify-center gap-1.5 mt-3">
