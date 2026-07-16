@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -29,12 +30,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { Item, PaymentStatus } from "@/lib/types";
-import { useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
+import type { Item, PaymentStatus, Order } from "@/lib/types";
+import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase } from "@/firebase";
+import { secondaryDb } from "@/firebase/secondary";
 import { doc, writeBatch, collection } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { useState, useEffect } from "react";
-import { Loader2, ArrowUpRight, ArrowDownRight, Wallet, ShoppingCart } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import { Loader2, ArrowUpRight, ArrowDownRight, Wallet, ShoppingCart, ShoppingBag } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adjustmentSchema = z.object({
@@ -45,6 +47,7 @@ const adjustmentSchema = z.object({
   unitPrice: z.coerce.number().optional(),
   supplier: z.string().optional(),
   paymentStatus: z.enum(["Paid", "Unpaid"]).optional(),
+  orderId: z.string().optional(),
 });
 
 type AdjustmentValues = z.infer<typeof adjustmentSchema>;
@@ -63,6 +66,21 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Fetch orders from secondary database for selection
+  const ordersCollectionRef = useMemoFirebase(() => {
+    return collection(secondaryDb, "orders");
+  }, []);
+  const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
+
+  // Filter for active orders (status not Shipped)
+  const activeOrders = useMemo(() => {
+    if (!allOrders) return [];
+    return allOrders.filter(o => {
+      const s = (o.orderStatus || o.status || "").toLowerCase();
+      return s !== 'shipped';
+    }).sort((a, b) => (a.uniqueName || "").localeCompare(b.uniqueName || ""));
+  }, [allOrders]);
+
   const form = useForm<AdjustmentValues>({
     resolver: zodResolver(adjustmentSchema),
     defaultValues: {
@@ -73,12 +91,14 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       unitPrice: 0,
       supplier: "",
       paymentStatus: "Paid",
+      orderId: "",
     },
   });
 
   const watchedItemId = form.watch("itemId");
   const selectedItem = items.find(i => i.id === watchedItemId);
   const currentType = form.watch("type");
+  const selectedOrderId = form.watch("orderId");
 
   // Sync unit price when item is selected
   useEffect(() => {
@@ -97,6 +117,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
         unitPrice: preSelectedItem?.currentPrice || 0,
         supplier: "",
         paymentStatus: "Paid",
+        orderId: "",
       });
     }
   }, [isOpen, preSelectedItem, forcedType, form]);
@@ -110,6 +131,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     const batch = writeBatch(firestore);
     
+    // Find selected order name
+    const linkedOrder = activeOrders.find(o => o.id === data.orderId);
+
     // 1. Log the adjustment
     const adjRef = doc(collection(firestore, "stockAdjustments"));
     const adjData: any = {
@@ -128,6 +152,12 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       adjData.totalPrice = (data.unitPrice || 0) * data.quantity;
       adjData.supplier = data.supplier || "";
       adjData.paymentStatus = data.paymentStatus || "Paid";
+    }
+
+    // Order data for "Out" adjustments
+    if (data.type === "Out" && data.orderId) {
+      adjData.orderId = data.orderId;
+      adjData.orderUniqueName = linkedOrder?.uniqueName || linkedOrder?.name || "Unknown Order";
     }
 
     batch.set(adjRef, adjData);
@@ -197,6 +227,38 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                 </FormItem>
               )}
             />
+
+            {currentType === "Out" && (
+              <FormField
+                control={form.control}
+                name="orderId"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <ShoppingBag className="h-3 w-3 text-muted-foreground" />
+                      <FormLabel className="m-0">Link to Active Order</FormLabel>
+                    </div>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger className="h-11 bg-primary/5 border-primary/20">
+                          <SelectValue placeholder={ordersLoading ? "Loading orders..." : "Select active order (optional)"} />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="">No specific order (general usage)</SelectItem>
+                        {activeOrders.map(order => (
+                          <SelectItem key={order.id} value={order.id}>
+                            {order.uniqueName || order.name || `Order ${order.id.slice(0, 5)}`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[10px] text-muted-foreground mt-1 px-1">Only non-shipped orders are shown.</p>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <div className="grid grid-cols-2 gap-4">
                <FormField

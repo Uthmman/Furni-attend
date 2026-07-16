@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -43,6 +44,7 @@ import {
   CreditCard,
   Wallet,
   Calendar,
+  ShoppingBag,
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
@@ -422,7 +424,14 @@ export default function StorePage() {
                           </div>
                         </div>
                         <div className="flex justify-between items-center">
-                          <span className="font-bold text-sm">{adj.itemName}</span>
+                          <div className="flex flex-col">
+                            <span className="font-bold text-sm">{adj.itemName}</span>
+                            {adj.orderUniqueName && (
+                              <div className="flex items-center gap-1 text-[9px] text-primary font-black uppercase mt-0.5">
+                                <ShoppingBag className="h-2 w-2" /> {adj.orderUniqueName}
+                              </div>
+                            )}
+                          </div>
                           <span className={cn("text-lg font-black tabular-nums", adj.type === "In" ? "text-green-600" : "text-destructive")}>
                              {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
                           </span>
@@ -457,7 +466,16 @@ export default function StorePage() {
                             <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap pl-6 py-4">
                               {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
                             </TableCell>
-                            <TableCell className="font-semibold">{adj.itemName || "Unknown Item"}</TableCell>
+                            <TableCell>
+                               <div className="flex flex-col">
+                                  <span className="font-semibold">{adj.itemName || "Unknown Item"}</span>
+                                  {adj.orderUniqueName && (
+                                    <span className="text-[9px] text-primary font-black uppercase tracking-tight flex items-center gap-1">
+                                      <ShoppingBag className="h-2 w-2" /> Order: {adj.orderUniqueName}
+                                    </span>
+                                  )}
+                               </div>
+                            </TableCell>
                             <TableCell>
                               <div className={cn(
                                   "flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",

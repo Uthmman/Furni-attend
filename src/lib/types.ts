@@ -62,7 +62,9 @@ export interface Order extends DocumentData {
     orderDate?: string;
     orderDescription?: string;
     orderStatus?: string;
+    status?: string;
     productPictureUrl?: string;
+    uniqueName?: string;
     // Allow for other dynamic fields from the secondary project
     [key: string]: any;
 }
@@ -91,4 +93,6 @@ export interface StockAdjustment {
     totalPrice?: number;
     supplier?: string;
     paymentStatus?: PaymentStatus;
+    orderId?: string;
+    orderUniqueName?: string;
 }
