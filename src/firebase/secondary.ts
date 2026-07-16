@@ -1,23 +1,30 @@
+
 'use client';
 
 import { initializeApp, getApps } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+import { 
+  getFirestore, 
+  initializeFirestore, 
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from "firebase/firestore";
 
 // Secondary Firebase Project Configuration (course-registration-cce07)
-// Updated with user-provided credentials
+// Values are now pulled from .env for security and flexibility
 const secondaryFirebaseConfig = {
-  apiKey: "AIzaSyCOTBiGBKbvXQYK1YE4tBVupjiPACDpN0Y",
-  authDomain: "course-registration-cce07.firebaseapp.com",
-  projectId: "course-registration-cce07",
-  storageBucket: "course-registration-cce07.firebasestorage.app",
-  messagingSenderId: "117088413094",
-  appId: "1:117088413094:web:7016dd7e9de57071f65b67",
-  measurementId: "G-VRXBGQ3WN5"
+  apiKey: process.env.NEXT_PUBLIC_SECONDARY_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_SECONDARY_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_SECONDARY_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_SECONDARY_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_SECONDARY_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_SECONDARY_FIREBASE_APP_ID,
+  measurementId: process.env.NEXT_PUBLIC_SECONDARY_FIREBASE_MEASUREMENT_ID
 };
 
 /**
  * Initializes and returns the secondary Firestore instance.
  * Uses a unique app name to avoid conflict with the primary [DEFAULT] app.
+ * Enables offline persistence for better performance and offline access.
  */
 function getSecondaryFirestore() {
   const appName = "secondary-orders-app";
@@ -28,7 +35,14 @@ function getSecondaryFirestore() {
     app = initializeApp(secondaryFirebaseConfig, appName);
   }
   
-  return getFirestore(app);
+  // Try to initialize with persistence, fallback to standard if already initialized
+  try {
+    return initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    });
+  } catch (e) {
+    return getFirestore(app);
+  }
 }
 
 export const secondaryDb = getSecondaryFirestore();
