@@ -91,7 +91,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       unitPrice: 0,
       supplier: "",
       paymentStatus: "Paid",
-      orderId: "",
+      orderId: "none",
     },
   });
 
@@ -117,7 +117,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
         unitPrice: preSelectedItem?.currentPrice || 0,
         supplier: "",
         paymentStatus: "Paid",
-        orderId: "",
+        orderId: "none",
       });
     }
   }, [isOpen, preSelectedItem, forcedType, form]);
@@ -155,7 +155,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     }
 
     // Order data for "Out" adjustments
-    if (data.type === "Out" && data.orderId) {
+    if (data.type === "Out" && data.orderId && data.orderId !== "none") {
       adjData.orderId = data.orderId;
       adjData.orderUniqueName = linkedOrder?.uniqueName || linkedOrder?.name || "Unknown Order";
     }
@@ -245,7 +245,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        <SelectItem value="">No specific order (general usage)</SelectItem>
+                        <SelectItem value="none">No specific order (general usage)</SelectItem>
                         {activeOrders.map(order => (
                           <SelectItem key={order.id} value={order.id}>
                             {order.uniqueName || order.name || `Order ${order.id.slice(0, 5)}`}
