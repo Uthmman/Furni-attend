@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -23,7 +22,7 @@ import { secondaryDb } from "@/firebase/secondary";
 import { collection } from "firebase/firestore";
 import { useCollection, useMemoFirebase } from "@/firebase";
 import { format, isValid } from "date-fns";
-import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer } from "lucide-react";
+import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer, Info } from "lucide-react";
 import type { Order } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -47,15 +46,15 @@ export default function OrdersPage() {
     return allOrders
       .filter(order => (order.status || "").toLowerCase() !== 'shipped')
       .sort((a, b) => {
-        const dateA = a.deadline?.seconds || 0;
-        const dateB = b.deadline?.seconds || 0;
+        const dateA = (a.deadline as any)?.seconds || 0;
+        const dateB = (b.deadline as any)?.seconds || 0;
         return dateA - dateB;
       });
   }, [allOrders]);
 
   const getStatusBadge = (status: string, isUrgent?: boolean) => {
     const s = status?.toLowerCase() || 'pending';
-    if (isUrgent) {
+    if (isUrgent && s !== 'completed') {
       return <Badge className="bg-red-500 text-white border-none animate-pulse">URGENT</Badge>;
     }
     switch (s) {
@@ -118,66 +117,132 @@ export default function OrdersPage() {
         </CardHeader>
         <CardContent>
           {activeOrders.length > 0 ? (
-            <div className="rounded-xl border overflow-hidden">
-              <Table>
-                <TableHeader className="bg-muted/50">
-                  <TableRow>
-                    <TableHead className="font-bold">Order Name & Customer</TableHead>
-                    <TableHead className="font-bold">Details</TableHead>
-                    <TableHead className="font-bold">Timeline</TableHead>
-                    <TableHead className="font-bold">Status</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {activeOrders.map((order) => (
-                    <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
-                      <TableCell>
-                        <div className="flex flex-col gap-1">
-                          <span className="font-bold text-sm leading-tight">{order.uniqueName || "Untitled Order"}</span>
-                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                            <User className="h-3 w-3" />
-                            <span>{order.customerName || "Anonymous"}</span>
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden lg:block rounded-xl border overflow-hidden">
+                <Table>
+                  <TableHeader className="bg-muted/50">
+                    <TableRow>
+                      <TableHead className="font-bold">Order Name & Customer</TableHead>
+                      <TableHead className="font-bold">Details</TableHead>
+                      <TableHead className="font-bold">Timeline</TableHead>
+                      <TableHead className="font-bold">Status</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {activeOrders.map((order) => (
+                      <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
+                        <TableCell>
+                          <div className="flex flex-col gap-1">
+                            <span className="font-bold text-sm leading-tight">{order.uniqueName || "Untitled Order"}</span>
+                            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              <User className="h-3 w-3" />
+                              <span>{order.customerName || "Anonymous"}</span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1 max-w-[250px]">
+                            <span className="text-sm text-foreground line-clamp-1 italic">{order.description || "No description"}</span>
+                            {order.material && (
+                              <span className="text-[10px] uppercase font-bold text-primary/70">{order.material}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-1.5">
+                            <div className="flex items-center gap-2 text-xs">
+                              <Clock className="h-3 w-3 text-muted-foreground" />
+                              <span className="text-muted-foreground">Ordered: {formatDate(order.creationDate)}</span>
+                            </div>
+                            <div className={cn(
+                              "flex items-center gap-2 text-xs font-bold",
+                              order.isUrgent ? "text-destructive" : "text-amber-600"
+                            )}>
+                              <Timer className="h-3 w-3" />
+                              <span>Deadline: {formatDate(order.deadline)}</span>
+                            </div>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col gap-2">
+                            {getStatusBadge(order.status || "", order.isUrgent)}
+                            {order.paymentStatus && (
+                               <span className="text-[10px] font-bold text-muted-foreground px-1 uppercase tracking-tight">
+                                 {order.paymentStatus}
+                               </span>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+
+              {/* Mobile Card View */}
+              <div className="grid grid-cols-1 gap-4 lg:hidden">
+                {activeOrders.map((order) => (
+                  <Card key={order.id} className={cn(
+                    "border-l-4 transition-all hover:shadow-md",
+                    order.isUrgent ? "border-l-destructive shadow-sm" : "border-l-primary"
+                  )}>
+                    <CardContent className="p-4 space-y-3">
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <p className="font-bold text-sm leading-snug truncate">{order.uniqueName || "Untitled Order"}</p>
+                          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
+                            <User className="h-2.5 w-2.5" />
+                            <span className="truncate">{order.customerName || "Anonymous"}</span>
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1 max-w-[250px]">
-                          <span className="text-sm text-foreground line-clamp-1 italic">{order.description || "No description"}</span>
-                          {order.material && (
-                            <span className="text-[10px] uppercase font-bold text-primary/70">{order.material}</span>
-                          )}
+                        <div className="shrink-0">
+                          {getStatusBadge(order.status || "", order.isUrgent)}
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-1.5">
-                          <div className="flex items-center gap-2 text-xs">
-                            <Clock className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-muted-foreground">Ordered: {formatDate(order.creationDate)}</span>
-                          </div>
+                      </div>
+
+                      {order.description && (
+                        <div className="text-[11px] text-muted-foreground bg-muted/30 p-2 rounded-lg italic">
+                          {order.description}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-2 gap-3 pt-2 border-t border-dashed">
+                        <div className="space-y-1">
+                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Deadline</p>
                           <div className={cn(
-                            "flex items-center gap-2 text-xs font-bold",
-                            order.isUrgent ? "text-destructive" : "text-amber-600"
+                            "flex items-center gap-1.5 text-[11px] font-black",
+                            order.isUrgent ? "text-destructive animate-pulse" : "text-amber-600"
                           )}>
                             <Timer className="h-3 w-3" />
-                            <span>Deadline: {formatDate(order.deadline)}</span>
+                            {formatDate(order.deadline)}
                           </div>
                         </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-col gap-2">
-                          {getStatusBadge(order.status || "", order.isUrgent)}
-                          {order.paymentStatus && (
-                             <span className="text-[10px] font-bold text-muted-foreground px-1 uppercase tracking-tight">
-                               {order.paymentStatus}
-                             </span>
-                          )}
+                        <div className="space-y-1">
+                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Material</p>
+                          <div className="flex items-center gap-1.5 text-[11px] font-bold text-primary/80">
+                            <PackageSearch className="h-3 w-3" />
+                            <span className="truncate uppercase">{order.material || "N/A"}</span>
+                          </div>
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <div className="flex items-center gap-1 text-[9px] text-muted-foreground">
+                          <Clock className="h-2.5 w-2.5" />
+                          <span>Added: {formatDate(order.creationDate)}</span>
+                        </div>
+                        {order.paymentStatus && (
+                          <Badge variant="outline" className="text-[8px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight">
+                            {order.paymentStatus}
+                          </Badge>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </>
           ) : (
             <div className="flex flex-col items-center justify-center py-20 text-center gap-4 bg-muted/20 rounded-2xl border border-dashed">
               <PackageSearch className="h-12 w-12 text-muted-foreground/40" />
