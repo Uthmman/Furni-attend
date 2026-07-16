@@ -59,13 +59,21 @@ export interface PayrollEntry {
 export interface Order extends DocumentData {
     id: string;
     customerName?: string;
-    orderDate?: string;
-    orderDescription?: string;
-    orderStatus?: string;
-    status?: string;
-    productPictureUrl?: string;
     uniqueName?: string;
-    // Allow for other dynamic fields from the secondary project
+    description?: string;
+    status?: string;
+    creationDate?: Timestamp | { seconds: number; nanoseconds: number };
+    deadline?: Timestamp | { seconds: number; nanoseconds: number };
+    incomeAmount?: number;
+    prepaidAmount?: number;
+    paymentStatus?: string;
+    isUrgent?: boolean;
+    material?: string;
+    dimensions?: {
+      depth?: number;
+      height?: number;
+      width?: number;
+    };
     [key: string]: any;
 }
 

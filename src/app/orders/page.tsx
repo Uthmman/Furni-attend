@@ -1,6 +1,7 @@
+
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import {
   Card,
@@ -22,8 +23,9 @@ import { secondaryDb } from "@/firebase/secondary";
 import { collection } from "firebase/firestore";
 import { useCollection, useMemoFirebase } from "@/firebase";
 import { format, isValid } from "date-fns";
-import { ShoppingBag, Calendar, User, PackageSearch } from "lucide-react";
+import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer } from "lucide-react";
 import type { Order } from "@/lib/types";
+import { cn } from "@/lib/utils";
 
 export default function OrdersPage() {
   const { setTitle } = usePageTitle();
@@ -33,15 +35,29 @@ export default function OrdersPage() {
   }, [setTitle]);
 
   // Memoize the collection reference from the SECONDARY database
-  // Simplified query to ensure all documents are fetched even if fields like orderDate are missing
   const ordersCollectionRef = useMemoFirebase(() => {
     return collection(secondaryDb, "orders");
   }, []);
 
-  const { data: orders, isLoading } = useCollection<Order>(ordersCollectionRef);
+  const { data: allOrders, isLoading } = useCollection<Order>(ordersCollectionRef);
 
-  const getStatusBadge = (status: string) => {
+  // Filter for active orders (not Shipped) and sort by deadline
+  const activeOrders = useMemo(() => {
+    if (!allOrders) return [];
+    return allOrders
+      .filter(order => (order.status || "").toLowerCase() !== 'shipped')
+      .sort((a, b) => {
+        const dateA = a.deadline?.seconds || 0;
+        const dateB = b.deadline?.seconds || 0;
+        return dateA - dateB;
+      });
+  }, [allOrders]);
+
+  const getStatusBadge = (status: string, isUrgent?: boolean) => {
     const s = status?.toLowerCase() || 'pending';
+    if (isUrgent) {
+      return <Badge className="bg-red-500 text-white border-none animate-pulse">URGENT</Badge>;
+    }
     switch (s) {
       case 'completed':
         return <Badge className="bg-green-100 text-green-700 border-green-200">Completed</Badge>;
@@ -58,9 +74,11 @@ export default function OrdersPage() {
     if (!date) return "N/A";
     let d: Date;
     if (date?.toDate) {
-        d = date.toDate();
+      d = date.toDate();
+    } else if (typeof date?.seconds === 'number') {
+      d = new Date(date.seconds * 1000);
     } else {
-        d = new Date(date);
+      d = new Date(date);
     }
     return isValid(d) ? format(d, "MMM d, yyyy") : "N/A";
   };
@@ -79,57 +97,81 @@ export default function OrdersPage() {
   return (
     <div className="flex flex-col gap-6">
       <Card className="shadow-lg border-primary/10">
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-7">
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-7">
           <div className="space-y-1">
             <CardTitle className="text-2xl font-bold flex items-center gap-2">
               <ShoppingBag className="h-6 w-6 text-primary" />
-              Recent Orders
+              Active Orders
             </CardTitle>
             <CardDescription>
-              Orders fetched from your secondary project (course-registration-cce07).
+              Displaying ongoing projects (status not Shipped).
             </CardDescription>
           </div>
-          <Badge variant="secondary" className="px-3 py-1 font-bold">
-            {orders?.length || 0} Total Orders
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="px-3 py-1 font-bold">
+              {activeOrders.length} Active
+            </Badge>
+            <Badge variant="secondary" className="px-3 py-1 font-bold">
+              {allOrders?.length || 0} Total
+            </Badge>
+          </div>
         </CardHeader>
         <CardContent>
-          {orders && orders.length > 0 ? (
+          {activeOrders.length > 0 ? (
             <div className="rounded-xl border overflow-hidden">
               <Table>
                 <TableHeader className="bg-muted/50">
                   <TableRow>
-                    <TableHead className="font-bold">Customer</TableHead>
-                    <TableHead className="font-bold">Order Details</TableHead>
-                    <TableHead className="font-bold">Date</TableHead>
+                    <TableHead className="font-bold">Order Name & Customer</TableHead>
+                    <TableHead className="font-bold">Details</TableHead>
+                    <TableHead className="font-bold">Timeline</TableHead>
                     <TableHead className="font-bold">Status</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {orders.map((order) => (
+                  {activeOrders.map((order) => (
                     <TableRow key={order.id} className="hover:bg-muted/30 transition-colors">
                       <TableCell>
-                        <div className="flex items-center gap-3">
-                          <div className="bg-primary/10 p-2 rounded-lg">
-                            <User className="h-4 w-4 text-primary" />
+                        <div className="flex flex-col gap-1">
+                          <span className="font-bold text-sm leading-tight">{order.uniqueName || "Untitled Order"}</span>
+                          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                            <User className="h-3 w-3" />
+                            <span>{order.customerName || "Anonymous"}</span>
                           </div>
-                          <span className="font-bold">{order.customerName || order.name || "Anonymous"}</span>
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex flex-col max-w-[300px]">
-                          <span className="text-sm text-foreground line-clamp-1">{order.orderDescription || order.description || order.productName || "No description"}</span>
-                          <span className="text-[10px] text-muted-foreground font-mono uppercase">ID: {order.id.slice(0, 8)}</span>
+                        <div className="flex flex-col gap-1 max-w-[250px]">
+                          <span className="text-sm text-foreground line-clamp-1 italic">{order.description || "No description"}</span>
+                          {order.material && (
+                            <span className="text-[10px] uppercase font-bold text-primary/70">{order.material}</span>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
-                        <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium">
-                          <Calendar className="h-3 w-3" />
-                          {formatDate(order.orderDate || order.date || order.createdAt)}
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center gap-2 text-xs">
+                            <Clock className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-muted-foreground">Ordered: {formatDate(order.creationDate)}</span>
+                          </div>
+                          <div className={cn(
+                            "flex items-center gap-2 text-xs font-bold",
+                            order.isUrgent ? "text-destructive" : "text-amber-600"
+                          )}>
+                            <Timer className="h-3 w-3" />
+                            <span>Deadline: {formatDate(order.deadline)}</span>
+                          </div>
                         </div>
                       </TableCell>
                       <TableCell>
-                        {getStatusBadge(order.orderStatus || order.status)}
+                        <div className="flex flex-col gap-2">
+                          {getStatusBadge(order.status || "", order.isUrgent)}
+                          {order.paymentStatus && (
+                             <span className="text-[10px] font-bold text-muted-foreground px-1 uppercase tracking-tight">
+                               {order.paymentStatus}
+                             </span>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -140,8 +182,8 @@ export default function OrdersPage() {
             <div className="flex flex-col items-center justify-center py-20 text-center gap-4 bg-muted/20 rounded-2xl border border-dashed">
               <PackageSearch className="h-12 w-12 text-muted-foreground/40" />
               <div className="space-y-1">
-                <p className="text-lg font-bold text-muted-foreground">No orders found</p>
-                <p className="text-sm text-muted-foreground/60">We connected to the project, but the "orders" collection appears to be empty or fields differ.</p>
+                <p className="text-lg font-bold text-muted-foreground">No active orders</p>
+                <p className="text-sm text-muted-foreground/60">There are no orders with a status other than 'Shipped'.</p>
               </div>
             </div>
           )}
