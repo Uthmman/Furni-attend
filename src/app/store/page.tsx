@@ -47,13 +47,15 @@ import {
   ShoppingBag,
   TrendingUp,
   Image as ImageIcon,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
 import type { Item, StockAdjustment } from "@/lib/types";
 import { ItemForm } from "./item-form";
 import { AdjustmentDialog } from "./adjustment-dialog";
-import { format } from "date-fns";
+import { format, startOfMonth, subMonths, isWithinInterval, endOfMonth, isValid } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -71,6 +73,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import Image from "next/image";
 
@@ -106,11 +115,15 @@ export default function StorePage() {
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
+  
   const [searchQuery, setSearchQuery] = useState("");
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<"In" | "Out" | null>(null);
+  
+  // Cost Filtering State
+  const [selectedCostMonth, setSelectedCostMonth] = useState<string>(format(new Date(), "yyyy-MM"));
 
   useEffect(() => {
     setTitle("Store Management");
@@ -125,10 +138,11 @@ export default function StorePage() {
 
   const adjustmentsCollectionRef = useMemoFirebase(() => {
     if (!firestore || isUserLoading || !user) return null;
+    // Increased limit to 500 to provide a better historical overview for the costs tab
     return query(
       collection(firestore, "stockAdjustments"), 
       orderBy("adjustmentDate", "desc"), 
-      limit(100)
+      limit(500)
     );
   }, [firestore, user, isUserLoading]);
 
@@ -146,6 +160,33 @@ export default function StorePage() {
     if (!adjustments) return [];
     return adjustments.filter(adj => adj.type === "In");
   }, [adjustments]);
+
+  // Generate Month Options for Costs Filter
+  const monthOptions = useMemo(() => {
+    const options = [{ value: "all", label: "All Records" }];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+        const d = subMonths(now, i);
+        options.push({
+            value: format(d, "yyyy-MM"),
+            label: format(d, "MMMM yyyy")
+        });
+    }
+    return options;
+  }, []);
+
+  const filteredPurchaseHistory = useMemo(() => {
+    if (!purchaseHistory) return [];
+    if (selectedCostMonth === "all") return purchaseHistory;
+    return purchaseHistory.filter(buy => {
+        if (!buy.adjustmentDate) return false;
+        return format(new Date(buy.adjustmentDate), "yyyy-MM") === selectedCostMonth;
+    });
+  }, [purchaseHistory, selectedCostMonth]);
+
+  const totalFilteredSpending = useMemo(() => {
+    return filteredPurchaseHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0);
+  }, [filteredPurchaseHistory]);
 
   const handleEditItem = (e: React.MouseEvent, item: Item) => {
     e.stopPropagation();
@@ -571,14 +612,28 @@ export default function StorePage() {
 
         <TabsContent value="expenses" className="space-y-6">
            <Card className="shadow-lg border-primary/10 overflow-hidden">
-            <CardHeader className="bg-primary/5 border-b">
-              <CardTitle className="text-xl">Purchase Costs</CardTitle>
-              <CardDescription className="hidden sm:block">Financial record of supply restocking expenses.</CardDescription>
+            <CardHeader className="bg-primary/5 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div>
+                <CardTitle className="text-xl">Purchase Costs</CardTitle>
+                <CardDescription className="hidden sm:block">Financial record of supply restocking expenses.</CardDescription>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                 <Select value={selectedCostMonth} onValueChange={setSelectedCostMonth}>
+                    <SelectTrigger className="w-full sm:w-[200px] bg-background">
+                        <SelectValue placeholder="Filter by Month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {monthOptions.map(opt => (
+                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                        ))}
+                    </SelectContent>
+                 </Select>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
                <div className="md:hidden divide-y">
-                  {purchaseHistory.length > 0 ? (
-                    purchaseHistory.map((buy) => (
+                  {filteredPurchaseHistory.length > 0 ? (
+                    filteredPurchaseHistory.map((buy) => (
                       <div key={buy.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors">
                         <div className="flex justify-between items-start">
                           <div className="space-y-1">
@@ -604,7 +659,7 @@ export default function StorePage() {
                       </div>
                     ))
                   ) : (
-                    <div className="p-12 text-center text-muted-foreground text-sm">No expenses recorded.</div>
+                    <div className="p-12 text-center text-muted-foreground text-sm">No expenses recorded for this period.</div>
                   )}
                </div>
 
@@ -621,8 +676,8 @@ export default function StorePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {purchaseHistory.length > 0 ? (
-                        purchaseHistory.map((buy) => (
+                      {filteredPurchaseHistory.length > 0 ? (
+                        filteredPurchaseHistory.map((buy) => (
                           <TableRow key={buy.id} className="hover:bg-muted/10 transition-colors">
                             <TableCell className="text-[11px] text-muted-foreground pl-6">
                               {buy.adjustmentDate ? format(new Date(buy.adjustmentDate), "MMM d, yyyy") : "—"}
@@ -647,7 +702,7 @@ export default function StorePage() {
                           </TableRow>
                         ))
                       ) : (
-                        <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">No records.</TableCell></TableRow>
+                        <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">No records for this period.</TableCell></TableRow>
                       )}
                     </TableBody>
                  </Table>
@@ -657,9 +712,11 @@ export default function StorePage() {
            
            <div className="flex justify-end pr-4">
               <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 w-full max-w-sm text-center shadow-md">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">Total Stock Spending (Last 100)</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">
+                    {selectedCostMonth === 'all' ? 'Total Stock Spending' : `Spending for ${monthOptions.find(o => o.value === selectedCostMonth)?.label}`}
+                  </p>
                   <p className="text-3xl sm:text-4xl font-black text-primary">
-                    ETB {purchaseHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ETB {totalFilteredSpending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </p>
                   <div className="flex items-center justify-center gap-1.5 mt-3">
                      <div className="h-1 w-8 bg-primary/20 rounded-full" />
@@ -673,3 +730,4 @@ export default function StorePage() {
     </div>
   );
 }
+
