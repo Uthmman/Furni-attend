@@ -12,6 +12,7 @@
         "phone": { "type": "string" },
         "position": { "type": "string" },
         "status": { "type": "string", "enum": ["Active", "Inactive"] },
+        "inactiveDate": { "type": "string", "format": "date", "description": "The date the employee became inactive." },
         "paymentMethod": { "type": "string", "enum": ["Weekly", "Monthly"] },
         "accountNumber": { "type": "string" },
         "dailyRate": { "type": "number" },

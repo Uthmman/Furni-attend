@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
@@ -37,7 +38,7 @@ import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone, Trash2, Edit, Calendar } from "lucide-react";
+import { Copy, Phone, Trash2, Edit, Calendar, UserMinus } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
@@ -660,9 +661,24 @@ export default function EmployeeProfilePage() {
                         {employee.attendanceStartDate && (
                           <div className="flex items-center justify-between">
                                 <p className="font-semibold">Start Date</p>
-                                <div className="flex items-center gap-2">
-                                  <Calendar className="h-4 w-4 text-muted-foreground" />
-                                  <p className="text-muted-foreground">{format(new Date(employee.attendanceStartDate), "MMM d, yyyy")} / {ethiopianDateFormatter(new Date(employee.attendanceStartDate), { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                <div className="flex flex-col items-end">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                                    <p className="text-muted-foreground font-medium">{format(new Date(employee.attendanceStartDate), "MMM d, yyyy")}</p>
+                                  </div>
+                                  <p className="text-[10px] text-muted-foreground uppercase">{ethiopianDateFormatter(new Date(employee.attendanceStartDate), { day: 'numeric', month: 'short', year: 'numeric' })} AM</p>
+                                </div>
+                          </div>
+                      )}
+                      {employee.status === 'Inactive' && employee.inactiveDate && (
+                          <div className="flex items-center justify-between">
+                                <p className="font-semibold">Inactive Date</p>
+                                <div className="flex flex-col items-end">
+                                  <div className="flex items-center gap-2">
+                                    <UserMinus className="h-4 w-4 text-destructive" />
+                                    <p className="text-destructive font-bold">{format(new Date(employee.inactiveDate), "MMM d, yyyy")}</p>
+                                  </div>
+                                  <p className="text-[10px] text-destructive/70 uppercase">{ethiopianDateFormatter(new Date(employee.inactiveDate), { day: 'numeric', month: 'short', year: 'numeric' })} AM</p>
                                 </div>
                           </div>
                       )}
@@ -684,17 +700,17 @@ export default function EmployeeProfilePage() {
                               </Button>
                           </div>
                       </div>
-                      <div>
+                      <div className="flex items-center justify-between">
                           <p className="font-semibold">Payment Method</p>
                           <Badge variant="outline">{employee.paymentMethod}</Badge>
                       </div>
-                      <div>
+                      <div className="flex items-center justify-between">
                           <p className="font-semibold">{employee.paymentMethod} Rate</p>
                           <p className="text-muted-foreground">ETB {employee.monthlyRate || employee.dailyRate || "N/A"}</p>
                       </div>
-                      <div>
-                          <p className="font-semibold">Current Period Hourly Rate</p>
-                          <p className="text-muted-foreground">ETB {payrollData.hourlyRate?.toFixed(2) || "N/A"}</p>
+                      <div className="flex items-center justify-between border-t pt-2 mt-2">
+                          <p className="font-semibold">Period Hourly Rate</p>
+                          <p className="text-primary font-bold">ETB {payrollData.hourlyRate?.toFixed(2) || "N/A"}</p>
                       </div>
                     </div>
                   </CardContent>

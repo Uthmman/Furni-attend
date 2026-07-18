@@ -42,6 +42,7 @@ const employeeSchema = z.object({
   phone: z.string().min(9, { message: "Please enter a valid phone number." }),
   position: z.string().optional(),
   status: z.enum(["Active", "Inactive"]),
+  inactiveDate: z.string().optional(),
   paymentMethod: z.enum(["Weekly", "Monthly"]),
   accountNumber: z.string().min(5, { message: "Account number is required." }),
   dailyRate: z.coerce.number().optional(),
@@ -71,6 +72,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
       phone: "",
       position: "",
       status: "Active",
+      inactiveDate: "",
       paymentMethod: "Weekly",
       accountNumber: "",
       dailyRate: 0,
@@ -87,6 +89,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
         phone: employee.phone || "",
         position: employee.position || "",
         status: employee.status || "Active",
+        inactiveDate: employee.inactiveDate || "",
         paymentMethod: employee.paymentMethod || "Weekly",
         accountNumber: employee.accountNumber || "",
         dailyRate: employee.dailyRate || 0,
@@ -104,6 +107,11 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
     if (!firestore) return;
     setIsSubmitting(true);
     
+    // Clear inactiveDate if status is Active
+    if (data.status === 'Active') {
+      data.inactiveDate = "";
+    }
+
     const handleSuccess = (action: "Added" | "Updated") => {
        toast({
           title: `Employee ${action}`,
@@ -138,6 +146,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
   };
 
   const paymentMethod = form.watch("paymentMethod");
+  const status = form.watch("status");
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
@@ -183,6 +192,21 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
                     )}
                 />
             </div>
+            {status === 'Inactive' && (
+              <FormField
+                control={form.control}
+                name="inactiveDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Inactive Date</FormLabel>
+                    <FormControl>
+                      <Input type="date" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
             <FormField
               control={form.control}
               name="phone"

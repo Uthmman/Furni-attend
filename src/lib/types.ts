@@ -17,6 +17,7 @@ export interface Employee extends DocumentData {
   hourlyRate?: number;
   attendanceStartDate?: string;
   status?: EmployeeStatus;
+  inactiveDate?: string;
 }
 
 export type AttendanceStatus = "Present" | "Absent" | "Late" | "Permission";
