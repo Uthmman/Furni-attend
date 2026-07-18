@@ -82,6 +82,18 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
     },
   });
 
+  const currentStatus = form.watch("status");
+  const currentInactiveDate = form.watch("inactiveDate");
+
+  // Automatically handle inactiveDate when status changes
+  useEffect(() => {
+    if (currentStatus === 'Inactive' && !currentInactiveDate) {
+      form.setValue("inactiveDate", format(new Date(), 'yyyy-MM-dd'));
+    } else if (currentStatus === 'Active') {
+      form.setValue("inactiveDate", "");
+    }
+  }, [currentStatus, form]);
+
   useEffect(() => {
     if (employee) {
       form.reset({
@@ -107,7 +119,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
     if (!firestore) return;
     setIsSubmitting(true);
     
-    // Clear inactiveDate if status is Active
+    // Safety check: Clear inactiveDate if status is Active
     if (data.status === 'Active') {
       data.inactiveDate = "";
     }
@@ -176,7 +188,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
                     render={({ field }) => (
                         <FormItem>
                         <FormLabel>Status</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                             <SelectTrigger>
                                 <SelectValue placeholder="Select status" />
@@ -202,6 +214,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
                     <FormControl>
                       <Input type="date" {...field} />
                     </FormControl>
+                    <FormDescription>Automatically set when changing status to Inactive.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -265,7 +278,7 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Payment Method</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a payment method" />
