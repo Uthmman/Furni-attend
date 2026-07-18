@@ -77,6 +77,11 @@ export interface Order extends DocumentData {
     [key: string]: any;
 }
 
+export interface PriceRecord {
+    price: number;
+    date: string;
+}
+
 export interface Item {
     id: string;
     name: string;
@@ -85,6 +90,8 @@ export interface Item {
     stockLevel: number;
     lowStockThreshold?: number;
     currentPrice?: number;
+    imageUrl?: string;
+    priceHistory?: PriceRecord[];
 }
 
 export type PaymentStatus = "Paid" | "Unpaid";

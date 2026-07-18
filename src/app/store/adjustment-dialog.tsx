@@ -33,7 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import type { Item, PaymentStatus, Order } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
-import { doc, writeBatch, collection } from "firebase/firestore";
+import { doc, writeBatch, collection, arrayUnion } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
 import { Loader2, ArrowUpRight, ArrowDownRight, Wallet, ShoppingCart, ShoppingBag } from "lucide-react";
@@ -131,7 +131,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     const batch = writeBatch(firestore);
     
-    // Find selected order name
     const linkedOrder = activeOrders.find(o => o.id === data.orderId);
 
     // 1. Log the adjustment
@@ -146,7 +145,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       reason: data.reason,
     };
 
-    // Financial data for "In" adjustments
     if (data.type === "In") {
       adjData.unitPrice = data.unitPrice || 0;
       adjData.totalPrice = (data.unitPrice || 0) * data.quantity;
@@ -154,7 +152,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       adjData.paymentStatus = data.paymentStatus || "Paid";
     }
 
-    // Order data for "Out" adjustments
     if (data.type === "Out" && data.orderId && data.orderId !== "none") {
       adjData.orderId = data.orderId;
       adjData.orderUniqueName = linkedOrder?.uniqueName || linkedOrder?.name || "Unknown Order";
@@ -162,13 +159,15 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     batch.set(adjRef, adjData);
 
-    // 2. Update item stock level and price if it changed
+    // 2. Update item stock level and price history if it changed
     const itemRef = doc(firestore, "items", selectedItem.id);
     const itemUpdate: any = { stockLevel: newStockLevel };
     
-    // Sync price to item if Stock In price was edited
     if (data.type === 'In' && data.unitPrice !== undefined) {
         itemUpdate.currentPrice = data.unitPrice;
+        // Add to price history
+        const historyEntry = { price: data.unitPrice, date: new Date().toISOString() };
+        itemUpdate.priceHistory = arrayUnion(historyEntry);
     }
 
     batch.update(itemRef, itemUpdate);
@@ -302,7 +301,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                           <FormControl>
                             <Input type="number" step="0.01" className="h-10 bg-background" {...field} />
                           </FormControl>
-                          <p className="text-[9px] text-muted-foreground mt-1">Updates item master price</p>
+                          <p className="text-[9px] text-muted-foreground mt-1">Updates item price & history</p>
                           <FormMessage />
                         </FormItem>
                       )}

@@ -48,7 +48,18 @@
         "unitOfMeasurement": { "type": "string" },
         "stockLevel": { "type": "number" },
         "lowStockThreshold": { "type": "number" },
-        "currentPrice": { "type": "number" }
+        "currentPrice": { "type": "number" },
+        "imageUrl": { "type": "string", "description": "Base64 encoded image data." },
+        "priceHistory": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "price": { "type": "number" },
+              "date": { "type": "string", "format": "date-time" }
+            }
+          }
+        }
       },
       "required": ["name", "category", "unitOfMeasurement", "stockLevel"]
     },

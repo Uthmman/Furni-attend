@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -45,6 +44,8 @@ import {
   Wallet,
   Calendar,
   ShoppingBag,
+  TrendingUp,
+  Image as ImageIcon,
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
@@ -64,7 +65,13 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
+import Image from "next/image";
 
 export const getCategoryIcon = (category: string) => {
   const iconClass = "h-8 w-8";
@@ -176,9 +183,24 @@ export default function StorePage() {
     );
   }
 
+  const renderPriceHistory = (item: Item) => {
+    const history = (item.priceHistory || []).slice().reverse();
+    if (history.length === 0) return <p className="text-xs text-muted-foreground p-2">No price history available.</p>;
+
+    return (
+      <div className="flex flex-col divide-y max-h-[200px] overflow-y-auto">
+        {history.map((record, idx) => (
+          <div key={idx} className="flex justify-between items-center p-2 gap-4">
+            <span className="text-[10px] font-medium text-muted-foreground">{format(new Date(record.date), "MMM d, yyyy")}</span>
+            <span className="text-xs font-bold text-primary">ETB {record.price.toFixed(2)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="flex flex-col gap-6 relative min-h-[calc(100vh-200px)] pb-24">
-      {/* Floating Action Buttons */}
       <div className="fixed bottom-24 right-6 flex flex-col gap-3 z-50 md:bottom-12 md:right-12">
         <Button 
           size="lg" 
@@ -256,8 +278,12 @@ export default function StorePage() {
                     <CardContent className="p-4">
                        <div className="flex items-start gap-4">
                           <div className="flex items-start gap-4 flex-1 min-w-0">
-                            <div className={cn("flex items-center justify-center h-20 w-20 rounded-2xl shadow-sm shrink-0", getCategoryColor(item.category))}>
-                              {getCategoryIcon(item.category)}
+                            <div className={cn("flex items-center justify-center h-20 w-20 rounded-2xl shadow-sm shrink-0 overflow-hidden relative", getCategoryColor(item.category))}>
+                              {item.imageUrl ? (
+                                <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
+                              ) : (
+                                getCategoryIcon(item.category)
+                              )}
                             </div>
                             <div className="flex-1 space-y-1 min-w-0">
                                <h3 className="font-bold text-lg truncate leading-none mb-1">{item.name}</h3>
@@ -265,7 +291,22 @@ export default function StorePage() {
                                   <Badge variant="outline" className="text-[9px] h-4 py-0 px-2 uppercase font-black tracking-tight border-primary/20">
                                   {item.category}
                                   </Badge>
-                                  <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
+                                  <div className="flex items-center gap-1">
+                                    <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground/50 hover:text-primary">
+                                          <TrendingUp className="h-3 w-3" />
+                                        </Button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-48 p-0" align="end">
+                                        <div className="p-2 border-b bg-muted/20">
+                                          <p className="text-[10px] font-bold uppercase tracking-wider">Price History</p>
+                                        </div>
+                                        {renderPriceHistory(item)}
+                                      </PopoverContent>
+                                    </Popover>
+                                  </div>
                                </div>
                                <div className="pt-3">
                                   <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest">In Stock</span>
@@ -321,15 +362,32 @@ export default function StorePage() {
 
                <div className="md:hidden grid grid-cols-1 gap-0 divide-y">
                   {filteredItems.map(item => (
-                    <div key={item.id} className="p-4 flex items-center gap-4">
-                      <div className={cn("flex items-center justify-center h-16 w-16 rounded-xl shadow-sm shrink-0", getCategoryColor(item.category))}>
-                        {getCategoryIcon(item.category)}
+                    <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-muted/5 transition-colors">
+                      <div className={cn("flex items-center justify-center h-16 w-16 rounded-xl shadow-sm shrink-0 overflow-hidden relative", getCategoryColor(item.category))}>
+                        {item.imageUrl ? (
+                          <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
+                        ) : (
+                          getCategoryIcon(item.category)
+                        )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <h4 className="font-bold text-sm truncate">{item.name}</h4>
                         <div className="flex items-center gap-2 mt-1">
                           <Badge variant="secondary" className="text-[9px] h-4 py-0">{item.category}</Badge>
-                          <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2)}</span>
+                          <div className="flex items-center gap-1">
+                            <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2)}</span>
+                            <Popover>
+                              <PopoverTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-4 w-4 p-0">
+                                  <TrendingUp className="h-2.5 w-2.5 text-primary/40" />
+                                </Button>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-48 p-0">
+                                <div className="p-2 border-b bg-muted/20"><p className="text-[9px] font-black uppercase">Price History</p></div>
+                                {renderPriceHistory(item)}
+                              </PopoverContent>
+                            </Popover>
+                          </div>
                         </div>
                       </div>
                       <div className="flex gap-1 shrink-0">
@@ -358,7 +416,8 @@ export default function StorePage() {
                 <Table>
                     <TableHeader className="bg-muted/30">
                       <TableRow>
-                        <TableHead className="pl-6">Item</TableHead>
+                        <TableHead className="pl-6 w-[80px]">Image</TableHead>
+                        <TableHead>Item</TableHead>
                         <TableHead>Category</TableHead>
                         <TableHead className="text-right">Price (ETB)</TableHead>
                         <TableHead className="text-center">Limit</TableHead>
@@ -367,10 +426,37 @@ export default function StorePage() {
                     </TableHeader>
                     <TableBody>
                       {filteredItems.map(item => (
-                        <TableRow key={item.id} className="hover:bg-muted/10 transition-colors">
-                          <TableCell className="font-bold pl-6">{item.name}</TableCell>
+                        <TableRow key={item.id} className="hover:bg-muted/10 transition-colors group">
+                          <TableCell className="pl-6">
+                            <div className="h-10 w-10 rounded-lg overflow-hidden border bg-muted flex items-center justify-center relative shadow-sm">
+                              {item.imageUrl ? (
+                                <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
+                              ) : (
+                                <ImageIcon className="h-4 w-4 opacity-20" />
+                              )}
+                            </div>
+                          </TableCell>
+                          <TableCell className="font-bold">{item.name}</TableCell>
                           <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
-                          <TableCell className="text-right font-mono font-bold text-xs">ETB {item.currentPrice?.toFixed(2) || "0.00"}</TableCell>
+                          <TableCell className="text-right">
+                             <div className="flex items-center justify-end gap-2">
+                               <span className="font-mono font-bold text-xs">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
+                               <Popover>
+                                  <PopoverTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/30 hover:text-primary transition-colors">
+                                      <TrendingUp className="h-3 w-3" />
+                                    </Button>
+                                  </PopoverTrigger>
+                                  <PopoverContent className="w-56 p-0 shadow-2xl rounded-xl overflow-hidden border-primary/20" align="end">
+                                    <div className="p-3 border-b bg-primary/5 flex items-center justify-between">
+                                      <p className="text-[10px] font-black uppercase text-primary tracking-tighter">Cost History</p>
+                                      <TrendingUp className="h-3 w-3 text-primary/40" />
+                                    </div>
+                                    {renderPriceHistory(item)}
+                                  </PopoverContent>
+                               </Popover>
+                             </div>
+                          </TableCell>
                           <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold || 5}</TableCell>
                           <TableCell className="text-right pr-6">
                               <div className="flex justify-end gap-2">
