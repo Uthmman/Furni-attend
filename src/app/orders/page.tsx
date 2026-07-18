@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -22,7 +23,7 @@ import { secondaryDb } from "@/firebase/secondary";
 import { collection } from "firebase/firestore";
 import { useCollection, useMemoFirebase } from "@/firebase";
 import { format, isValid } from "date-fns";
-import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer, Info } from "lucide-react";
+import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer } from "lucide-react";
 import type { Order } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -33,14 +34,12 @@ export default function OrdersPage() {
     setTitle("Orders Management");
   }, [setTitle]);
 
-  // Memoize the collection reference from the SECONDARY database
   const ordersCollectionRef = useMemoFirebase(() => {
     return collection(secondaryDb, "orders");
   }, []);
 
   const { data: allOrders, isLoading } = useCollection<Order>(ordersCollectionRef);
 
-  // Filter for active orders (not Shipped) and sort by deadline
   const activeOrders = useMemo(() => {
     if (!allOrders) return [];
     return allOrders
@@ -118,7 +117,6 @@ export default function OrdersPage() {
         <CardContent>
           {activeOrders.length > 0 ? (
             <>
-              {/* Desktop Table View */}
               <div className="hidden lg:block rounded-xl border overflow-hidden">
                 <Table>
                   <TableHeader className="bg-muted/50">
@@ -180,7 +178,6 @@ export default function OrdersPage() {
                 </Table>
               </div>
 
-              {/* Mobile Card View */}
               <div className="grid grid-cols-1 gap-4 lg:hidden">
                 {activeOrders.map((order) => (
                   <Card key={order.id} className={cn(

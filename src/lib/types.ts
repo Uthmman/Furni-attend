@@ -6,7 +6,7 @@ export type PaymentMethod = "Weekly" | "Monthly";
 export type EmployeeStatus = "Active" | "Inactive";
 
 export interface Employee extends DocumentData {
-  id:string;
+  id: string;
   name: string;
   phone: string;
   position?: string;

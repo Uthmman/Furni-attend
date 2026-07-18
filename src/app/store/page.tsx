@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -170,6 +171,30 @@ export default function StorePage() {
     }
   };
 
+  const renderPriceHistory = (item: Item) => {
+    const history = (item.priceHistory || []).slice().reverse();
+    if (history.length === 0) return <p className="text-xs text-muted-foreground p-3 text-center">No price history available.</p>;
+
+    return (
+      <div className="flex flex-col divide-y max-h-[250px] overflow-y-auto">
+        <div className="p-3 bg-primary/5 border-b sticky top-0 z-10">
+          <p className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
+            <TrendingUp className="h-3 w-3" /> Cost History Log
+          </p>
+        </div>
+        {history.map((record, idx) => (
+          <div key={idx} className="flex justify-between items-center p-3 gap-6 hover:bg-muted/30 transition-colors">
+            <div className="flex flex-col">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase">{format(new Date(record.date), "MMM d, yyyy")}</span>
+              <span className="text-[9px] text-muted-foreground/60">{format(new Date(record.date), "HH:mm")}</span>
+            </div>
+            <span className="text-sm font-black text-primary">ETB {record.price.toFixed(2)}</span>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const isLoadingData = itemsLoading || adjustmentsLoading || isUserLoading;
 
   if (isLoadingData) {
@@ -182,22 +207,6 @@ export default function StorePage() {
       </div>
     );
   }
-
-  const renderPriceHistory = (item: Item) => {
-    const history = (item.priceHistory || []).slice().reverse();
-    if (history.length === 0) return <p className="text-xs text-muted-foreground p-2">No price history available.</p>;
-
-    return (
-      <div className="flex flex-col divide-y max-h-[200px] overflow-y-auto">
-        {history.map((record, idx) => (
-          <div key={idx} className="flex justify-between items-center p-2 gap-4">
-            <span className="text-[10px] font-medium text-muted-foreground">{format(new Date(record.date), "MMM d, yyyy")}</span>
-            <span className="text-xs font-bold text-primary">ETB {record.price.toFixed(2)}</span>
-          </div>
-        ))}
-      </div>
-    );
-  };
 
   return (
     <div className="flex flex-col gap-6 relative min-h-[calc(100vh-200px)] pb-24">
@@ -291,22 +300,7 @@ export default function StorePage() {
                                   <Badge variant="outline" className="text-[9px] h-4 py-0 px-2 uppercase font-black tracking-tight border-primary/20">
                                   {item.category}
                                   </Badge>
-                                  <div className="flex items-center gap-1">
-                                    <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
-                                    <Popover>
-                                      <PopoverTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground/50 hover:text-primary">
-                                          <TrendingUp className="h-3 w-3" />
-                                        </Button>
-                                      </PopoverTrigger>
-                                      <PopoverContent className="w-48 p-0" align="end">
-                                        <div className="p-2 border-b bg-muted/20">
-                                          <p className="text-[10px] font-bold uppercase tracking-wider">Price History</p>
-                                        </div>
-                                        {renderPriceHistory(item)}
-                                      </PopoverContent>
-                                    </Popover>
-                                  </div>
+                                  <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
                                </div>
                                <div className="pt-3">
                                   <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest">In Stock</span>
@@ -347,68 +341,59 @@ export default function StorePage() {
             <CardHeader className="bg-primary/5 border-b flex flex-row items-center justify-between">
               <div>
                 <CardTitle className="text-xl">Registry Management</CardTitle>
-                <CardDescription className="hidden sm:block">Add, update, or remove supply item definitions.</CardDescription>
+                <CardDescription className="hidden sm:block">Add items or click them to view price history.</CardDescription>
               </div>
               <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="hidden sm:flex border-dashed shadow-sm h-10">
                  <Plus className="mr-2 h-4 w-4" /> Register New Supply
               </Button>
             </CardHeader>
             <CardContent className="p-0">
-               <div className="p-4 sm:hidden border-b bg-primary/5">
-                 <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="w-full border-dashed shadow-sm h-11">
-                    <Plus className="mr-2 h-4 w-4" /> Register New Supply
-                 </Button>
-               </div>
-
                <div className="md:hidden grid grid-cols-1 gap-0 divide-y">
                   {filteredItems.map(item => (
-                    <div key={item.id} className="p-4 flex items-center gap-4 hover:bg-muted/5 transition-colors">
-                      <div className={cn("flex items-center justify-center h-16 w-16 rounded-xl shadow-sm shrink-0 overflow-hidden relative", getCategoryColor(item.category))}>
-                        {item.imageUrl ? (
-                          <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
-                        ) : (
-                          getCategoryIcon(item.category)
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-bold text-sm truncate">{item.name}</h4>
-                        <div className="flex items-center gap-2 mt-1">
-                          <Badge variant="secondary" className="text-[9px] h-4 py-0">{item.category}</Badge>
-                          <div className="flex items-center gap-1">
-                            <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2)}</span>
-                            <Popover>
-                              <PopoverTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-4 w-4 p-0">
-                                  <TrendingUp className="h-2.5 w-2.5 text-primary/40" />
-                                </Button>
-                              </PopoverTrigger>
-                              <PopoverContent className="w-48 p-0">
-                                <div className="p-2 border-b bg-muted/20"><p className="text-[9px] font-black uppercase">Price History</p></div>
-                                {renderPriceHistory(item)}
-                              </PopoverContent>
-                            </Popover>
+                    <Popover key={item.id}>
+                      <PopoverTrigger asChild>
+                        <div className="p-4 flex items-center gap-4 hover:bg-muted/5 transition-colors cursor-pointer group relative">
+                          <div className={cn("flex items-center justify-center h-16 w-16 rounded-xl shadow-sm shrink-0 overflow-hidden relative", getCategoryColor(item.category))}>
+                            {item.imageUrl ? (
+                              <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
+                            ) : (
+                              getCategoryIcon(item.category)
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-bold text-sm truncate">{item.name}</h4>
+                            <div className="flex items-center gap-2 mt-1">
+                              <Badge variant="secondary" className="text-[9px] h-4 py-0">{item.category}</Badge>
+                              <span className="text-[10px] font-bold text-primary flex items-center gap-1">
+                                ETB {item.currentPrice?.toFixed(2)}
+                                <TrendingUp className="h-2.5 w-2.5 opacity-50" />
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex gap-1 shrink-0">
+                            <Button variant="ghost" size="icon" className="h-10 w-10" onClick={(e) => handleEditItem(e, item)}><Edit2 className="h-4 w-4" /></Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={(e) => e.stopPropagation()}><Trash2 className="h-4 w-4" /></Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="max-w-[90vw] rounded-2xl">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Item?</AlertDialogTitle>
+                                  <AlertDialogDescription>Remove {item.name} from registry?</AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90 rounded-xl">Delete</AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex gap-1 shrink-0">
-                        <Button variant="ghost" size="icon" className="h-10 w-10" onClick={(e) => handleEditItem(e, item)}><Edit2 className="h-4 w-4" /></Button>
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={(e) => e.stopPropagation()}><Trash2 className="h-4 w-4" /></Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent className="max-w-[90vw] rounded-2xl">
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Delete Item?</AlertDialogTitle>
-                              <AlertDialogDescription>Remove {item.name} from registry?</AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-                              <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90 rounded-xl">Delete</AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      </div>
-                    </div>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-64 p-0 shadow-2xl rounded-2xl border-primary/20" align="start">
+                        {renderPriceHistory(item)}
+                      </PopoverContent>
+                    </Popover>
                   ))}
                </div>
 
@@ -419,66 +404,60 @@ export default function StorePage() {
                         <TableHead className="pl-6 w-[80px]">Image</TableHead>
                         <TableHead>Item</TableHead>
                         <TableHead>Category</TableHead>
-                        <TableHead className="text-right">Price (ETB)</TableHead>
+                        <TableHead className="text-right">Current Price</TableHead>
                         <TableHead className="text-center">Limit</TableHead>
                         <TableHead className="text-right pr-6">Actions</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {filteredItems.map(item => (
-                        <TableRow key={item.id} className="hover:bg-muted/10 transition-colors group">
-                          <TableCell className="pl-6">
-                            <div className="h-10 w-10 rounded-lg overflow-hidden border bg-muted flex items-center justify-center relative shadow-sm">
-                              {item.imageUrl ? (
-                                <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
-                              ) : (
-                                <ImageIcon className="h-4 w-4 opacity-20" />
-                              )}
-                            </div>
-                          </TableCell>
-                          <TableCell className="font-bold">{item.name}</TableCell>
-                          <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
-                          <TableCell className="text-right">
-                             <div className="flex items-center justify-end gap-2">
-                               <span className="font-mono font-bold text-xs">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
-                               <Popover>
-                                  <PopoverTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 text-muted-foreground/30 hover:text-primary transition-colors">
-                                      <TrendingUp className="h-3 w-3" />
-                                    </Button>
-                                  </PopoverTrigger>
-                                  <PopoverContent className="w-56 p-0 shadow-2xl rounded-xl overflow-hidden border-primary/20" align="end">
-                                    <div className="p-3 border-b bg-primary/5 flex items-center justify-between">
-                                      <p className="text-[10px] font-black uppercase text-primary tracking-tighter">Cost History</p>
-                                      <TrendingUp className="h-3 w-3 text-primary/40" />
-                                    </div>
-                                    {renderPriceHistory(item)}
-                                  </PopoverContent>
-                               </Popover>
-                             </div>
-                          </TableCell>
-                          <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold || 5}</TableCell>
-                          <TableCell className="text-right pr-6">
-                              <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => handleEditItem(e, item)}><Edit2 className="h-4 w-4" /></Button>
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                      <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={(e) => e.stopPropagation()}><Trash2 className="h-4 w-4" /></Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                      <AlertDialogHeader>
-                                        <AlertDialogTitle>Delete {item.name}?</AlertDialogTitle>
-                                        <AlertDialogDescription>This will remove the item from your registry. Historical movements will remain, but the item definition will be gone.</AlertDialogDescription>
-                                      </AlertDialogHeader>
-                                      <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                                      </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                              </div>
-                          </TableCell>
-                        </TableRow>
+                        <Popover key={item.id}>
+                          <PopoverTrigger asChild>
+                            <TableRow className="hover:bg-muted/10 transition-colors group cursor-pointer">
+                              <TableCell className="pl-6">
+                                <div className="h-10 w-10 rounded-lg overflow-hidden border bg-muted flex items-center justify-center relative shadow-sm">
+                                  {item.imageUrl ? (
+                                    <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
+                                  ) : (
+                                    <ImageIcon className="h-4 w-4 opacity-20" />
+                                  )}
+                                </div>
+                              </TableCell>
+                              <TableCell className="font-bold">{item.name}</TableCell>
+                              <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex items-center justify-end gap-2 text-primary font-black">
+                                  <span className="font-mono text-xs">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
+                                  <TrendingUp className="h-3 w-3 opacity-40" />
+                                </div>
+                              </TableCell>
+                              <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold || 5}</TableCell>
+                              <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                                  <div className="flex justify-end gap-2">
+                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => handleEditItem(e, item)}><Edit2 className="h-4 w-4" /></Button>
+                                    <AlertDialog>
+                                        <AlertDialogTrigger asChild>
+                                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-4 w-4" /></Button>
+                                        </AlertDialogTrigger>
+                                        <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                            <AlertDialogTitle>Delete {item.name}?</AlertDialogTitle>
+                                            <AlertDialogDescription>This will remove the item from your registry. Historical movements will remain.</AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                                          </AlertDialogFooter>
+                                        </AlertDialogContent>
+                                    </AlertDialog>
+                                  </div>
+                              </TableCell>
+                            </TableRow>
+                          </PopoverTrigger>
+                          <PopoverContent className="w-72 p-0 shadow-2xl rounded-2xl border-primary/20 overflow-hidden" align="center" side="bottom">
+                            {renderPriceHistory(item)}
+                          </PopoverContent>
+                        </Popover>
                       ))}
                     </TableBody>
                 </Table>

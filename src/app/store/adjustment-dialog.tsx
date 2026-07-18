@@ -36,7 +36,7 @@ import { secondaryDb } from "@/firebase/secondary";
 import { doc, writeBatch, collection, arrayUnion } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, ArrowUpRight, ArrowDownRight, Wallet, ShoppingCart, ShoppingBag } from "lucide-react";
+import { Loader2, ArrowUpRight, ArrowDownRight, ShoppingCart, ShoppingBag } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adjustmentSchema = z.object({
@@ -66,17 +66,15 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch orders from secondary database for selection
   const ordersCollectionRef = useMemoFirebase(() => {
     return collection(secondaryDb, "orders");
   }, []);
   const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
 
-  // Filter for active orders (status not Shipped)
   const activeOrders = useMemo(() => {
     if (!allOrders) return [];
     return allOrders.filter(o => {
-      const s = (o.orderStatus || o.status || "").toLowerCase();
+      const s = (o.status || "").toLowerCase();
       return s !== 'shipped';
     }).sort((a, b) => (a.uniqueName || "").localeCompare(b.uniqueName || ""));
   }, [allOrders]);
@@ -98,9 +96,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const watchedItemId = form.watch("itemId");
   const selectedItem = items.find(i => i.id === watchedItemId);
   const currentType = form.watch("type");
-  const selectedOrderId = form.watch("orderId");
 
-  // Sync unit price when item is selected
   useEffect(() => {
     if (selectedItem && currentType === 'In') {
         form.setValue("unitPrice", selectedItem.currentPrice || 0);
@@ -130,10 +126,8 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     const newStockLevel = Math.max(0, selectedItem.stockLevel + adjustmentQuantity);
 
     const batch = writeBatch(firestore);
-    
     const linkedOrder = activeOrders.find(o => o.id === data.orderId);
 
-    // 1. Log the adjustment
     const adjRef = doc(collection(firestore, "stockAdjustments"));
     const adjData: any = {
       id: adjRef.id,
@@ -154,18 +148,16 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     if (data.type === "Out" && data.orderId && data.orderId !== "none") {
       adjData.orderId = data.orderId;
-      adjData.orderUniqueName = linkedOrder?.uniqueName || linkedOrder?.name || "Unknown Order";
+      adjData.orderUniqueName = linkedOrder?.uniqueName || "Unknown Order";
     }
 
     batch.set(adjRef, adjData);
 
-    // 2. Update item stock level and price history if it changed
     const itemRef = doc(firestore, "items", selectedItem.id);
     const itemUpdate: any = { stockLevel: newStockLevel };
     
     if (data.type === 'In' && data.unitPrice !== undefined) {
         itemUpdate.currentPrice = data.unitPrice;
-        // Add to price history
         const historyEntry = { price: data.unitPrice, date: new Date().toISOString() };
         itemUpdate.priceHistory = arrayUnion(historyEntry);
     }
@@ -301,7 +293,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                           <FormControl>
                             <Input type="number" step="0.01" className="h-10 bg-background" {...field} />
                           </FormControl>
-                          <p className="text-[9px] text-muted-foreground mt-1">Updates item price & history</p>
+                          <p className="text-[9px] text-muted-foreground mt-1">Updates cost history</p>
                           <FormMessage />
                         </FormItem>
                       )}

@@ -113,7 +113,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 1024 * 1024) { // 1MB limit for Firestore doc size safety
+      if (file.size > 1024 * 1024) { 
         toast({
           variant: "destructive",
           title: "Image too large",
@@ -143,9 +143,8 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
     if (isEditMode && item?.id) {
       const itemRef = doc(firestore, "items", item.id);
       const updateData: any = { ...data };
-      delete updateData.stockLevel; // Protect stock level from manual edits
+      delete updateData.stockLevel; 
 
-      // If price changed manually in form, log it in history too
       if (data.currentPrice !== item.currentPrice) {
         const historyEntry = { price: data.currentPrice || 0, date: new Date().toISOString() };
         updateData.priceHistory = [...(item.priceHistory || []), historyEntry];
