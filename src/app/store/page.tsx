@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -303,9 +302,14 @@ export default function StorePage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <Button variant="outline" className="h-11 shadow-sm gap-2" onClick={() => setIsCategoryManagerOpen(true)}>
-          <Tag className="h-4 w-4" /> Manage Categories
-        </Button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <Button variant="outline" className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsCategoryManagerOpen(true)}>
+            <Tag className="h-4 w-4" /> Manage Categories
+          </Button>
+          <Button className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsItemFormOpen(true)}>
+            <Plus className="h-4 w-4" /> Add Item
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="inventory" className="w-full">
