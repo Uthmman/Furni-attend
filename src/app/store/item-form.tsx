@@ -12,6 +12,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -29,9 +30,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Item } from "@/lib/types";
-import { useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, doc, setDoc } from "firebase/firestore";
+import type { Item, Category } from "@/lib/types";
+import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
+import { collection, doc, setDoc, query, orderBy } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
@@ -39,7 +40,7 @@ import Image from "next/image";
 
 const itemSchema = z.object({
   name: z.string().min(2, { message: "Item name is required." }),
-  category: z.string().min(2, { message: "Category is required." }),
+  category: z.string().min(1, { message: "Category is required." }),
   unitOfMeasurement: z.string().min(1, { message: "Unit is required." }),
   stockLevel: z.coerce.number().min(0),
   lowStockThreshold: z.coerce.number().min(0),
@@ -56,28 +57,25 @@ interface ItemFormProps {
   onClose?: () => void;
 }
 
-const CATEGORIES = [
-  "Hardware",
-  "Paint",
-  "Timber",
-  "Upholstery",
-  "Tools",
-  "Consumables",
-  "Finishes",
-  "Other"
-];
-
 export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
   const firestore = useFirestore();
+  const { user } = useUser();
   const { toast } = useToast();
   const isEditMode = !!item;
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const categoriesQuery = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return query(collection(firestore, "categories"), orderBy("name"));
+  }, [firestore, user]);
+
+  const { data: categoriesData } = useCollection<Category>(categoriesQuery);
 
   const form = useForm<ItemFormValues>({
     resolver: zodResolver(itemSchema),
     defaultValues: {
       name: "",
-      category: "Hardware",
+      category: "",
       unitOfMeasurement: "piece",
       stockLevel: 0,
       lowStockThreshold: 5,
@@ -90,7 +88,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
     if (item) {
       form.reset({
         name: item.name || "",
-        category: item.category || "Hardware",
+        category: item.category || "",
         unitOfMeasurement: item.unitOfMeasurement || "piece",
         stockLevel: item.stockLevel || 0,
         lowStockThreshold: item.lowStockThreshold || 5,
@@ -100,7 +98,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
     } else {
       form.reset({
         name: "",
-        category: "Hardware",
+        category: "",
         unitOfMeasurement: "piece",
         stockLevel: 0,
         lowStockThreshold: 5,
@@ -252,9 +250,13 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {CATEGORIES.map(cat => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))}
+                        {categoriesData && categoriesData.length > 0 ? (
+                            categoriesData.map(cat => (
+                                <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                            ))
+                        ) : (
+                            <SelectItem value="Other" disabled>No categories found</SelectItem>
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />

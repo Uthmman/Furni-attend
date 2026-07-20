@@ -83,6 +83,11 @@ export interface PriceRecord {
     date: string;
 }
 
+export interface Category extends DocumentData {
+    id: string;
+    name: string;
+}
+
 export interface Item {
     id: string;
     name: string;

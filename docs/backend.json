@@ -64,6 +64,16 @@
       },
       "required": ["name", "category", "unitOfMeasurement", "stockLevel"]
     },
+    "Category": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Category",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["name"]
+    },
     "StockAdjustment": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "StockAdjustment",
@@ -116,6 +126,10 @@
     "/items/{itemId}": {
       "schema": { "$ref": "#/backend/entities/Item" },
       "description": "Supplies registry."
+    },
+    "/categories/{categoryId}": {
+      "schema": { "$ref": "#/backend/entities/Category" },
+      "description": "Store item categories."
     },
     "/stockAdjustments/{adjustmentId}": {
       "schema": { "$ref": "#/backend/entities/StockAdjustment" },

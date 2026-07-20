@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -45,6 +46,7 @@ import {
   Calendar,
   ShoppingBag,
   TrendingUp,
+  Tag,
   Image as ImageIcon,
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
@@ -52,6 +54,7 @@ import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/fire
 import type { Item, StockAdjustment } from "@/lib/types";
 import { ItemForm } from "./item-form";
 import { AdjustmentDialog } from "./adjustment-dialog";
+import { CategoryManager } from "./category-manager";
 import { format, subMonths } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
@@ -90,7 +93,7 @@ export const getCategoryIcon = (category: string) => {
     case "Consumables": return <Zap className={iconClass} />;
     case "Finishes": return <Droplets className={iconClass} />;
     case "Upholstery": return <Layers className={iconClass} />;
-    default: return <Box className={iconClass} />;
+    default: return <Tag className={iconClass} />;
   }
 };
 
@@ -116,10 +119,10 @@ export default function StorePage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isItemFormOpen, setIsItemFormOpen] = useState(false);
   const [isAdjustmentOpen, setIsAdjustmentOpen] = useState(false);
+  const [isCatManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<"In" | "Out" | null>(null);
   
-  // Cost Filtering State
   const [selectedCostMonth, setSelectedCostMonth] = useState<string>(format(new Date(), "yyyy-MM"));
 
   useEffect(() => {
@@ -157,7 +160,6 @@ export default function StorePage() {
     return adjustments.filter(adj => adj.type === "In");
   }, [adjustments]);
 
-  // Generate Month Options for Costs Filter
   const monthOptions = useMemo(() => {
     const options = [{ value: "all", label: "All Records" }];
     const now = new Date();
@@ -286,6 +288,10 @@ export default function StorePage() {
         forcedType={adjustmentType}
         onClose={() => { setSelectedItem(null); setAdjustmentType(null); }} 
       />
+      <CategoryManager 
+        isOpen={isCatManagerOpen} 
+        setIsOpen={setIsCategoryManagerOpen} 
+      />
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-1">
         <div className="relative w-full sm:w-80">
@@ -297,6 +303,9 @@ export default function StorePage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
+        <Button variant="outline" className="h-11 shadow-sm gap-2" onClick={() => setIsCategoryManagerOpen(true)}>
+          <Tag className="h-4 w-4" /> Manage Categories
+        </Button>
       </div>
 
       <Tabs defaultValue="inventory" className="w-full">
