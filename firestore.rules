@@ -37,3 +37,4 @@ service cloud.firestore {
     }
   }
 }
+// Deployment Trigger Comment: Updated rules to ensure categories access.
