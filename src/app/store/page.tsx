@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -47,15 +46,13 @@ import {
   ShoppingBag,
   TrendingUp,
   Image as ImageIcon,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
 import type { Item, StockAdjustment } from "@/lib/types";
 import { ItemForm } from "./item-form";
 import { AdjustmentDialog } from "./adjustment-dialog";
-import { format, startOfMonth, subMonths, isWithinInterval, endOfMonth, isValid } from "date-fns";
+import { format, subMonths } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -138,7 +135,6 @@ export default function StorePage() {
 
   const adjustmentsCollectionRef = useMemoFirebase(() => {
     if (!firestore || isUserLoading || !user) return null;
-    // Increased limit to 500 to provide a better historical overview for the costs tab
     return query(
       collection(firestore, "stockAdjustments"), 
       orderBy("adjustmentDate", "desc"), 
@@ -304,17 +300,17 @@ export default function StorePage() {
       </div>
 
       <Tabs defaultValue="inventory" className="w-full">
-        <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center">
-          <TabsTrigger value="inventory" className="flex items-center gap-2 px-6">
+        <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center gap-1">
+          <TabsTrigger value="inventory" className="flex items-center gap-2 px-3">
             <Package className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Stock</span>
           </TabsTrigger>
-          <TabsTrigger value="items" className="flex items-center gap-2 px-6">
+          <TabsTrigger value="items" className="flex items-center gap-2 px-3">
             <Settings2 className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Items</span>
           </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2 px-6">
+          <TabsTrigger value="history" className="flex items-center gap-2 px-3">
             <History className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Log</span>
           </TabsTrigger>
-          <TabsTrigger value="expenses" className="flex items-center gap-2 px-6">
+          <TabsTrigger value="expenses" className="flex items-center gap-2 px-3">
             <CreditCard className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Costs</span>
           </TabsTrigger>
         </TabsList>
@@ -730,4 +726,3 @@ export default function StorePage() {
     </div>
   );
 }
-
