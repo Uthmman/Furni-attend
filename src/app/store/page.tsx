@@ -367,45 +367,48 @@ export default function StorePage() {
                     <CardContent className="p-4">
                        <div className="flex items-start gap-4">
                           <div className="flex items-start gap-4 flex-1 min-w-0">
-                            <div className={cn("flex items-center justify-center h-24 w-24 rounded-2xl shadow-sm shrink-0 overflow-hidden relative border", getCategoryColor(item.category))}>
-                              {item.imageUrl ? (
-                                <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
-                              ) : (
-                                getCategoryIcon(item.category)
-                              )}
+                            <div className="relative shrink-0">
+                                <div className={cn("flex items-center justify-center h-32 w-32 rounded-2xl shadow-sm overflow-hidden relative border", getCategoryColor(item.category))}>
+                                {item.imageUrl ? (
+                                    <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
+                                ) : (
+                                    getCategoryIcon(item.category)
+                                )}
+                                </div>
+                                <div className="absolute -top-2 -left-2 bg-primary text-primary-foreground text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg z-10 border-2 border-background">
+                                    {item.unitOfMeasurement}
+                                </div>
                             </div>
-                            <div className="flex-1 space-y-1 min-w-0">
-                               <h3 className="font-bold text-lg truncate leading-none mb-1">{item.name}</h3>
-                               <div className="flex items-center justify-between">
-                                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-2 uppercase font-black tracking-tight border-primary/20">
-                                  {item.category}
-                                  </Badge>
-                                  <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
+                            <div className="flex-1 flex flex-col justify-between min-w-0 h-32">
+                               <div className="space-y-1">
+                                  <h3 className="font-bold text-base line-clamp-2 leading-tight mb-1">{item.name}</h3>
+                                  <div className="flex flex-wrap items-center gap-2">
+                                     <Badge variant="outline" className="text-[8px] h-3.5 py-0 px-1.5 uppercase font-black tracking-tight border-primary/20">
+                                     {item.category}
+                                     </Badge>
+                                     <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
+                                  </div>
                                </div>
-                               <div className="pt-3">
-                                  <span className="text-[9px] text-muted-foreground uppercase font-bold tracking-widest">In Stock</span>
-                                  <div className="flex items-center gap-1.5">
+                               <div className="flex items-center justify-between mt-auto">
+                                  <div className="flex items-baseline gap-1">
                                     <span className={cn("text-2xl font-black tabular-nums", isLowStock ? "text-destructive" : "text-green-600")}>
                                       {item.stockLevel}
                                     </span>
-                                    <span className="text-[10px] text-muted-foreground font-mono uppercase translate-y-1">
-                                      {item.unitOfMeasurement}
-                                    </span>
+                                  </div>
+                                  <div className="flex gap-1 shrink-0">
+                                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full text-green-600 border-green-200" onClick={(e) => handleAdjustStock(e, item, "In")} title="Add Stock">
+                                      <PlusCircle className="h-4 w-4" />
+                                    </Button>
+                                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full text-destructive border-destructive/20" onClick={(e) => handleAdjustStock(e, item, "Out")} title="Use Stock">
+                                      <MinusCircle className="h-4 w-4" />
+                                    </Button>
                                   </div>
                                </div>
                             </div>
                           </div>
-                          <div className="flex flex-col gap-1 shrink-0">
-                            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full text-green-600" onClick={(e) => handleAdjustStock(e, item, "In")} title="Add Stock">
-                              <PlusCircle className="h-5 w-5" />
-                            </Button>
-                            <Button variant="outline" size="icon" className="h-9 w-9 rounded-full text-destructive" onClick={(e) => handleAdjustStock(e, item, "Out")} title="Use Stock">
-                              <MinusCircle className="h-5 w-5" />
-                            </Button>
-                          </div>
                        </div>
                        {isLowStock && (
-                          <div className="mt-3 bg-destructive/10 text-destructive text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-2">
+                          <div className="mt-4 bg-destructive/10 text-destructive text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-2">
                             <AlertTriangle className="h-3 w-3" /> LOW STOCK ALERT
                           </div>
                         )}
