@@ -3,10 +3,11 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins, BarChart3 } from "lucide-react";
-import type { Employee, AttendanceRecord } from "@/lib/types";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins, BarChart3, ShoppingBag, Timer, PackageSearch, ArrowRight } from "lucide-react";
+import type { Employee, AttendanceRecord, Order } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfDay, endOfDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
+import { secondaryDb } from "@/firebase/secondary";
 import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PayrollHistoryChart } from './payroll/payroll-history-chart';
@@ -189,6 +190,24 @@ export default function DashboardPage() {
   const [selectedWeekStart, setSelectedWeekStart] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 0 }), "yyyy-MM-dd"));
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
   const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
+
+  // Fetch Orders from secondary database
+  const ordersCollectionRef = useMemoFirebase(() => {
+    return collection(secondaryDb, "orders");
+  }, []);
+  const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
+
+  const upcomingOrders = useMemo(() => {
+    if (!allOrders) return [];
+    return allOrders
+      .filter(order => (order.status || "").toLowerCase() !== 'shipped')
+      .sort((a, b) => {
+        const dateA = (a.deadline as any)?.seconds || (a.deadline ? new Date(a.deadline as string).getTime() / 1000 : 0);
+        const dateB = (b.deadline as any)?.seconds || (b.deadline ? new Date(b.deadline as string).getTime() / 1000 : 0);
+        return dateA - dateB;
+      })
+      .slice(0, 5);
+  }, [allOrders]);
 
   useEffect(() => {
     const fetchAllAttendance = async () => {
@@ -428,7 +447,6 @@ export default function DashboardPage() {
     const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
     const today = new Date();
     
-    // Focus strictly on Monthly employees in the Month Tab as requested
     return employees.filter(e => e.paymentMethod === 'Monthly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })))).map(emp => {
         const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
         const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
@@ -543,7 +561,6 @@ export default function DashboardPage() {
 
   const totalUnifiedMonthly = useMemo(() => unifiedMonthlyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [unifiedMonthlyPayroll]);
 
-  // Logic for expense breakdown charts
   const weeklyExpenseData = useMemo(() => {
     if (!selectedWeekStart || !employees || allAttendance.length === 0) return [];
     const weekStart = startOfDay(new Date(selectedWeekStart));
@@ -681,7 +698,20 @@ export default function DashboardPage() {
       });
   }, [allAttendance]);
 
-  const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading;
+  const formatDate = (date: any) => {
+    if (!date) return "N/A";
+    let d: Date;
+    if (date?.toDate) {
+      d = date.toDate();
+    } else if (typeof date?.seconds === 'number') {
+      d = new Date(date.seconds * 1000);
+    } else {
+      d = new Date(date);
+    }
+    return isValid(d) ? format(d, "MMM d, yyyy") : "N/A";
+  };
+
+  const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading || ordersLoading;
 
   if (loading) {
     return (
@@ -813,6 +843,61 @@ export default function DashboardPage() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Upcoming Orders Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between px-1">
+          <div className="flex items-center gap-2">
+            <ShoppingBag className="h-5 w-5 text-primary" />
+            <h3 className="text-lg font-bold">Upcoming Orders</h3>
+          </div>
+          <Button variant="ghost" size="sm" asChild className="text-primary hover:text-primary/80 gap-1 font-bold">
+            <Link href="/orders">
+              View All <ArrowRight className="h-3 w-3" />
+            </Link>
+          </Button>
+        </div>
+        
+        {upcomingOrders.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+            {upcomingOrders.map(order => (
+              <Card key={order.id} className="border-l-4 border-l-primary shadow-sm hover:shadow-md transition-all group overflow-hidden">
+                <CardContent className="p-4 flex flex-col justify-between h-full min-h-[140px]">
+                  <div>
+                    <div className="flex justify-between items-start gap-2 mb-1">
+                      <h4 className="font-bold text-sm truncate leading-tight group-hover:text-primary transition-colors">{order.uniqueName || "Untitled Order"}</h4>
+                      {order.isUrgent && <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />}
+                    </div>
+                    <p className="text-[10px] text-muted-foreground truncate font-medium uppercase tracking-tight">{order.customerName || "Private Client"}</p>
+                  </div>
+                  
+                  <div className="space-y-2.5">
+                    <div className="bg-muted/30 p-2 rounded-lg">
+                      <div className="flex items-center justify-between text-[10px] mb-1">
+                        <span className="text-muted-foreground font-bold uppercase tracking-widest">Deadline</span>
+                        <Badge variant="secondary" className="text-[8px] h-3.5 py-0 px-1.5 uppercase font-bold">{order.status}</Badge>
+                      </div>
+                      <div className={cn(
+                        "flex items-center gap-1.5 text-xs font-black",
+                        order.isUrgent ? "text-destructive" : "text-amber-600"
+                      )}>
+                        <Timer className="h-3 w-3" />
+                        <span>{formatDate(order.deadline)}</span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <div className="bg-muted/20 border border-dashed rounded-2xl p-8 text-center">
+            <PackageSearch className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+            <p className="text-sm font-bold text-muted-foreground">No upcoming orders</p>
+            <p className="text-xs text-muted-foreground/60 mt-1">All projects are currently shipped or completed.</p>
+          </div>
+        )}
       </div>
 
        <div className="flex flex-col gap-8">
