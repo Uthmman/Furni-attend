@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -375,8 +374,11 @@ export default function StorePage() {
                                     getCategoryIcon(item.category)
                                 )}
                                 </div>
-                                <div className="absolute -top-2 -left-2 bg-primary text-primary-foreground text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-lg z-10 border-2 border-background">
-                                    {item.unitOfMeasurement}
+                                <div className={cn(
+                                    "absolute -top-2 -left-2 text-primary-foreground text-[12px] font-black px-2.5 py-1 rounded-full shadow-lg z-10 border-2 border-background tabular-nums",
+                                    isLowStock ? "bg-destructive" : "bg-primary"
+                                )}>
+                                    {item.stockLevel}
                                 </div>
                             </div>
                             <div className="flex-1 flex flex-col justify-between min-w-0 h-32">
@@ -386,15 +388,12 @@ export default function StorePage() {
                                      <Badge variant="outline" className="text-[8px] h-3.5 py-0 px-1.5 uppercase font-black tracking-tight border-primary/20">
                                      {item.category}
                                      </Badge>
-                                     <span className="text-[10px] font-bold text-muted-foreground">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
+                                     <span className="text-[10px] font-bold text-muted-foreground">{item.unitOfMeasurement}</span>
                                   </div>
+                                  <div className="text-[10px] font-black text-primary mt-1">ETB {item.currentPrice?.toFixed(2) || "0.00"}</div>
                                </div>
                                <div className="flex items-center justify-between mt-auto">
-                                  <div className="flex items-baseline gap-1">
-                                    <span className={cn("text-2xl font-black tabular-nums", isLowStock ? "text-destructive" : "text-green-600")}>
-                                      {item.stockLevel}
-                                    </span>
-                                  </div>
+                                  <div />
                                   <div className="flex gap-1 shrink-0">
                                     <Button variant="outline" size="icon" className="h-8 w-8 rounded-full text-green-600 border-green-200" onClick={(e) => handleAdjustStock(e, item, "In")} title="Add Stock">
                                       <PlusCircle className="h-4 w-4" />
