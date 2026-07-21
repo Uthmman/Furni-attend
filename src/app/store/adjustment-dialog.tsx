@@ -30,13 +30,13 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { Item, PaymentStatus, Order } from "@/lib/types";
-import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase } from "@/firebase";
+import type { Item, PaymentStatus, Order, Employee } from "@/lib/types";
+import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
 import { doc, writeBatch, collection, arrayUnion } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
-import { Loader2, ArrowUpRight, ArrowDownRight, ShoppingCart, ShoppingBag } from "lucide-react";
+import { Loader2, ArrowUpRight, ArrowDownRight, ShoppingCart, ShoppingBag, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const adjustmentSchema = z.object({
@@ -48,6 +48,7 @@ const adjustmentSchema = z.object({
   supplier: z.string().optional(),
   paymentStatus: z.enum(["Paid", "Unpaid"]).optional(),
   orderId: z.string().optional(),
+  employeeId: z.string().optional(),
 });
 
 type AdjustmentValues = z.infer<typeof adjustmentSchema>;
@@ -63,13 +64,22 @@ interface AdjustmentDialogProps {
 
 export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, forcedType, onClose }: AdjustmentDialogProps) {
   const firestore = useFirestore();
+  const { user: authUser } = useUser();
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Fetch orders
   const ordersCollectionRef = useMemoFirebase(() => {
     return collection(secondaryDb, "orders");
   }, []);
   const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
+
+  // Fetch employees
+  const employeesCollectionRef = useMemoFirebase(() => {
+    if (!firestore || !authUser) return null;
+    return collection(firestore, "employees");
+  }, [firestore, authUser]);
+  const { data: allEmployees, isLoading: employeesLoading } = useCollection<Employee>(employeesCollectionRef);
 
   const activeOrders = useMemo(() => {
     if (!allOrders) return [];
@@ -78,6 +88,11 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       return s !== 'shipped';
     }).sort((a, b) => (a.uniqueName || "").localeCompare(b.uniqueName || ""));
   }, [allOrders]);
+
+  const activeEmployees = useMemo(() => {
+    if (!allEmployees) return [];
+    return allEmployees.filter(e => e.status !== 'Inactive').sort((a, b) => a.name.localeCompare(b.name));
+  }, [allEmployees]);
 
   const form = useForm<AdjustmentValues>({
     resolver: zodResolver(adjustmentSchema),
@@ -90,6 +105,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       supplier: "",
       paymentStatus: "Paid",
       orderId: "none",
+      employeeId: "none",
     },
   });
 
@@ -114,6 +130,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
         supplier: "",
         paymentStatus: "Paid",
         orderId: "none",
+        employeeId: "none",
       });
     }
   }, [isOpen, preSelectedItem, forcedType, form]);
@@ -127,6 +144,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     const batch = writeBatch(firestore);
     const linkedOrder = activeOrders.find(o => o.id === data.orderId);
+    const linkedEmployee = activeEmployees.find(e => e.id === data.employeeId);
 
     const adjRef = doc(collection(firestore, "stockAdjustments"));
     const adjData: any = {
@@ -146,9 +164,15 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       adjData.paymentStatus = data.paymentStatus || "Paid";
     }
 
-    if (data.type === "Out" && data.orderId && data.orderId !== "none") {
-      adjData.orderId = data.orderId;
-      adjData.orderUniqueName = linkedOrder?.uniqueName || "Unknown Order";
+    if (data.type === "Out") {
+      if (data.orderId && data.orderId !== "none") {
+        adjData.orderId = data.orderId;
+        adjData.orderUniqueName = linkedOrder?.uniqueName || "Unknown Order";
+      }
+      if (data.employeeId && data.employeeId !== "none") {
+        adjData.employeeId = data.employeeId;
+        adjData.employeeName = linkedEmployee?.name || "Unknown Employee";
+      }
     }
 
     batch.set(adjRef, adjData);
@@ -220,35 +244,63 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
             />
 
             {currentType === "Out" && (
-              <FormField
-                control={form.control}
-                name="orderId"
-                render={({ field }) => (
-                  <FormItem>
-                    <div className="flex items-center gap-2 mb-1.5">
-                      <ShoppingBag className="h-3 w-3 text-muted-foreground" />
-                      <FormLabel className="m-0">Link to Active Order</FormLabel>
-                    </div>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger className="h-11 bg-primary/5 border-primary/20">
-                          <SelectValue placeholder={ordersLoading ? "Loading orders..." : "Select active order (optional)"} />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="none">No specific order (general usage)</SelectItem>
-                        {activeOrders.map(order => (
-                          <SelectItem key={order.id} value={order.id}>
-                            {order.uniqueName || order.name || `Order ${order.id.slice(0, 5)}`}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <p className="text-[10px] text-muted-foreground mt-1 px-1">Only non-shipped orders are shown.</p>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <div className="grid grid-cols-1 gap-4">
+                <FormField
+                  control={form.control}
+                  name="employeeId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <User className="h-3 w-3 text-muted-foreground" />
+                        <FormLabel className="m-0">Which Employee?</FormLabel>
+                      </div>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11">
+                            <SelectValue placeholder={employeesLoading ? "Loading employees..." : "Select employee..."} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">General Usage (No Employee)</SelectItem>
+                          {activeEmployees.map(emp => (
+                            <SelectItem key={emp.id} value={emp.id}>{emp.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="orderId"
+                  render={({ field }) => (
+                    <FormItem>
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <ShoppingBag className="h-3 w-3 text-muted-foreground" />
+                        <FormLabel className="m-0">Link to Active Order</FormLabel>
+                      </div>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger className="h-11 bg-primary/5 border-primary/20">
+                            <SelectValue placeholder={ordersLoading ? "Loading orders..." : "Select active order (optional)"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="none">No specific order (general usage)</SelectItem>
+                          {activeOrders.map(order => (
+                            <SelectItem key={order.id} value={order.id}>
+                              {order.uniqueName || order.name || `Order ${order.id.slice(0, 5)}`}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             )}
 
             <div className="grid grid-cols-2 gap-4">

@@ -91,7 +91,9 @@
         "supplier": { "type": "string" },
         "paymentStatus": { "type": "string", "enum": ["Paid", "Unpaid"] },
         "orderId": { "type": "string" },
-        "orderUniqueName": { "type": "string" }
+        "orderUniqueName": { "type": "string" },
+        "employeeId": { "type": "string" },
+        "employeeName": { "type": "string" }
       },
       "required": ["itemId", "adjustmentDate", "adjustmentQuantity", "type", "reason"]
     },

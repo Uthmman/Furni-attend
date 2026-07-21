@@ -116,4 +116,6 @@ export interface StockAdjustment {
     paymentStatus?: PaymentStatus;
     orderId?: string;
     orderUniqueName?: string;
+    employeeId?: string;
+    employeeName?: string;
 }

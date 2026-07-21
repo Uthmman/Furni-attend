@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo } from "react";
@@ -47,6 +48,7 @@ import {
   TrendingUp,
   Tag,
   Image as ImageIcon,
+  User,
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
@@ -83,7 +85,7 @@ import { useToast } from "@/hooks/use-toast";
 import Image from "next/image";
 
 export const getCategoryIcon = (category: string) => {
-  const iconClass = "h-8 w-8";
+  const iconClass = "h-10 w-10 opacity-70";
   switch (category) {
     case "Hardware": return <Wrench className={iconClass} />;
     case "Paint": return <Paintbrush className={iconClass} />;
@@ -211,24 +213,52 @@ export default function StorePage() {
 
   const renderPriceHistory = (item: Item) => {
     const history = (item.priceHistory || []).slice().reverse();
-    if (history.length === 0) return <p className="text-xs text-muted-foreground p-3 text-center">No price history available.</p>;
-
+    
     return (
-      <div className="flex flex-col divide-y max-h-[250px] overflow-y-auto">
-        <div className="p-3 bg-primary/5 border-b sticky top-0 z-10">
+      <div className="flex flex-col max-h-[400px] overflow-y-auto">
+        <div className="p-4 bg-primary/5 border-b sticky top-0 z-20 flex items-center justify-between">
           <p className="text-[10px] font-black uppercase text-primary tracking-widest flex items-center gap-2">
-            <TrendingUp className="h-3 w-3" /> Cost History Log
+            <TrendingUp className="h-3 w-3" /> Supply Dashboard
           </p>
-        </div>
-        {history.map((record, idx) => (
-          <div key={idx} className="flex justify-between items-center p-3 gap-6 hover:bg-muted/30 transition-colors">
-            <div className="flex flex-col">
-              <span className="text-[10px] font-bold text-muted-foreground uppercase">{format(new Date(record.date), "MMM d, yyyy")}</span>
-              <span className="text-[9px] text-muted-foreground/60">{format(new Date(record.date), "HH:mm")}</span>
-            </div>
-            <span className="text-sm font-black text-primary">ETB {record.price.toFixed(2)}</span>
+          <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="h-8 text-[10px] font-bold gap-1 px-2" onClick={(e) => handleEditItem(e, item)}>
+              <Edit2 className="h-3 w-3" /> Edit
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="outline" size="sm" className="h-8 text-[10px] font-bold gap-1 px-2 text-destructive hover:text-destructive border-destructive/20">
+                  <Trash2 className="h-3 w-3" /> Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {item.name}?</AlertDialogTitle>
+                  <AlertDialogDescription>This will remove the item from your registry. Historical movements will remain.</AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </div>
-        ))}
+        </div>
+        
+        <div className="divide-y">
+            {history.length > 0 ? (
+                history.map((record, idx) => (
+                <div key={idx} className="flex justify-between items-center p-3 gap-6 hover:bg-muted/30 transition-colors">
+                    <div className="flex flex-col">
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">{format(new Date(record.date), "MMM d, yyyy")}</span>
+                    <span className="text-[9px] text-muted-foreground/60">{format(new Date(record.date), "HH:mm")}</span>
+                    </div>
+                    <span className="text-sm font-black text-primary">ETB {record.price.toFixed(2)}</span>
+                </div>
+                ))
+            ) : (
+                <p className="text-xs text-muted-foreground p-8 text-center italic">No cost history available.</p>
+            )}
+        </div>
       </div>
     );
   };
@@ -318,7 +348,7 @@ export default function StorePage() {
             <Package className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Stock</span>
           </TabsTrigger>
           <TabsTrigger value="items" className="flex items-center gap-2 px-3">
-            <Settings2 className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Items</span>
+            <Settings2 className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Registry</span>
           </TabsTrigger>
           <TabsTrigger value="history" className="flex items-center gap-2 px-3">
             <History className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Log</span>
@@ -337,7 +367,7 @@ export default function StorePage() {
                     <CardContent className="p-4">
                        <div className="flex items-start gap-4">
                           <div className="flex items-start gap-4 flex-1 min-w-0">
-                            <div className={cn("flex items-center justify-center h-20 w-20 rounded-2xl shadow-sm shrink-0 overflow-hidden relative", getCategoryColor(item.category))}>
+                            <div className={cn("flex items-center justify-center h-24 w-24 rounded-2xl shadow-sm shrink-0 overflow-hidden relative border", getCategoryColor(item.category))}>
                               {item.imageUrl ? (
                                 <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
                               ) : (
@@ -390,12 +420,10 @@ export default function StorePage() {
            <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b flex flex-row items-center justify-between">
               <div>
-                <CardTitle className="text-xl">Registry Management</CardTitle>
-                <CardDescription className="hidden sm:block">Add items or click them to view price history.</CardDescription>
+                <CardTitle className="text-xl">Item Registry</CardTitle>
+                <CardDescription className="hidden sm:block">Detailed lookup of all registered supplies.</CardDescription>
               </div>
-              <Button onClick={() => setIsItemFormOpen(true)} variant="outline" className="hidden sm:flex border-dashed shadow-sm h-10">
-                 <Plus className="mr-2 h-4 w-4" /> Register New Supply
-              </Button>
+              <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest bg-background/50 px-2 py-1 rounded border">Click rows for audit tools</p>
             </CardHeader>
             <CardContent className="p-0">
                <div className="md:hidden grid grid-cols-1 gap-0 divide-y">
@@ -403,7 +431,7 @@ export default function StorePage() {
                     <Popover key={item.id}>
                       <PopoverTrigger asChild>
                         <div className="p-4 flex items-center gap-4 hover:bg-muted/5 transition-colors cursor-pointer group relative">
-                          <div className={cn("flex items-center justify-center h-16 w-16 rounded-xl shadow-sm shrink-0 overflow-hidden relative", getCategoryColor(item.category))}>
+                          <div className={cn("flex items-center justify-center h-20 w-20 rounded-xl shadow-sm shrink-0 overflow-hidden relative border", getCategoryColor(item.category))}>
                             {item.imageUrl ? (
                               <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
                             ) : (
@@ -420,27 +448,12 @@ export default function StorePage() {
                               </span>
                             </div>
                           </div>
-                          <div className="flex gap-1 shrink-0">
-                            <Button variant="ghost" size="icon" className="h-10 w-10" onClick={(e) => handleEditItem(e, item)}><Edit2 className="h-4 w-4" /></Button>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-10 w-10 text-destructive" onClick={(e) => e.stopPropagation()}><Trash2 className="h-4 w-4" /></Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent className="max-w-[90vw] rounded-2xl">
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Delete Item?</AlertDialogTitle>
-                                  <AlertDialogDescription>Remove {item.name} from registry?</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-                                  <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90 rounded-xl">Delete</AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                          <div className="shrink-0">
+                             <History className="h-4 w-4 text-muted-foreground opacity-30" />
                           </div>
                         </div>
                       </PopoverTrigger>
-                      <PopoverContent className="w-64 p-0 shadow-2xl rounded-2xl border-primary/20" align="start">
+                      <PopoverContent className="w-80 p-0 shadow-2xl rounded-2xl border-primary/20" align="start">
                         {renderPriceHistory(item)}
                       </PopoverContent>
                     </Popover>
@@ -451,12 +464,12 @@ export default function StorePage() {
                 <Table>
                     <TableHeader className="bg-muted/30">
                       <TableRow>
-                        <TableHead className="pl-6 w-[80px]">Image</TableHead>
+                        <TableHead className="pl-6 w-[100px]">Image</TableHead>
                         <TableHead>Item</TableHead>
                         <TableHead>Category</TableHead>
                         <TableHead className="text-right">Current Price</TableHead>
                         <TableHead className="text-center">Limit</TableHead>
-                        <TableHead className="text-right pr-6">Actions</TableHead>
+                        <TableHead className="text-right pr-6 w-[80px]">Log</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -465,11 +478,11 @@ export default function StorePage() {
                           <PopoverTrigger asChild>
                             <TableRow className="hover:bg-muted/10 transition-colors group cursor-pointer">
                               <TableCell className="pl-6">
-                                <div className="h-10 w-10 rounded-lg overflow-hidden border bg-muted flex items-center justify-center relative shadow-sm">
+                                <div className="h-14 w-14 rounded-xl overflow-hidden border bg-muted flex items-center justify-center relative shadow-sm">
                                   {item.imageUrl ? (
                                     <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
                                   ) : (
-                                    <ImageIcon className="h-4 w-4 opacity-20" />
+                                    <ImageIcon className="h-5 w-5 opacity-20" />
                                   )}
                                 </div>
                               </TableCell>
@@ -482,29 +495,12 @@ export default function StorePage() {
                                 </div>
                               </TableCell>
                               <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold || 5}</TableCell>
-                              <TableCell className="text-right pr-6" onClick={(e) => e.stopPropagation()}>
-                                  <div className="flex justify-end gap-2">
-                                    <Button variant="ghost" size="icon" className="h-8 w-8" onClick={(e) => handleEditItem(e, item)}><Edit2 className="h-4 w-4" /></Button>
-                                    <AlertDialog>
-                                        <AlertDialogTrigger asChild>
-                                          <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                                        </AlertDialogTrigger>
-                                        <AlertDialogContent>
-                                          <AlertDialogHeader>
-                                            <AlertDialogTitle>Delete {item.name}?</AlertDialogTitle>
-                                            <AlertDialogDescription>This will remove the item from your registry. Historical movements will remain.</AlertDialogDescription>
-                                          </AlertDialogHeader>
-                                          <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                                          </AlertDialogFooter>
-                                        </AlertDialogContent>
-                                    </AlertDialog>
-                                  </div>
+                              <TableCell className="text-right pr-6">
+                                  <History className="h-4 w-4 text-muted-foreground opacity-30 group-hover:opacity-100 transition-opacity ml-auto" />
                               </TableCell>
                             </TableRow>
                           </PopoverTrigger>
-                          <PopoverContent className="w-72 p-0 shadow-2xl rounded-2xl border-primary/20 overflow-hidden" align="center" side="bottom">
+                          <PopoverContent className="w-96 p-0 shadow-2xl rounded-2xl border-primary/20 overflow-hidden" align="end" side="bottom">
                             {renderPriceHistory(item)}
                           </PopoverContent>
                         </Popover>
@@ -541,11 +537,18 @@ export default function StorePage() {
                         <div className="flex justify-between items-center">
                           <div className="flex flex-col">
                             <span className="font-bold text-sm">{adj.itemName}</span>
-                            {adj.orderUniqueName && (
-                              <div className="flex items-center gap-1 text-[9px] text-primary font-black uppercase mt-0.5">
-                                <ShoppingBag className="h-2 w-2" /> {adj.orderUniqueName}
-                              </div>
-                            )}
+                            <div className="flex flex-wrap gap-2 mt-1">
+                                {adj.employeeName && (
+                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-bold uppercase">
+                                        <User className="h-2 w-2" /> By: {adj.employeeName}
+                                    </div>
+                                )}
+                                {adj.orderUniqueName && (
+                                <div className="flex items-center gap-1 text-[9px] text-primary font-black uppercase">
+                                    <ShoppingBag className="h-2 w-2" /> {adj.orderUniqueName}
+                                </div>
+                                )}
+                            </div>
                           </div>
                           <span className={cn("text-lg font-black tabular-nums", adj.type === "In" ? "text-green-600" : "text-destructive")}>
                              {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
@@ -568,7 +571,7 @@ export default function StorePage() {
                     <TableHeader className="bg-muted/30">
                       <TableRow>
                         <TableHead className="pl-6">Date</TableHead>
-                        <TableHead>Supplies</TableHead>
+                        <TableHead>Details</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead className="text-center">Qty</TableHead>
                         <TableHead className="pr-6">Note</TableHead>
@@ -582,13 +585,20 @@ export default function StorePage() {
                               {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
                             </TableCell>
                             <TableCell>
-                               <div className="flex flex-col">
+                               <div className="flex flex-col gap-1">
                                   <span className="font-semibold">{adj.itemName || "Unknown Item"}</span>
-                                  {adj.orderUniqueName && (
-                                    <span className="text-[9px] text-primary font-black uppercase tracking-tight flex items-center gap-1">
-                                      <ShoppingBag className="h-2 w-2" /> Order: {adj.orderUniqueName}
-                                    </span>
-                                  )}
+                                  <div className="flex items-center gap-3">
+                                      {adj.employeeName && (
+                                        <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight flex items-center gap-1">
+                                            <User className="h-2 w-2" /> Staff: {adj.employeeName}
+                                        </span>
+                                      )}
+                                      {adj.orderUniqueName && (
+                                        <span className="text-[9px] text-primary font-black uppercase tracking-tight flex items-center gap-1">
+                                          <ShoppingBag className="h-2 w-2" /> Order: {adj.orderUniqueName}
+                                        </span>
+                                      )}
+                                  </div>
                                </div>
                             </TableCell>
                             <TableCell>
