@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -12,7 +11,6 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -34,8 +32,8 @@ import type { Item, Category } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { collection, doc, setDoc, query, orderBy } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect, useState } from "react";
-import { Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
+import { Loader2, Upload, X, Image as ImageIcon, Camera, RefreshCcw } from "lucide-react";
 import Image from "next/image";
 
 const itemSchema = z.object({
@@ -63,6 +61,11 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
   const { toast } = useToast();
   const isEditMode = !!item;
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Camera state
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const categoriesQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -107,6 +110,50 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
       });
     }
   }, [item, form, isOpen]);
+
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { facingMode: "environment" }, 
+        audio: false 
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsCameraActive(true);
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Camera Error",
+        description: "Could not access your camera. Please check permissions."
+      });
+    }
+  };
+
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    
+    const canvas = document.createElement("canvas");
+    canvas.width = videoRef.current.videoWidth;
+    canvas.height = videoRef.current.videoHeight;
+    const ctx = canvas.getContext("2d");
+    
+    if (ctx) {
+      ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+      const dataUri = canvas.toDataURL("image/jpeg", 0.8);
+      form.setValue("imageUrl", dataUri);
+      stopCamera();
+    }
+  };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -175,7 +222,13 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
   const imageUrl = form.watch("imageUrl");
 
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => { if(!open) onClose?.(); setIsOpen(open); }}>
+    <Dialog open={isOpen} onOpenChange={(open) => { 
+        if(!open) {
+            stopCamera();
+            onClose?.(); 
+        }
+        setIsOpen(open); 
+    }}>
       <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">{isEditMode ? "Edit Item Details" : "Add Store Item"}</DialogTitle>
@@ -183,11 +236,28 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5 pt-4">
             
-            <div className="flex flex-col items-center gap-4 py-4 bg-muted/20 rounded-2xl border-2 border-dashed border-primary/20">
-              {imageUrl ? (
+            <div className="flex flex-col items-center gap-4 py-4 bg-muted/20 rounded-2xl border-2 border-dashed border-primary/20 overflow-hidden">
+              {isCameraActive ? (
+                <div className="relative w-full aspect-video bg-black flex items-center justify-center rounded-lg">
+                  <video 
+                    ref={videoRef} 
+                    autoPlay 
+                    playsInline 
+                    className="w-full h-full object-cover rounded-lg"
+                  />
+                  <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
+                    <Button type="button" size="sm" onClick={capturePhoto} className="rounded-full shadow-lg h-12 w-12 p-0">
+                      <Camera className="h-6 w-6" />
+                    </Button>
+                    <Button type="button" variant="secondary" size="sm" onClick={stopCamera} className="rounded-full shadow-lg h-12 w-12 p-0">
+                      <X className="h-6 w-6" />
+                    </Button>
+                  </div>
+                </div>
+              ) : imageUrl ? (
                 <div className="relative group">
                   <div className="h-32 w-32 rounded-xl overflow-hidden border shadow-inner relative bg-background">
-                    <Image src={imageUrl} alt="Item Preview" fill className="object-cover" />
+                    <Image src={imageUrl} alt="Item Preview" fill className="object-cover" unoptimized />
                   </div>
                   <Button 
                     type="button" 
@@ -207,19 +277,28 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                   <p className="text-[10px] font-bold uppercase tracking-widest">No Image Attached</p>
                 </div>
               )}
-              <div className="relative">
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
-                  id="image-upload"
-                />
-                <Button type="button" variant="outline" size="sm" className="h-9 px-4 flex items-center gap-2 pointer-events-none">
-                  <Upload className="h-4 w-4" />
-                  {imageUrl ? "Change Image" : "Upload Image"}
-                </Button>
-              </div>
+              
+              {!isCameraActive && (
+                <div className="flex flex-wrap justify-center gap-2">
+                  <div className="relative">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      className="absolute inset-0 opacity-0 cursor-pointer"
+                      id="image-upload"
+                    />
+                    <Button type="button" variant="outline" size="sm" className="h-9 px-4 flex items-center gap-2 pointer-events-none">
+                      <Upload className="h-4 w-4" />
+                      {imageUrl ? "Change" : "Upload"}
+                    </Button>
+                  </div>
+                  <Button type="button" variant="outline" size="sm" className="h-9 px-4 flex items-center gap-2" onClick={startCamera}>
+                    <Camera className="h-4 w-4" />
+                    Take Photo
+                  </Button>
+                </div>
+              )}
             </div>
 
             <FormField
