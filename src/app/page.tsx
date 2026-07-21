@@ -845,61 +845,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Upcoming Orders Section */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between px-1">
-          <div className="flex items-center gap-2">
-            <ShoppingBag className="h-5 w-5 text-primary" />
-            <h3 className="text-lg font-bold">Upcoming Orders</h3>
-          </div>
-          <Button variant="ghost" size="sm" asChild className="text-primary hover:text-primary/80 gap-1 font-bold">
-            <Link href="/orders">
-              View All <ArrowRight className="h-3 w-3" />
-            </Link>
-          </Button>
-        </div>
-        
-        {upcomingOrders.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-            {upcomingOrders.map(order => (
-              <Card key={order.id} className="border-l-4 border-l-primary shadow-sm hover:shadow-md transition-all group overflow-hidden">
-                <CardContent className="p-4 flex flex-col justify-between h-full min-h-[140px]">
-                  <div>
-                    <div className="flex justify-between items-start gap-2 mb-1">
-                      <h4 className="font-bold text-sm truncate leading-tight group-hover:text-primary transition-colors">{order.uniqueName || "Untitled Order"}</h4>
-                      {order.isUrgent && <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground truncate font-medium uppercase tracking-tight">{order.customerName || "Private Client"}</p>
-                  </div>
-                  
-                  <div className="space-y-2.5">
-                    <div className="bg-muted/30 p-2 rounded-lg">
-                      <div className="flex items-center justify-between text-[10px] mb-1">
-                        <span className="text-muted-foreground font-bold uppercase tracking-widest">Deadline</span>
-                        <Badge variant="secondary" className="text-[8px] h-3.5 py-0 px-1.5 uppercase font-bold">{order.status}</Badge>
-                      </div>
-                      <div className={cn(
-                        "flex items-center gap-1.5 text-xs font-black",
-                        order.isUrgent ? "text-destructive" : "text-amber-600"
-                      )}>
-                        <Timer className="h-3 w-3" />
-                        <span>{formatDate(order.deadline)}</span>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <div className="bg-muted/20 border border-dashed rounded-2xl p-8 text-center">
-            <PackageSearch className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
-            <p className="text-sm font-bold text-muted-foreground">No upcoming orders</p>
-            <p className="text-xs text-muted-foreground/60 mt-1">All projects are currently shipped or completed.</p>
-          </div>
-        )}
-      </div>
-
        <div className="flex flex-col gap-8">
         <Card className="shadow-lg border-primary/20">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b pb-6">
@@ -1230,6 +1175,61 @@ export default function DashboardPage() {
                 </Tabs>
             </CardContent>
         </Card>
+
+        {/* Upcoming Orders Section - Relocated here */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between px-1">
+            <div className="flex items-center gap-2">
+              <ShoppingBag className="h-5 w-5 text-primary" />
+              <h3 className="text-lg font-bold">Upcoming Orders</h3>
+            </div>
+            <Button variant="ghost" size="sm" asChild className="text-primary hover:text-primary/80 gap-1 font-bold">
+              <Link href="/orders">
+                View All <ArrowRight className="h-3 w-3" />
+              </Link>
+            </Button>
+          </div>
+          
+          {upcomingOrders.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+              {upcomingOrders.map(order => (
+                <Card key={order.id} className="border-l-4 border-l-primary shadow-sm hover:shadow-md transition-all group overflow-hidden">
+                  <CardContent className="p-4 flex flex-col justify-between h-full min-h-[140px]">
+                    <div>
+                      <div className="flex justify-between items-start gap-2 mb-1">
+                        <h4 className="font-bold text-sm truncate leading-tight group-hover:text-primary transition-colors">{order.uniqueName || "Untitled Order"}</h4>
+                        {order.isUrgent && <div className="h-2 w-2 rounded-full bg-red-500 animate-pulse" />}
+                      </div>
+                      <p className="text-[10px] text-muted-foreground truncate font-medium uppercase tracking-tight">{order.customerName || "Private Client"}</p>
+                    </div>
+                    
+                    <div className="space-y-2.5">
+                      <div className="bg-muted/30 p-2 rounded-lg">
+                        <div className="flex items-center justify-between text-[10px] mb-1">
+                          <span className="text-muted-foreground font-bold uppercase tracking-widest">Deadline</span>
+                          <Badge variant="secondary" className="text-[8px] h-3.5 py-0 px-1.5 uppercase font-bold">{order.status}</Badge>
+                        </div>
+                        <div className={cn(
+                          "flex items-center gap-1.5 text-xs font-black",
+                          order.isUrgent ? "text-destructive" : "text-amber-600"
+                        )}>
+                          <Timer className="h-3 w-3" />
+                          <span>{formatDate(order.deadline)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="bg-muted/20 border border-dashed rounded-2xl p-8 text-center">
+              <PackageSearch className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
+              <p className="text-sm font-bold text-muted-foreground">No upcoming orders</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">All projects are currently shipped or completed.</p>
+            </div>
+          )}
+        </div>
         
         <Card className="shadow-lg">
             <CardHeader className="flex flex-row items-center justify-between">
