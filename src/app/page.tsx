@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useMemo, useEffect, useState } from 'react';
@@ -199,17 +198,15 @@ export default function DashboardPage() {
   }, []);
   const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
 
-  const upcomingOrders = useMemo(() => {
-    if (!allOrders) return [];
-    return allOrders
-      .filter(order => (order.status || "").toLowerCase() !== 'shipped')
-      .sort((a, b) => {
-        const dateA = (a.deadline as any)?.seconds || (a.deadline ? new Date(a.deadline as string).getTime() / 1000 : 0);
-        const dateB = (b.deadline as any)?.seconds || (b.deadline ? new Date(b.deadline as string).getTime() / 1000 : 0);
-        return dateA - dateB;
-      })
-      .slice(0, 5);
-  }, [allOrders]);
+  const todayAttendanceCollectionRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return collection(firestore, 'attendance', selectedDay, 'records');
+  }, [firestore, user, selectedDay]);
+
+  const { data: todayAttendance, loading: todayAttendanceLoading } = useCollection<AttendanceRecord>(todayAttendanceCollectionRef);
+
+  // loading state calculation moved high up to avoid ReferenceErrors
+  const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading || ordersLoading;
 
   useEffect(() => {
     const fetchAllAttendance = async () => {
@@ -245,13 +242,6 @@ export default function DashboardPage() {
     }
   }, [firestore, employees, isUserLoading]);
   
-  const todayAttendanceCollectionRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return collection(firestore, 'attendance', selectedDay, 'records');
-  }, [firestore, user, selectedDay]);
-
-  const { data: todayAttendance, loading: todayAttendanceLoading } = useCollection<AttendanceRecord>(todayAttendanceCollectionRef);
-
   useEffect(() => {
     setTitle("Dashboard");
   }, [setTitle]);
@@ -469,6 +459,18 @@ export default function DashboardPage() {
     }
     return history;
   }, [employees, allAttendance]);
+
+  const upcomingOrders = useMemo(() => {
+    if (!allOrders) return [];
+    return allOrders
+      .filter(order => (order.status || "").toLowerCase() !== 'shipped')
+      .sort((a, b) => {
+        const dateA = (a.deadline as any)?.seconds || (a.deadline ? new Date(a.deadline as string).getTime() / 1000 : 0);
+        const dateB = (b.deadline as any)?.seconds || (b.deadline ? new Date(b.deadline as string).getTime() / 1000 : 0);
+        return dateA - dateB;
+      })
+      .slice(0, 5);
+  }, [allOrders]);
 
   const weeklyPayroll = useMemo(() => {
     if (!employees || !selectedWeekStart) return [];
@@ -790,8 +792,6 @@ export default function DashboardPage() {
     return isValid(d) ? format(d, "MMM d, yyyy") : "N/A";
   };
 
-  const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading || ordersLoading;
-
   if (loading) {
     return (
         <div className="flex h-full w-full items-center justify-center">
@@ -1038,7 +1038,7 @@ export default function DashboardPage() {
                         </div>
                         
                         <div className="flex justify-center pt-4">
-                            <div className="bg-primary/5 border border-primary/10 rounded-2xl p-6 w-full max-w-md text-center shadow-sm">
+                            <div className="bg-primary/5 border border-primary/10 rounded-2xl p-6 w-full max-md:max-w-full max-w-md text-center shadow-sm">
                                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Daily Earnings</p>
                                 <p className="text-4xl font-black text-primary">ETB {totalDailyEarnings.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                             </div>
@@ -1123,7 +1123,7 @@ export default function DashboardPage() {
                             </div>
                             
                             <div className="flex justify-center py-4">
-                                <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-6 w-full max-w-md text-center shadow-sm">
+                                <div className="bg-amber-500/5 border border-amber-500/10 rounded-2xl p-6 w-full max-md:max-w-full max-w-md text-center shadow-sm">
                                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Weekly Payroll</p>
                                     <p className="text-4xl font-black text-amber-600">ETB {totalWeeklyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </div>
@@ -1208,7 +1208,7 @@ export default function DashboardPage() {
                             </div>
                             
                             <div className="flex justify-center py-4">
-                                <div className="bg-purple-500/5 border border-purple-500/10 rounded-2xl p-6 w-full max-w-md text-center shadow-sm">
+                                <div className="bg-purple-500/5 border border-purple-500/10 rounded-2xl p-6 w-full max-md:max-w-full max-w-md text-center shadow-sm">
                                     <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-1">Total Monthly Payroll (Monthly-paid)</p>
                                     <p className="text-4xl font-black text-purple-600">ETB {totalMonthlyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </div>
@@ -1256,7 +1256,7 @@ export default function DashboardPage() {
                           "flex items-center gap-1.5 text-xs font-black",
                           order.isUrgent ? "text-destructive" : "text-amber-600"
                         )}>
-                          <Timer className="h-3 w-3" />
+                          <Clock className="h-3 w-3" />
                           <span>{formatDate(order.deadline)}</span>
                         </div>
                       </div>
