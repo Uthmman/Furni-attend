@@ -1,4 +1,3 @@
-
 'use client';
 
 import * as React from 'react';
@@ -48,9 +47,11 @@ export function HorizontalDatePicker({
   const onSelect = React.useCallback(() => {
     if (!emblaApi) return;
     const selectedIndex = emblaApi.selectedScrollSnap();
+    const snapDate = daysInMonth[selectedIndex];
+    
     // Only update if the selected date is different
-    if (!isSameDay(daysInMonth[selectedIndex], selectedDate)) {
-      onDateSelect(daysInMonth[selectedIndex]);
+    if (snapDate && !isSameDay(snapDate, selectedDate)) {
+      onDateSelect(snapDate);
     }
   }, [emblaApi, daysInMonth, onDateSelect, selectedDate]);
 
@@ -65,30 +66,55 @@ export function HorizontalDatePicker({
       const progress = 1 - Math.pow(Math.abs(diff), 2) * 3;
       return Math.max(0, progress);
     });
-    setTweenValues(values);
+
+    setTweenValues((prev) => {
+      // Avoid re-renders if the values are virtually identical
+      const isSame = prev.length === values.length && 
+        prev.every((v, i) => Math.abs(v - values[i]) < 0.001);
+      return isSame ? prev : values;
+    });
   }, [emblaApi]);
+
+  // Use refs for callbacks to keep the event listener registration stable
+  // and prevent re-subscription loops when callbacks change due to props.
+  const onSelectRef = React.useRef(onSelect);
+  const onScrollRef = React.useRef(onScroll);
+
+  React.useEffect(() => {
+    onSelectRef.current = onSelect;
+    onScrollRef.current = onScroll;
+  });
 
   React.useEffect(() => {
     if (!emblaApi) return;
 
-    onScroll();
-    emblaApi.on('scroll', onScroll);
-    emblaApi.on('select', onSelect);
+    const scrollHandler = () => onScrollRef.current();
+    const selectHandler = () => onSelectRef.current();
+
+    // Initial calculation for visual state
+    onScrollRef.current();
+
+    emblaApi.on('scroll', scrollHandler);
+    emblaApi.on('select', selectHandler);
+    emblaApi.on('reInit', scrollHandler);
 
     return () => {
-      emblaApi.off('scroll', onScroll);
-      emblaApi.off('select', onSelect);
+      emblaApi.off('scroll', scrollHandler);
+      emblaApi.off('select', selectHandler);
+      emblaApi.off('reInit', scrollHandler);
     };
-  }, [emblaApi, onScroll, onSelect]);
+  }, [emblaApi]);
 
   React.useEffect(() => {
     if (emblaApi) {
       const selectedDayIndex = daysInMonth.findIndex((day) =>
         isSameDay(day, selectedDate)
       );
+      
       if (selectedDayIndex !== -1 && selectedDayIndex !== emblaApi.selectedScrollSnap()) {
         emblaApi.scrollTo(selectedDayIndex);
       }
+      
       if (!isSameDay(startOfMonth(selectedDate), currentMonth)) {
         setCurrentMonth(startOfMonth(selectedDate));
       }
@@ -116,7 +142,6 @@ export function HorizontalDatePicker({
     const nextMonth = addMonths(currentMonth, 1);
     onDateSelect(startOfMonth(nextMonth));
   };
-
 
   return (
     <div className="flex w-full flex-col gap-4">
@@ -158,8 +183,8 @@ export function HorizontalDatePicker({
           <div className="flex items-center gap-3 pb-2 -ml-2 pl-4 h-24">
             {daysInMonth.map((day, index) => {
               const isActive = isSameDay(day, selectedDate);
-              const scale = tweenValues[index] ? tweenValues[index] * 0.25 + 0.75 : 0.75;
-              const opacity = tweenValues[index] ? tweenValues[index] * 0.7 + 0.3 : 0.3;
+              const scale = tweenValues[index] !== undefined ? tweenValues[index] * 0.25 + 0.75 : 0.75;
+              const opacity = tweenValues[index] !== undefined ? tweenValues[index] * 0.7 + 0.3 : 0.3;
 
               return (
                 <div 
