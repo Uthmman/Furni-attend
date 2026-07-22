@@ -42,6 +42,44 @@ type DailyAttendance = {
   overtimeHours?: number;
 };
 
+const StatusBadge = ({ status, session }: { status: AttendanceStatus, session?: string }) => {
+  const getColors = (s: AttendanceStatus) => {
+    switch (s) {
+      case "Permission":
+        return "bg-blue-100 text-blue-700 border-blue-200";
+      case "Present":
+        return "bg-secondary text-secondary-foreground border-transparent";
+      case "Late":
+        return "bg-amber-100 text-amber-700 border-amber-200";
+      case "Absent":
+        return "bg-destructive text-destructive-foreground border-transparent";
+      default:
+        return "bg-muted text-muted-foreground border-transparent";
+    }
+  };
+
+  const getInitial = (s: AttendanceStatus) => {
+    if (s === "Permission") return "PR";
+    return s.charAt(0);
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-1">
+      {session && <span className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-tighter leading-none">{session}</span>}
+      <Badge 
+        variant="outline" 
+        className={cn(
+          "h-6 px-1.5 sm:px-2.5 min-w-[24px] justify-center text-[10px] sm:text-xs font-bold transition-all",
+          getColors(status)
+        )}
+      >
+        <span className="hidden sm:inline">{status}</span>
+        <span className="inline sm:hidden">{getInitial(status)}</span>
+      </Badge>
+    </div>
+  );
+};
+
 const getStatusBadge = (status: AttendanceStatus) => {
   switch (status) {
     case "Permission":
@@ -56,14 +94,6 @@ const getStatusBadge = (status: AttendanceStatus) => {
       return <Badge variant="outline">{status}</Badge>;
   }
 };
-
-const getOverallStatus = (morning: AttendanceStatus, afternoon: AttendanceStatus): AttendanceStatus => {
-    if (morning === 'Permission' || afternoon === 'Permission') return 'Permission';
-    if (morning === 'Absent' && afternoon === 'Absent') return 'Absent';
-    if (morning === 'Late' || afternoon === 'Late') return 'Late';
-    if (morning === 'Present' || afternoon === 'Present') return 'Present';
-    return 'Absent';
-}
 
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
   if (!isValid(date)) return "Invalid Date";
@@ -318,15 +348,15 @@ export default function AttendancePage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
                       {attendance.length > 0 ? (
                         attendance.map((att) => {
-                            const overallStatus = getOverallStatus(att.morningStatus, att.afternoonStatus);
                             return (
                                 <div key={att.employeeId} className="flex items-center gap-2">
                                     <button onClick={() => openAttendanceDialog(att.employeeId)} className="text-left flex-1">
                                         <Card className="hover:bg-accent transition-colors">
                                             <CardContent className="flex items-center justify-between p-4">
-                                                <p className="font-medium">{att.employeeName}</p>
-                                                <div className="capitalize">
-                                                    {getStatusBadge(overallStatus)}
+                                                <p className="font-medium text-sm sm:text-base truncate max-w-[120px]">{att.employeeName}</p>
+                                                <div className="flex items-center gap-2 sm:gap-3">
+                                                    <StatusBadge status={att.morningStatus} session="AM" />
+                                                    <StatusBadge status={att.afternoonStatus} session="PM" />
                                                 </div>
                                             </CardContent>
                                         </Card>
