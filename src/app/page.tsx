@@ -338,8 +338,8 @@ export default function DashboardPage() {
         const ethNow = toEthiopian(now);
         
         // --- Weekly Logic ---
-        // Payment Day: Sunday
-        if (getDay(now) === 0) {
+        // Payment Day: Saturday at 5:00 PM (17:00)
+        if (getDay(now) === 6 && now.getHours() >= 17) {
             const weekId = format(startOfWeek(now, { weekStartsOn: 0 }), 'yyyy-MM-dd');
             const weekEnd = endOfWeek(now, { weekStartsOn: 0 });
             const label = `${ethiopianDateFormatter(startOfWeek(now, { weekStartsOn: 0 }), { month: 'short', day: 'numeric' })} - ${ethiopianDateFormatter(weekEnd, { month: 'short', day: 'numeric', year: 'numeric' })}`;
@@ -404,7 +404,7 @@ export default function DashboardPage() {
 
     const timer = setTimeout(checkAutoNotifications, 5000); // Wait 5s for calculations to settle
     return () => clearTimeout(timer);
-  }, [dashboardStats, allAttendance, activeEmployees]);
+  }, [dashboardStats, allAttendance, activeEmployees, loading]);
 
   const payrollHistory = useMemo(() => {
     if (!employees || allAttendance.length === 0) return [];
