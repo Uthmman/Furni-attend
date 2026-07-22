@@ -1,5 +1,4 @@
 
-
 'use client';
 
 import { useState } from 'react';
@@ -21,7 +20,7 @@ import type { PayrollEntry } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from "next/link";
 import { Button } from '@/components/ui/button';
-import { Copy } from 'lucide-react';
+import { Copy, Send, Loader2 } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -34,6 +33,7 @@ import {
   DialogClose,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
+import { sendAdminPayrollSummary } from './actions';
 
 interface PayrollListProps {
     title: string;
@@ -48,12 +48,13 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
     
     const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
     const [summaryText, setSummaryText] = useState("");
+    const [isSending, setIsSending] = useState(false);
     const [_copiedValue, copy] = useCopyToClipboard();
     const { toast } = useToast();
 
     const generateSummaryMessage = (entry: PayrollEntry) => {
-        let summaryMessage = `Payroll Summary for ${entry.employeeName}\n`;
-        summaryMessage += `Period: ${entry.period}\n\n`;
+        let summaryMessage = `💰 *Payroll Summary* for *${entry.employeeName}*\n`;
+        summaryMessage += `📅 Period: ${entry.period}\n\n`;
 
         if (entry.paymentMethod === 'Monthly') {
           summaryMessage += `Base Salary: ETB ${(entry.baseSalary || 0).toFixed(2)}\n`;
@@ -63,8 +64,11 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
           if ((entry.absenceDeduction || 0) > 0) {
             summaryMessage += `Absence Deduction (${(entry.hoursAbsent || 0).toFixed(1)} hrs): - ETB ${(entry.absenceDeduction || 0).toFixed(2)}\n`;
           }
+          if ((entry.overtimePay || entry.overtimeAmount || 0) > 0) {
+             summaryMessage += `Overtime Pay: + ETB ${(entry.overtimePay || entry.overtimeAmount || 0).toFixed(2)}\n`;
+          }
           summaryMessage += `--------------------\n`;
-          summaryMessage += `Net Salary: ETB ${(entry.amount || 0).toFixed(2)}`;
+          summaryMessage += `*Net Salary: ETB ${(entry.amount || 0).toFixed(2)}*`;
         } else { // Weekly
           summaryMessage += `Base Pay (${(entry.totalHours || 0).toFixed(2)} hrs): ETB ${(entry.baseAmount || 0).toFixed(2)}\n`;
           if ((entry.overtimeAmount || 0) > 0) {
@@ -72,7 +76,7 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
               summaryMessage += `Overtime Pay (${overtimeHours} hrs): + ETB ${(entry.overtimeAmount || 0).toFixed(2)}\n`;
           }
           summaryMessage += `--------------------\n`;
-          summaryMessage += `Total Payout: ETB ${(entry.amount || 0).toFixed(2)}`;
+          summaryMessage += `*Total Payout: ETB ${(entry.amount || 0).toFixed(2)}*`;
         }
         
         return summaryMessage;
@@ -91,22 +95,64 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
         });
     }
 
+    const handleSendToTelegram = async () => {
+        setIsSending(true);
+        const result = await sendAdminPayrollSummary(summaryText);
+        setIsSending(false);
+        if (result.success) {
+            toast({ title: "Sent to Telegram!", description: "Admin notified successfully." });
+        } else {
+            toast({ variant: "destructive", title: "Failed to send", description: result.error });
+        }
+    };
+
+    const handleSendListSummary = async () => {
+        if (payrollData.length === 0) return;
+        setIsSending(true);
+        
+        let listSummary = `📊 *${title} Summary*\n`;
+        listSummary += `📅 Period: ${periodOptions.find(o => o.value === selectedPeriod)?.label || selectedPeriod}\n\n`;
+        
+        payrollData.forEach(entry => {
+            listSummary += `• *${entry.employeeName}*: ETB ${entry.amount.toFixed(2)}\n`;
+        });
+        
+        listSummary += `\n--------------------\n`;
+        listSummary += `*TOTAL PAYOUT: ETB ${totalAmount.toFixed(2)}*`;
+
+        const result = await sendAdminPayrollSummary(listSummary);
+        setIsSending(false);
+        if (result.success) {
+            toast({ title: "Period summary sent!", description: "Full report sent to Telegram." });
+        } else {
+            toast({ variant: "destructive", title: "Failed to send", description: result.error });
+        }
+    };
+
 
     return (
         <>
             <Card>
-                <CardHeader>
-                    <CardTitle>{title}</CardTitle>
-                    <Select onValueChange={onPeriodChange} value={selectedPeriod}>
-                        <SelectTrigger>
-                            <SelectValue placeholder="Select a period" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {periodOptions.map(option => (
-                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                <CardHeader className="flex flex-row items-center justify-between">
+                    <div className="space-y-1">
+                        <CardTitle>{title}</CardTitle>
+                        <Select onValueChange={onPeriodChange} value={selectedPeriod}>
+                            <SelectTrigger className="w-[200px]">
+                                <SelectValue placeholder="Select a period" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {periodOptions.map(option => (
+                                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    {payrollData.length > 0 && (
+                        <Button variant="outline" size="sm" onClick={handleSendListSummary} disabled={isSending} className="gap-2 font-bold text-xs uppercase tracking-tighter">
+                            {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                            Send Report
+                        </Button>
+                    )}
                 </CardHeader>
                 <CardContent>
                     <Table>
@@ -207,11 +253,15 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                 <DialogHeader>
                     <DialogTitle>Payroll Summary</DialogTitle>
                     <DialogDescription>
-                    Copy the summary below to send it manually.
+                    Copy or send the summary below to Telegram.
                     </DialogDescription>
                 </DialogHeader>
                 <Textarea readOnly value={summaryText} rows={12} className="text-sm font-mono" />
-                <DialogFooter>
+                <DialogFooter className="gap-2">
+                    <Button variant="outline" onClick={handleSendToTelegram} disabled={isSending}>
+                        {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                        Send to Admin
+                    </Button>
                     <Button variant="secondary" onClick={handleCopyToClipboard}>
                         <Copy className="mr-2 h-4 w-4" />
                         Copy

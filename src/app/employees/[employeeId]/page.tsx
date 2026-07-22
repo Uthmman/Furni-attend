@@ -38,7 +38,7 @@ import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone, Trash2, Edit, Calendar, UserMinus } from "lucide-react";
+import { Copy, Phone, Trash2, Edit, Calendar, UserMinus, Send, Loader2 } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
@@ -68,6 +68,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
+import { sendAdminPayrollSummary } from "@/app/payroll/actions";
 
 
 const getInitials = (name: string) => {
@@ -156,7 +157,6 @@ const toEthiopian = (date: Date) => {
 };
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
-    // Robust search logic with noon-reference
     let date = new Date(ethYear + 7, ethMonth + 7, ethDay, 12, 0, 0);
     for (let i = 0; i < 60; i++) {
         const eth = toEthiopian(date);
@@ -223,6 +223,7 @@ export default function EmployeeProfilePage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
   const [summaryText, setSummaryText] = useState("");
+  const [isSending, setIsSending] = useState(false);
 
   const employeeDocRef = useMemoFirebase(() => {
     if (!firestore || !employeeId || !user) return null;
@@ -469,7 +470,6 @@ export default function EmployeeProfilePage() {
 
       filteredAttendance.forEach(record => {
           totalMinutesLate += calculateMinutesLate(record);
-          // NEW: Count recorded absences for weekly employees as well
           const isSaturday = getDay(getDateFromRecord(record.date)) === 6;
           if (record.morningStatus === 'Absent') totalHoursAbsent += 4.5;
           if (!isSaturday && record.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
@@ -497,8 +497,8 @@ export default function EmployeeProfilePage() {
   const handleViewSummary = () => {
     if (!employee || !payrollData) return;
 
-    let summaryMessage = `Payroll Summary for ${employee.name}\n`;
-    summaryMessage += `Period: ${payrollData.periodLabel}\n\n`;
+    let summaryMessage = `💰 *Payroll Summary* for *${employee.name}*\n`;
+    summaryMessage += `📅 Period: ${payrollData.periodLabel}\n\n`;
 
     if (employee.paymentMethod === 'Monthly') {
       summaryMessage += `Base Salary: ETB ${(payrollData.baseSalary || 0).toFixed(2)}\n`;
@@ -512,14 +512,14 @@ export default function EmployeeProfilePage() {
         summaryMessage += `Overtime Pay (${payrollData.overtimeHours} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
       }
       summaryMessage += `--------------------\n`;
-      summaryMessage += `Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}`;
+      summaryMessage += `*Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     } else { // Weekly
       summaryMessage += `Base Pay (${(payrollData.hours || 0).toFixed(2)} hrs): ETB ${( (payrollData.hours || 0) * (payrollData.hourlyRate || 0)).toFixed(2)}\n`;
       if ((payrollData.overtimePay || 0) > 0) {
         summaryMessage += `Overtime Pay (${payrollData.overtimeHours} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
       }
       summaryMessage += `--------------------\n`;
-      summaryMessage += `Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}`;
+      summaryMessage += `*Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     }
     
     setSummaryText(summaryMessage);
@@ -532,6 +532,17 @@ export default function EmployeeProfilePage() {
       title: "Copied to clipboard!",
     });
   }
+
+  const handleSendToTelegram = async () => {
+      setIsSending(true);
+      const result = await sendAdminPayrollSummary(summaryText);
+      setIsSending(false);
+      if (result.success) {
+          toast({ title: "Sent to Telegram!", description: "Admin notified successfully." });
+      } else {
+          toast({ variant: "destructive", title: "Failed to send", description: result.error });
+      }
+  };
 
   const handleDelete = async () => {
     if (!employeeId || !firestore) return;
@@ -597,7 +608,11 @@ export default function EmployeeProfilePage() {
             </DialogDescription>
           </DialogHeader>
           <Textarea readOnly value={summaryText} rows={10} className="text-sm font-mono" />
-          <DialogFooter>
+          <DialogFooter className="gap-2">
+             <Button variant="outline" onClick={handleSendToTelegram} disabled={isSending}>
+                {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+                Send to Admin
+              </Button>
              <Button variant="secondary" onClick={handleCopyToClipboard}>
                 <Copy className="mr-2 h-4 w-4" />
                 Copy

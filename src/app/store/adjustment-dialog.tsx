@@ -30,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { Item, PaymentStatus, Order, Employee } from "@/lib/types";
+import type { Item, Order, Employee } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
 import { doc, writeBatch, collection, arrayUnion } from "firebase/firestore";
@@ -38,6 +38,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
 import { Loader2, ArrowUpRight, ArrowDownRight, ShoppingCart, ShoppingBag, User } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { notifyLowStock } from "@/app/payroll/actions";
 
 const adjustmentSchema = z.object({
   itemId: z.string().min(1, { message: "Please select an item" }),
@@ -68,13 +69,11 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Fetch orders
   const ordersCollectionRef = useMemoFirebase(() => {
     return collection(secondaryDb, "orders");
   }, []);
   const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
 
-  // Fetch employees
   const employeesCollectionRef = useMemoFirebase(() => {
     if (!firestore || !authUser) return null;
     return collection(firestore, "employees");
@@ -190,10 +189,17 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     try {
       await batch.commit();
+      
       toast({ 
         title: data.type === 'In' ? "Stock Restocked" : "Stock Used", 
         description: `${selectedItem.name} is now at ${newStockLevel} ${selectedItem.unitOfMeasurement}.` 
       });
+
+      // Send low stock notification if applicable
+      if (data.type === 'Out' && newStockLevel <= (selectedItem.lowStockThreshold || 5)) {
+        notifyLowStock(selectedItem.name, newStockLevel, selectedItem.lowStockThreshold || 5, selectedItem.unitOfMeasurement);
+      }
+
       setIsSubmitting(false);
       setIsOpen(false);
       form.reset();
