@@ -35,6 +35,11 @@ service cloud.firestore {
     match /stockAdjustments/{adjustmentId} {
       allow read, write: if isAuthenticated();
     }
+
+    // Metadata for automated notifications
+    match /metadata/{docId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }
-// Deployment Trigger Comment: Updated rules to ensure categories access.
+// Deployment Trigger Comment: Updated rules to ensure categories and metadata access.

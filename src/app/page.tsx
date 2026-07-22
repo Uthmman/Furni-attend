@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo, useEffect, useState } from 'react';
@@ -23,6 +24,7 @@ import { Progress } from "@/components/ui/progress";
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
+import { autoSendPayrollNotification } from './payroll/actions';
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
@@ -326,6 +328,83 @@ export default function DashboardPage() {
 
     return { totalEmployees, onSiteToday: onSiteTodayCount, estWeekly, actualWeekly, estMonthly, actualMonthly };
   }, [activeEmployees, allAttendance]);
+
+  // Automated Notification Logic
+  useEffect(() => {
+    if (loading || !dashboardStats || allAttendance.length === 0) return;
+
+    const checkAutoNotifications = async () => {
+        const now = new Date();
+        const ethNow = toEthiopian(now);
+        
+        // --- Weekly Logic ---
+        // Payment Day: Sunday
+        if (getDay(now) === 0) {
+            const weekId = format(startOfWeek(now, { weekStartsOn: 0 }), 'yyyy-MM-dd');
+            const weekEnd = endOfWeek(now, { weekStartsOn: 0 });
+            const label = `${ethiopianDateFormatter(startOfWeek(now, { weekStartsOn: 0 }), { month: 'short', day: 'numeric' })} - ${ethiopianDateFormatter(weekEnd, { month: 'short', day: 'numeric', year: 'numeric' })}`;
+            
+            let weeklySummary = `📊 *Automatic Weekly Payroll Summary*\n`;
+            weeklySummary += `📅 Period: ${label}\n\n`;
+            
+            let total = 0;
+            let count = 0;
+            
+            activeEmployees.filter(e => e.paymentMethod === 'Weekly').forEach(emp => {
+                const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+                const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: startOfWeek(now, { weekStartsOn: 0 }), end: weekEnd }));
+                const hrs = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
+                const ot = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+                const amt = (hrs + ot) * (hourlyRate || 0);
+                if (amt > 0) {
+                    weeklySummary += `• *${emp.name}*: ETB ${amt.toFixed(2)}\n`;
+                    total += amt;
+                    count++;
+                }
+            });
+            
+            weeklySummary += `\n--------------------\n`;
+            weeklySummary += `*TOTAL PAYOUT: ETB ${total.toFixed(2)}*`;
+            
+            if (count > 0) {
+                autoSendPayrollNotification('weekly', weekId, weeklySummary);
+            }
+        }
+
+        // --- Monthly Logic ---
+        // Payment Day: 30th of Ethiopian Month
+        if (ethNow.day === 30) {
+            const monthId = `${ethNow.year}-${ethNow.month}`;
+            const monthStart = toGregorian(ethNow.year, ethNow.month, 1);
+            const label = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethNow.year}`;
+            
+            let monthlySummary = `📊 *Automatic Monthly Payroll Summary*\n`;
+            monthlySummary += `📅 Period: ${label}\n\n`;
+            
+            let total = 0;
+            let count = 0;
+            
+            activeEmployees.filter(e => e.paymentMethod === 'Monthly').forEach(emp => {
+                const base = emp.monthlyRate || 0;
+                if (base > 0) {
+                    monthlySummary += `• *${emp.name}*: ETB ${base.toFixed(2)}\n`;
+                    total += base;
+                    count++;
+                }
+            });
+            
+            monthlySummary += `\n--------------------\n`;
+            monthlySummary += `*TOTAL PAYOUT: ETB ${total.toFixed(2)}*`;
+            
+            if (count > 0) {
+                autoSendPayrollNotification('monthly', monthId, monthlySummary);
+            }
+        }
+    };
+
+    const timer = setTimeout(checkAutoNotifications, 5000); // Wait 5s for calculations to settle
+    return () => clearTimeout(timer);
+  }, [dashboardStats, allAttendance, activeEmployees]);
 
   const payrollHistory = useMemo(() => {
     if (!employees || allAttendance.length === 0) return [];
@@ -966,7 +1045,7 @@ export default function DashboardPage() {
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="week" className="space-y-8">
+                    <TabsContent value="week" className="space-y-6">
                         <div className="flex flex-col gap-6">
                             <div className="flex justify-center w-full">
                                 <div className="flex items-center gap-2 w-full max-w-sm">
@@ -1049,28 +1128,10 @@ export default function DashboardPage() {
                                     <p className="text-4xl font-black text-amber-600">ETB {totalWeeklyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
-
-                            <div className="bg-muted/10 p-4 rounded-2xl border border-dashed mt-4">
-                                <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-muted-foreground">
-                                    <BarChart3 className="h-4 w-4" />
-                                    Daily Expense Breakdown (Week)
-                                </div>
-                                <div className="h-[200px] w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={weeklyExpenseData}>
-                                            <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.3} />
-                                            <XAxis dataKey="name" stroke="#888888" fontSize={10} tickLine={false} axisLine={false} />
-                                            <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `ETB ${v}`} />
-                                            <Tooltip cursor={{fill: 'hsl(var(--primary) / 0.05)'}} contentStyle={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", borderRadius: '8px', fontSize: '12px' }} />
-                                            <Bar dataKey="total" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="month" className="space-y-8">
+                    <TabsContent value="month" className="space-y-6">
                         <div className="flex flex-col gap-6">
                             <div className="flex justify-center w-full">
                                 <div className="flex items-center gap-3 w-full max-sm:max-w-full max-w-sm">
@@ -1152,31 +1213,13 @@ export default function DashboardPage() {
                                     <p className="text-4xl font-black text-purple-600">ETB {totalMonthlyPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
-
-                            <div className="bg-muted/10 p-4 rounded-2xl border border-dashed mt-4">
-                                <div className="flex items-center gap-2 mb-4 text-sm font-semibold text-muted-foreground">
-                                    <BarChart3 className="h-4 w-4" />
-                                    Daily Expense Breakdown (Month)
-                                </div>
-                                <div className="h-[200px] w-full">
-                                    <ResponsiveContainer width="100%" height="100%">
-                                        <BarChart data={monthlyExpenseData}>
-                                            <CartesianGrid vertical={false} strokeDasharray="3 3" opacity={0.3} />
-                                            <XAxis dataKey="name" stroke="#888888" fontSize={10} tickLine={false} axisLine={false} />
-                                            <YAxis stroke="#888888" fontSize={10} tickLine={false} axisLine={false} tickFormatter={(v) => `ETB ${v}`} />
-                                            <Tooltip cursor={{fill: 'hsl(var(--primary) / 0.05)'}} contentStyle={{ background: "hsl(var(--background))", borderColor: "hsl(var(--border))", borderRadius: '8px', fontSize: '12px' }} />
-                                            <Bar dataKey="total" fill="hsl(var(--chart-2))" radius={[2, 2, 0, 0]} />
-                                        </BarChart>
-                                    </ResponsiveContainer>
-                                </div>
-                            </div>
                         </div>
                     </TabsContent>
                 </Tabs>
             </CardContent>
         </Card>
 
-        {/* Upcoming Orders Section - Relocated here */}
+        {/* Upcoming Orders Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
