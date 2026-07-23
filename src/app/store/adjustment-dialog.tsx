@@ -41,9 +41,28 @@ import { secondaryDb } from "@/firebase/secondary";
 import { doc, writeBatch, collection, arrayUnion } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
-import { ArrowUpRight, ArrowDownRight, ShoppingCart, ShoppingBag, User, Check, ChevronsUpDown, Search, Package } from "lucide-react";
+import { 
+  ArrowUpRight, 
+  ArrowDownRight, 
+  ShoppingCart, 
+  ShoppingBag, 
+  User, 
+  Check, 
+  ChevronsUpDown, 
+  Search, 
+  Package,
+  Wrench,
+  Paintbrush,
+  Trees,
+  Hammer,
+  Zap,
+  Droplets,
+  Layers,
+  Tag
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notifyLowStock } from "@/app/payroll/actions";
+import { getCategoryColor } from "./page";
 
 const adjustmentSchema = z.object({
   itemId: z.string().min(1, { message: "Please select an item" }),
@@ -67,6 +86,20 @@ interface AdjustmentDialogProps {
   forcedType?: "In" | "Out" | null;
   onClose: () => void;
 }
+
+const getSmallCategoryIcon = (category: string) => {
+  const iconClass = "h-4 w-4 opacity-70";
+  switch (category) {
+    case "Hardware": return <Wrench className={iconClass} />;
+    case "Paint": return <Paintbrush className={iconClass} />;
+    case "Timber": return <Trees className={iconClass} />;
+    case "Tools": return <Hammer className={iconClass} />;
+    case "Consumables": return <Zap className={iconClass} />;
+    case "Finishes": return <Droplets className={iconClass} />;
+    case "Upholstery": return <Layers className={iconClass} />;
+    default: return <Tag className={iconClass} />;
+  }
+};
 
 export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, forcedType, onClose }: AdjustmentDialogProps) {
   const firestore = useFirestore();
@@ -274,6 +307,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                                     setItemSearchQuery("");
                                   }}
                                 >
+                                  <div className={cn("flex items-center justify-center h-8 w-8 rounded-lg shrink-0 mr-3", getCategoryColor(item.category))}>
+                                    {getSmallCategoryIcon(item.category)}
+                                  </div>
                                   <div className="flex flex-col items-start gap-0.5 flex-1 text-left">
                                     <span className="font-bold">{item.name}</span>
                                     <span className="text-[10px] text-muted-foreground uppercase tracking-tight">{item.category} • {item.stockLevel} {item.unitOfMeasurement} in stock</span>
