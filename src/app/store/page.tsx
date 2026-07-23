@@ -56,7 +56,7 @@ import type { Item, StockAdjustment } from "@/lib/types";
 import { ItemForm } from "./item-form";
 import { AdjustmentDialog } from "./adjustment-dialog";
 import { CategoryManager } from "./category-manager";
-import { format, subMonths } from "date-fns";
+import { format, subMonths, isSameDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import {
   AlertDialog,
@@ -160,6 +160,26 @@ export default function StorePage() {
       (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [items, searchQuery]);
+
+  const groupedAdjustments = useMemo(() => {
+    if (!adjustments) return [];
+    const groups: { date: string, formatted: string, items: StockAdjustment[] }[] = [];
+    
+    adjustments.forEach(adj => {
+        const d = adj.adjustmentDate ? new Date(adj.adjustmentDate) : new Date();
+        const dateKey = format(d, "yyyy-MM-dd");
+        const formatted = format(d, "MMMM d, yyyy");
+        
+        const existing = groups.find(g => g.date === dateKey);
+        if (existing) {
+            existing.items.push(adj);
+        } else {
+            groups.push({ date: dateKey, formatted, items: [adj] });
+        }
+    });
+    
+    return groups;
+  }, [adjustments]);
 
   const purchaseHistory = useMemo(() => {
     if (!adjustments) return [];
@@ -441,7 +461,6 @@ export default function StorePage() {
                                      <Badge variant="outline" className="text-[8px] h-3.5 py-0 px-1.5 uppercase font-black tracking-tight border-primary/20">
                                      {item.category}
                                      </Badge>
-                                     <span className="text-[10px] font-bold text-muted-foreground">{item.unitOfMeasurement}</span>
                                   </div>
                                   <div className="text-[10px] font-black text-primary mt-1">ETB {item.currentPrice?.toFixed(2) || "0.00"}</div>
                                </div>
@@ -574,111 +593,67 @@ export default function StorePage() {
               <CardDescription className="hidden sm:block">Full audit trail of all quantity changes.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
-               <div className="md:hidden divide-y">
-                  {adjustments && adjustments.length > 0 ? (
-                    adjustments.map((adj) => (
-                      <div key={adj.id} className="p-4 space-y-2 hover:bg-muted/10 transition-colors">
-                        <div className="flex justify-between items-start">
-                          <span className="text-[10px] text-muted-foreground font-semibold flex items-center gap-1.5">
-                            <Calendar className="h-3 w-3" /> {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "—"}
-                          </span>
-                          <div className={cn(
-                              "px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
-                              adj.type === "In" ? "bg-green-100 text-green-700" : "bg-destructive/10 text-destructive"
-                          )}>
-                            {adj.type === "In" ? "Restock" : "Used"}
-                          </div>
-                        </div>
-                        <div className="flex justify-between items-center">
-                          <div className="flex flex-col">
-                            <span className="font-bold text-sm">{adj.itemName}</span>
-                            <div className="flex flex-wrap gap-2 mt-1">
-                                {adj.employeeName && (
-                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-bold uppercase">
-                                        <User className="h-2 w-2" /> By: {adj.employeeName}
+               <div className="flex flex-col">
+                  {groupedAdjustments && groupedAdjustments.length > 0 ? (
+                    groupedAdjustments.map((group) => (
+                      <div key={group.date} className="flex flex-col">
+                         <div className="bg-muted/50 px-6 py-2 border-y flex items-center gap-2">
+                            <Calendar className="h-3 w-3 text-muted-foreground" />
+                            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{group.formatted}</span>
+                         </div>
+                         <div className="divide-y divide-dashed">
+                            {group.items.map((adj) => (
+                                <div key={adj.id} className="p-4 hover:bg-muted/10 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <div className="flex-1 min-w-0 flex items-start gap-3">
+                                        <div className={cn(
+                                            "mt-1 p-1.5 rounded-lg shrink-0",
+                                            adj.type === "In" ? "bg-green-100 text-green-700" : "bg-destructive/10 text-destructive"
+                                        )}>
+                                            {adj.type === "In" ? <PlusCircle className="h-4 w-4" /> : <MinusCircle className="h-4 w-4" />}
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-bold text-sm truncate">{adj.itemName}</span>
+                                                <span className="text-[9px] text-muted-foreground/60 font-mono">{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "HH:mm") : ""}</span>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
+                                                {adj.employeeName && (
+                                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-bold uppercase tracking-tight">
+                                                        <User className="h-2 w-2" /> {adj.employeeName}
+                                                    </div>
+                                                )}
+                                                {adj.orderUniqueName && (
+                                                    <div className="flex items-center gap-1 text-[9px] text-primary font-black uppercase tracking-tight">
+                                                        <ShoppingBag className="h-2 w-2" /> {adj.orderUniqueName}
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {adj.reason && (
+                                                <div className="mt-1 text-[11px] text-muted-foreground italic flex items-start gap-1.5 line-clamp-1">
+                                                   <History className="h-2.5 w-2.5 mt-0.5 shrink-0 opacity-40" /> {adj.reason}
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
-                                )}
-                                {adj.orderUniqueName && (
-                                <div className="flex items-center gap-1 text-[9px] text-primary font-black uppercase">
-                                    <ShoppingBag className="h-2 w-2" /> {adj.orderUniqueName}
+                                    <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-2 sm:pt-0 border-dashed">
+                                        <div className="flex flex-col items-end">
+                                            <span className={cn("text-lg font-black tabular-nums leading-none", adj.type === "In" ? "text-green-600" : "text-destructive")}>
+                                                {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
+                                            </span>
+                                            <span className="text-[8px] text-muted-foreground uppercase font-black tracking-tighter mt-1">{adj.type === "In" ? "Restock" : "Production"}</span>
+                                        </div>
+                                    </div>
                                 </div>
-                                )}
-                            </div>
-                          </div>
-                          <span className={cn("text-lg font-black tabular-nums", adj.type === "In" ? "text-green-600" : "text-destructive")}>
-                             {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
-                          </span>
-                        </div>
-                        {adj.reason && (
-                          <div className="text-[11px] text-muted-foreground italic bg-muted/30 p-2 rounded-lg border border-dashed flex items-start gap-2">
-                             <History className="h-3 w-3 mt-0.5 shrink-0" /> {adj.reason}
-                          </div>
-                        )}
+                            ))}
+                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="p-12 text-center text-muted-foreground text-sm">No activity recorded.</div>
+                    <div className="p-20 text-center text-muted-foreground/40 flex flex-col items-center gap-3">
+                        <History className="h-10 w-10 opacity-20" />
+                        <p className="text-sm font-bold">No activity logs found</p>
+                    </div>
                   )}
-               </div>
-
-               <div className="hidden md:block">
-                <Table>
-                    <TableHeader className="bg-muted/30">
-                      <TableRow>
-                        <TableHead className="pl-6">Date</TableHead>
-                        <TableHead>Details</TableHead>
-                        <TableHead>Type</TableHead>
-                        <TableHead className="text-center">Qty</TableHead>
-                        <TableHead className="pr-6">Note</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {adjustments && adjustments.length > 0 ? (
-                        adjustments.map((adj) => (
-                          <TableRow key={adj.id} className="hover:bg-muted/10 transition-colors">
-                            <TableCell className="text-[11px] text-muted-foreground whitespace-nowrap pl-6 py-4">
-                              {adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "MMM d, HH:mm") : "N/A"}
-                            </TableCell>
-                            <TableCell>
-                               <div className="flex flex-col gap-1">
-                                  <span className="font-semibold">{adj.itemName || "Unknown Item"}</span>
-                                  <div className="flex items-center gap-3">
-                                      {adj.employeeName && (
-                                        <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tight flex items-center gap-1">
-                                            <User className="h-2 w-2" /> Staff: {adj.employeeName}
-                                        </span>
-                                      )}
-                                      {adj.orderUniqueName && (
-                                        <span className="text-[9px] text-primary font-black uppercase tracking-tight flex items-center gap-1">
-                                          <ShoppingBag className="h-2 w-2" /> Order: {adj.orderUniqueName}
-                                        </span>
-                                      )}
-                                  </div>
-                               </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className={cn(
-                                  "flex items-center gap-1 w-fit px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider",
-                                  adj.type === "In" ? "bg-green-100 text-green-700" : "bg-destructive/10 text-destructive"
-                              )}>
-                                {adj.type === "In" ? "Restock" : "Used"}
-                              </div>
-                            </TableCell>
-                            <TableCell className="text-center font-black">
-                              <span className={adj.type === "In" ? "text-green-600" : "text-destructive"}>
-                                {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
-                              </span>
-                            </TableCell>
-                            <TableCell className="text-xs italic text-muted-foreground max-w-[200px] truncate pr-6">
-                              {adj.reason}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow><TableCell colSpan={5} className="h-40 text-center text-muted-foreground">No records.</TableCell></TableRow>
-                      )}
-                    </TableBody>
-                </Table>
                </div>
             </CardContent>
           </Card>
