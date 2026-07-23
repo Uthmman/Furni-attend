@@ -28,9 +28,21 @@ import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePe
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
-import { Plus, Sunrise, Sun, Clock, Info } from "lucide-react";
+import { Plus, Sunrise, Sun, CheckCircle2, XCircle, Clock, Square, CheckSquare, MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
-
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  DropdownMenuSub,
+  DropdownMenuSubTrigger,
+  DropdownMenuSubContent,
+  DropdownMenuPortal,
+} from "@/components/ui/dropdown-menu";
 
 type DailyAttendance = {
   employeeId: string;
@@ -117,10 +129,10 @@ export default function AttendancePage() {
   }, [firestore, user]);
   const { data: allEmployees, loading: employeesLoading } = useCollection(employeesCollectionRef as CollectionReference<Employee>);
   
-  // Filter for active employees only
   const employees = useMemo(() => allEmployees?.filter(e => e.status !== 'Inactive') || [], [allEmployees]);
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   
   const formattedDate = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   
@@ -133,12 +145,10 @@ export default function AttendancePage() {
 
   const [attendance, setAttendance] = useState<DailyAttendance[]>([]);
   
-  // Dialog states
   const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
   const [isLateDialogOpen, setIsLateDialogOpen] = useState(false);
   const [isOvertimeDialogOpen, setIsOvertimeDialogOpen] = useState(false);
   
-  // Data for dialogs
   const [selectedEmployeeAttendance, setSelectedEmployeeAttendance] = useState<DailyAttendance | null>(null);
   const [lateDialogData, setLateDialogData] = useState<{ session: 'morning' | 'afternoon', time: string } | null>(null);
 
@@ -170,49 +180,107 @@ export default function AttendancePage() {
     }
   }, [employees, attendanceRecords, selectedDate]);
 
-
   const handleDateSelect = useCallback((date: Date | undefined) => {
     if (!date) return;
     setSelectedDate(date);
+    setSelectedIds(new Set()); // Reset selection on date change
   }, []);
 
-  const saveAttendance = async (attendanceData: DailyAttendance) => {
+  const saveAttendanceBatch = async (attendanceDataList: DailyAttendance[]) => {
     if (!firestore) return;
     const dateStr = format(selectedDate, "yyyy-MM-dd");
-
-    const recordRef = doc(firestore, 'attendance', dateStr, 'records', attendanceData.employeeId);
-    const employeeAttendanceRef = doc(firestore, 'employees', attendanceData.employeeId, 'attendance', dateStr);
-    
-    const record: Partial<AttendanceRecord> = {
-        employeeId: attendanceData.employeeId,
-        date: selectedDate.toISOString(),
-        morningStatus: attendanceData.morningStatus,
-        afternoonStatus: attendanceData.afternoonStatus,
-        morningEntry: attendanceData.morningEntry || "",
-        afternoonEntry: attendanceData.afternoonEntry || "",
-        overtimeHours: attendanceData.overtimeHours || 0,
-    };
-    
     const batch = writeBatch(firestore);
-    batch.set(recordRef, record, { merge: true });
-    batch.set(employeeAttendanceRef, record, { merge: true });
+
+    attendanceDataList.forEach((att) => {
+      const recordRef = doc(firestore, 'attendance', dateStr, 'records', att.employeeId);
+      const employeeAttendanceRef = doc(firestore, 'employees', att.employeeId, 'attendance', dateStr);
+      
+      const record: Partial<AttendanceRecord> = {
+          employeeId: att.employeeId,
+          date: selectedDate.toISOString(),
+          morningStatus: att.morningStatus,
+          afternoonStatus: att.afternoonStatus,
+          morningEntry: att.morningEntry || "",
+          afternoonEntry: att.afternoonEntry || "",
+          overtimeHours: att.overtimeHours || 0,
+      };
+      
+      batch.set(recordRef, record, { merge: true });
+      batch.set(employeeAttendanceRef, record, { merge: true });
+    });
 
     try {
         await batch.commit();
-        toast({ title: "Attendance saved!" });
+        toast({ title: attendanceDataList.length > 1 ? `${attendanceDataList.length} records updated!` : "Attendance saved!" });
         setAttendance((prev) =>
-          prev.map((a) =>
-            a.employeeId === attendanceData.employeeId ? attendanceData : a
-          )
+          prev.map((a) => {
+            const updated = attendanceDataList.find(u => u.employeeId === a.employeeId);
+            return updated ? updated : a;
+          })
         );
       } catch(e) {
-        const permissionError = new FirestorePermissionError({
-            path: recordRef.path,
-            operation: 'write',
-            requestResourceData: record,
-        });
-        errorEmitter.emit('permission-error', permissionError);
+        toast({ variant: 'destructive', title: "Save failed", description: "You don't have permission to perform this action." });
       };
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === employees.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(employees.map(e => e.id)));
+    }
+  };
+
+  const handleBulkStatusUpdate = async (session: 'morning' | 'afternoon' | 'both', status: AttendanceStatus) => {
+    if (selectedIds.size === 0 || !firestore) return;
+
+    const isSunday = getDay(selectedDate) === 0;
+    const toUpdate: DailyAttendance[] = [];
+
+    attendance.forEach(att => {
+      if (selectedIds.has(att.employeeId)) {
+        const employee = employees.find(e => e.id === att.employeeId);
+        const isMonthly = employee?.paymentMethod === 'Monthly';
+
+        // Skip monthly employees on Sunday
+        if (isSunday && isMonthly) return;
+
+        const updated = { ...att };
+        
+        if (session === 'morning' || session === 'both') {
+          updated.morningStatus = status;
+          updated.morningEntry = (status === 'Present' || status === 'Permission') ? "08:00" : (status === 'Late' ? "08:30" : "");
+        }
+        
+        if (session === 'afternoon' || session === 'both') {
+          updated.afternoonStatus = status;
+          updated.afternoonEntry = (status === 'Present' || status === 'Permission') ? "13:30" : (status === 'Late' ? "14:00" : "");
+        }
+
+        if (updated.morningStatus === 'Absent' && updated.afternoonStatus === 'Absent') {
+          updated.overtimeHours = 0;
+        }
+
+        toUpdate.push(updated);
+      }
+    });
+
+    if (toUpdate.length === 0) {
+      toast({ variant: 'destructive', title: "No records updated", description: "Selected employees couldn't be updated (e.g. Monthly employees on Sunday)." });
+      return;
+    }
+
+    await saveAttendanceBatch(toUpdate);
+    setSelectedIds(new Set());
   };
 
   const openAttendanceDialog = (employeeId: string) => {
@@ -267,8 +335,7 @@ export default function AttendancePage() {
           updatedAttendance.overtimeHours = 0;
       }
 
-      await saveAttendance(updatedAttendance);
-      // Update local state immediately for better responsiveness
+      await saveAttendanceBatch([updatedAttendance]);
       setSelectedEmployeeAttendance(updatedAttendance);
       setIsAttendanceDialogOpen(false);
   };
@@ -285,7 +352,7 @@ export default function AttendancePage() {
         updatedAttendance.afternoonEntry = lateDialogData.time;
     }
     
-    await saveAttendance(updatedAttendance);
+    await saveAttendanceBatch([updatedAttendance]);
     
     setIsLateDialogOpen(false);
     setIsAttendanceDialogOpen(false);
@@ -301,7 +368,7 @@ export default function AttendancePage() {
 
   const handleSaveOvertime = async () => {
     if (!selectedEmployeeAttendance || !firestore) return;
-    await saveAttendance(selectedEmployeeAttendance);
+    await saveAttendanceBatch([selectedEmployeeAttendance]);
     setIsOvertimeDialogOpen(false);
     setSelectedEmployeeAttendance(null);
   };
@@ -333,14 +400,117 @@ export default function AttendancePage() {
           </Card>
         </div>
         <div className="lg:col-span-2">
-          <Card>
-            <CardHeader>
-              <CardTitle>
-                Employee Attendance for {format(selectedDate, "PPP")}
-              </CardTitle>
-              <CardDescription>
-                {ethiopianDateFormatter(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-              </CardDescription>
+          <Card className="relative overflow-hidden">
+            {selectedIds.size > 0 && (
+              <div className="absolute top-0 left-0 right-0 z-20 bg-primary text-primary-foreground p-3 flex items-center justify-between animate-in slide-in-from-top duration-300">
+                <div className="flex items-center gap-3">
+                  <Checkbox 
+                    checked={selectedIds.size === employees.length} 
+                    onCheckedChange={toggleSelectAll} 
+                    className="border-primary-foreground data-[state=checked]:bg-primary-foreground data-[state=checked]:text-primary"
+                  />
+                  <span className="text-sm font-bold">{selectedIds.size} Selected</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="secondary" size="sm" className="h-8 font-bold">
+                        Actions <MoreHorizontal className="ml-2 h-3.5 w-3.5" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuLabel>Log Status for Selection</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      
+                      {/* AM Submenu */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <Sunrise className="mr-2 h-4 w-4 text-orange-500" />
+                          <span>Morning (AM)</span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuPortal>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem onClick={() => handleBulkStatusUpdate('morning', 'Present')}>
+                              <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Mark Present
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleBulkStatusUpdate('morning', 'Late')}>
+                              <Clock className="mr-2 h-4 w-4 text-amber-500" /> Mark Late
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleBulkStatusUpdate('morning', 'Absent')}>
+                              <XCircle className="mr-2 h-4 w-4 text-destructive" /> Mark Absent
+                            </DropdownMenuItem>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuPortal>
+                      </DropdownMenuSub>
+
+                      {/* PM Submenu */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger>
+                          <Sun className="mr-2 h-4 w-4 text-amber-500" />
+                          <span>Afternoon (PM)</span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuPortal>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem onClick={() => handleBulkStatusUpdate('afternoon', 'Present')}>
+                              <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Mark Present
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleBulkStatusUpdate('afternoon', 'Late')}>
+                              <Clock className="mr-2 h-4 w-4 text-amber-500" /> Mark Late
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleBulkStatusUpdate('afternoon', 'Absent')}>
+                              <XCircle className="mr-2 h-4 w-4 text-destructive" /> Mark Absent
+                            </DropdownMenuItem>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuPortal>
+                      </DropdownMenuSub>
+
+                      <DropdownMenuSeparator />
+                      
+                      {/* Both Submenu */}
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="font-bold">
+                          <span>Full Day</span>
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuPortal>
+                          <DropdownMenuSubContent>
+                            <DropdownMenuItem onClick={() => handleBulkStatusUpdate('both', 'Present')}>
+                               <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Mark Both Present
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleBulkStatusUpdate('both', 'Absent')}>
+                               <XCircle className="mr-2 h-4 w-4 text-destructive" /> Mark Both Absent
+                            </DropdownMenuItem>
+                          </DropdownMenuSubContent>
+                        </DropdownMenuPortal>
+                      </DropdownMenuSub>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    onClick={() => setSelectedIds(new Set())}
+                    className="h-8 text-primary-foreground hover:bg-primary-foreground/10"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <CardHeader className={cn(selectedIds.size > 0 && "opacity-0 transition-opacity")}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>
+                    Employee Attendance for {format(selectedDate, "PPP")}
+                  </CardTitle>
+                  <CardDescription>
+                    {ethiopianDateFormatter(selectedDate, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                  </CardDescription>
+                </div>
+                <Button variant="ghost" size="sm" onClick={toggleSelectAll} className="gap-2 font-bold text-xs uppercase text-muted-foreground">
+                   {selectedIds.size === employees.length ? <CheckSquare className="h-4 w-4" /> : <Square className="h-4 w-4" />}
+                   {selectedIds.size === employees.length ? "Deselect All" : "Select All"}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
                 {attendanceLoading && <p>Loading attendance...</p>}
@@ -348,22 +518,33 @@ export default function AttendancePage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4">
                       {attendance.length > 0 ? (
                         attendance.map((att) => {
+                            const isSelected = selectedIds.has(att.employeeId);
                             return (
-                                <div key={att.employeeId} className="flex items-center gap-2">
-                                    <button onClick={() => openAttendanceDialog(att.employeeId)} className="text-left flex-1">
-                                        <Card className="hover:bg-accent transition-colors">
-                                            <CardContent className="flex items-center justify-between p-4">
-                                                <p className="font-medium text-sm sm:text-base truncate max-w-[120px]">{att.employeeName}</p>
-                                                <div className="flex items-center gap-2 sm:gap-3">
-                                                    <StatusBadge status={att.morningStatus} session="AM" />
-                                                    <StatusBadge status={att.afternoonStatus} session="PM" />
-                                                </div>
-                                            </CardContent>
-                                        </Card>
-                                    </button>
-                                    <Button variant="outline" size="icon" onClick={() => openOvertimeDialog(att.employeeId)} aria-label="Log Overtime">
-                                        <Plus className="h-4 w-4"/>
-                                    </Button>
+                                <div key={att.employeeId} className="flex items-center gap-3">
+                                    <Checkbox 
+                                      checked={isSelected} 
+                                      onCheckedChange={() => toggleSelect(att.employeeId)}
+                                      className="shrink-0"
+                                    />
+                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                        <button onClick={() => openAttendanceDialog(att.employeeId)} className="text-left flex-1 min-w-0">
+                                            <Card className={cn(
+                                              "hover:bg-accent transition-all duration-200",
+                                              isSelected && "border-primary bg-primary/5 shadow-sm"
+                                            )}>
+                                                <CardContent className="flex items-center justify-between p-3 sm:p-4 gap-2">
+                                                    <p className="font-bold text-sm sm:text-base truncate">{att.employeeName}</p>
+                                                    <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                                                        <StatusBadge status={att.morningStatus} session="AM" />
+                                                        <StatusBadge status={att.afternoonStatus} session="PM" />
+                                                    </div>
+                                                </CardContent>
+                                            </Card>
+                                        </button>
+                                        <Button variant="outline" size="icon" className="shrink-0 h-10 w-10 sm:h-12 sm:w-12" onClick={() => openOvertimeDialog(att.employeeId)} aria-label="Log Overtime">
+                                            <Plus className="h-4 w-4"/>
+                                        </Button>
+                                    </div>
                                 </div>
                             )
                         })
