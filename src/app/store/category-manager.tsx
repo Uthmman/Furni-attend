@@ -91,10 +91,12 @@ export function CategoryManager({ isOpen, setIsOpen }: CategoryManagerProps) {
   };
 
   const handleCancelDelete = () => {
-    if (deleteTimerRef.current) clearInterval(deleteTimerRef.current);
-    setCategoryToDelete(null);
-    setDeleteCountdown(0);
-    toast({ title: "Deletion Cancelled" });
+    if (categoryToDelete || deleteTimerRef.current) {
+      if (deleteTimerRef.current) clearInterval(deleteTimerRef.current);
+      setCategoryToDelete(null);
+      setDeleteCountdown(0);
+      toast({ title: "Deletion Cancelled" });
+    }
   };
 
   const executeDeleteCategory = (id: string) => {
