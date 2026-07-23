@@ -253,8 +253,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     batch.commit()
       .then(() => {
-        if (data.type === 'Out' && newStockLevel <= (selectedItem.lowStockThreshold || 5)) {
-          notifyLowStock(selectedItem.name, newStockLevel, selectedItem.lowStockThreshold || 5, selectedItem.unitOfMeasurement);
+        const threshold = selectedItem.lowStockThreshold === 0 ? -1 : (selectedItem.lowStockThreshold ?? 5);
+        if (data.type === 'Out' && threshold !== -1 && newStockLevel <= threshold) {
+          notifyLowStock(selectedItem.name, newStockLevel, threshold, selectedItem.unitOfMeasurement);
         }
       })
       .catch(e => {

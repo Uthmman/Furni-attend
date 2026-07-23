@@ -163,8 +163,12 @@ export default function StorePage() {
         (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
       )
       .sort((a, b) => {
-        const aIsLow = a.stockLevel <= (a.lowStockThreshold || 5);
-        const bIsLow = b.stockLevel <= (b.lowStockThreshold || 5);
+        // Low stock calculation (Threshold 0 means disabled)
+        const aThreshold = a.lowStockThreshold === 0 ? -1 : (a.lowStockThreshold ?? 5);
+        const bThreshold = b.lowStockThreshold === 0 ? -1 : (b.lowStockThreshold ?? 5);
+        
+        const aIsLow = aThreshold !== -1 && a.stockLevel <= aThreshold;
+        const bIsLow = bThreshold !== -1 && b.stockLevel <= bThreshold;
         
         // Prioritize low stock items
         if (aIsLow && !bIsLow) return -1;
@@ -449,7 +453,9 @@ export default function StorePage() {
         <TabsContent value="inventory" className="space-y-6">
            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
              {filteredItems.map(item => {
-               const isLowStock = item.stockLevel <= (item.lowStockThreshold || 5);
+               const threshold = item.lowStockThreshold === 0 ? -1 : (item.lowStockThreshold ?? 5);
+               const isLowStock = threshold !== -1 && item.stockLevel <= threshold;
+               
                return (
                  <Card key={item.id} className="overflow-hidden shadow-md group border-primary/5 transition-all">
                     <CardContent className="p-4">
@@ -591,7 +597,9 @@ export default function StorePage() {
                                   <TrendingUp className="h-3 w-3 opacity-40" />
                                 </div>
                               </TableCell>
-                              <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold || 5}</TableCell>
+                              <TableCell className="text-center text-xs font-semibold">
+                                {item.lowStockThreshold === 0 ? "Off" : (item.lowStockThreshold ?? 5)}
+                              </TableCell>
                               <TableCell className="text-right pr-6">
                                   <History className="h-4 w-4 text-muted-foreground opacity-30 group-hover:opacity-100 transition-opacity ml-auto" />
                               </TableCell>
