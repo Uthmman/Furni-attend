@@ -17,6 +17,7 @@ import { collection, addDoc, doc, setDoc, deleteDoc, query, orderBy } from "fire
 import type { Category } from "@/lib/types";
 import { Edit2, Trash2, Plus, Tag, XCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 interface CategoryManagerProps {
   isOpen: boolean;
