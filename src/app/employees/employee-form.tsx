@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -12,6 +11,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
+  FormDescription,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, addDoc, doc, setDoc } from "firebase/firestore";
+import { collection, doc, setDoc, addDoc } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState } from "react";
 import { Loader2 } from "lucide-react";
@@ -85,14 +85,13 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
   const currentStatus = form.watch("status");
   const currentInactiveDate = form.watch("inactiveDate");
 
-  // Automatically handle inactiveDate when status changes
   useEffect(() => {
     if (currentStatus === 'Inactive' && !currentInactiveDate) {
       form.setValue("inactiveDate", format(new Date(), 'yyyy-MM-dd'));
     } else if (currentStatus === 'Active') {
       form.setValue("inactiveDate", "");
     }
-  }, [currentStatus, form]);
+  }, [currentStatus, form, currentInactiveDate]);
 
   useEffect(() => {
     if (employee) {
@@ -114,47 +113,39 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
     }
   }, [employee, form, isOpen]);
 
-
-  const onSubmit = async (data: EmployeeFormValues) => {
+  const onSubmit = (data: EmployeeFormValues) => {
     if (!firestore) return;
-    setIsSubmitting(true);
     
-    // Safety check: Clear inactiveDate if status is Active
     if (data.status === 'Active') {
       data.inactiveDate = "";
     }
 
-    const handleSuccess = (action: "Added" | "Updated") => {
-       toast({
-          title: `Employee ${action}`,
-          description: `${data.name}'s information has been successfully ${action.toLowerCase()}.`,
-        });
-        setIsSubmitting(false);
-        setIsOpen(false);
-        form.reset();
-    };
+    const path = isEditMode && employee?.id ? `employees/${employee.id}` : 'employees';
+    const operation = isEditMode ? 'update' : 'create';
 
-    const handleError = (error: any, path: string, operation: 'create' | 'update') => {
-      const permissionError = new FirestorePermissionError({
+    // Optimistic UI: Close and reset immediately
+    setIsOpen(false);
+    toast({
+      title: `Employee ${isEditMode ? 'Updated' : 'Added'}`,
+      description: `${data.name}'s information is being synced.`,
+    });
+
+    const docPromise = isEditMode && employee?.id 
+      ? setDoc(doc(firestore, "employees", employee.id), data, { merge: true })
+      : addDoc(collection(firestore, "employees"), data);
+
+    docPromise.catch(error => {
+      errorEmitter.emit('permission-error', new FirestorePermissionError({
         path,
         operation,
         requestResourceData: data,
+      }));
+      toast({
+        variant: 'destructive',
+        title: "Sync Failed",
+        description: "Could not save employee changes. Check your permissions.",
       });
-      errorEmitter.emit('permission-error', permissionError);
-      setIsSubmitting(false);
-    };
-
-    if (isEditMode && employee?.id) {
-      const employeeRef = doc(firestore, "employees", employee.id);
-      setDoc(employeeRef, data, { merge: true })
-        .then(() => handleSuccess("Updated"))
-        .catch(error => handleError(error, employeeRef.path, 'update'));
-    } else {
-      const collectionRef = collection(firestore, "employees");
-      addDoc(collectionRef, data)
-        .then(() => handleSuccess("Added"))
-        .catch(error => handleError(error, collectionRef.path, 'create'));
-    }
+    });
   };
 
   const paymentMethod = form.watch("paymentMethod");
@@ -342,17 +333,12 @@ export function EmployeeForm({ isOpen, setIsOpen, employee }: EmployeeFormProps)
 
             <DialogFooter className="pt-4">
               <DialogClose asChild>
-                <Button type="button" variant="outline" disabled={isSubmitting}>
+                <Button type="button" variant="outline">
                   Cancel
                 </Button>
               </DialogClose>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? (
-                    <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Saving...
-                    </>
-                ) : "Save Employee"}
+              <Button type="submit">
+                Save Employee
               </Button>
             </DialogFooter>
           </form>

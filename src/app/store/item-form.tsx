@@ -33,7 +33,7 @@ import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, us
 import { collection, doc, setDoc, query, orderBy } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState, useRef } from "react";
-import { Loader2, Upload, X, Image as ImageIcon, Camera, RefreshCcw } from "lucide-react";
+import { Loader2, Upload, X, Image as ImageIcon, Camera } from "lucide-react";
 import Image from "next/image";
 
 const itemSchema = z.object({
@@ -62,7 +62,6 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
   const isEditMode = !!item;
   const [isSubmitting, setIsSubmitting] = useState(false);
   
-  // Camera state
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -134,23 +133,20 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
       toast({
         variant: "destructive",
         title: "Camera Error",
-        description: "Could not access your camera. Please check permissions."
+        description: "Could not access camera. Check permissions."
       });
     }
   };
 
   const capturePhoto = () => {
     if (!videoRef.current) return;
-    
     const canvas = document.createElement("canvas");
     canvas.width = videoRef.current.videoWidth;
     canvas.height = videoRef.current.videoHeight;
     const ctx = canvas.getContext("2d");
-    
     if (ctx) {
       ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
-      const dataUri = canvas.toDataURL("image/jpeg", 0.8);
-      form.setValue("imageUrl", dataUri);
+      form.setValue("imageUrl", canvas.toDataURL("image/jpeg", 0.8));
       stopCamera();
     }
   };
@@ -159,64 +155,50 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
     const file = e.target.files?.[0];
     if (file) {
       if (file.size > 1024 * 1024) { 
-        toast({
-          variant: "destructive",
-          title: "Image too large",
-          description: "Please select an image smaller than 1MB."
-        });
+        toast({ variant: "destructive", title: "Image too large" });
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => {
-        form.setValue("imageUrl", reader.result as string);
-      };
+      reader.onloadend = () => form.setValue("imageUrl", reader.result as string);
       reader.readAsDataURL(file);
     }
   };
 
-  const onSubmit = async (data: ItemFormValues) => {
+  const onSubmit = (data: ItemFormValues) => {
     if (!firestore) return;
-    setIsSubmitting(true);
 
-    const handleSuccess = (action: string) => {
-      toast({ title: `Item ${action} Successfully`, description: `${data.name} has been saved.` });
-      setIsSubmitting(false);
-      setIsOpen(false);
-      onClose?.();
-    };
+    // Optimistic UI: Close immediately
+    setIsOpen(false);
+    onClose?.();
+    toast({
+      title: `Item ${isEditMode ? 'Updated' : 'Added'}`,
+      description: `${data.name} is being saved to the registry.`,
+    });
 
-    if (isEditMode && item?.id) {
-      const itemRef = doc(firestore, "items", item.id);
-      const updateData: any = { ...data };
-      delete updateData.stockLevel; 
-
-      if (data.currentPrice !== item.currentPrice) {
-        const historyEntry = { price: data.currentPrice || 0, date: new Date().toISOString() };
-        updateData.priceHistory = [...(item.priceHistory || []), historyEntry];
+    const itemRef = isEditMode && item?.id ? doc(firestore, "items", item.id) : doc(collection(firestore, "items"));
+    const updateData: any = { ...data, id: itemRef.id };
+    
+    if (isEditMode) {
+      delete updateData.stockLevel;
+      if (data.currentPrice !== item?.currentPrice) {
+        updateData.priceHistory = [...(item?.priceHistory || []), { price: data.currentPrice || 0, date: new Date().toISOString() }];
       }
-
-      setDoc(itemRef, updateData, { merge: true })
-        .then(() => handleSuccess("Updated"))
-        .catch(async (e) => {
-          errorEmitter.emit("permission-error", new FirestorePermissionError({ path: itemRef.path, operation: 'update', requestResourceData: updateData }));
-          setIsSubmitting(false);
-        });
     } else {
-      const colRef = collection(firestore, "items");
-      const newItemRef = doc(colRef);
-      const newItemData: any = { 
-        ...data, 
-        id: newItemRef.id,
-        priceHistory: [{ price: data.currentPrice || 0, date: new Date().toISOString() }]
-      };
-      
-      setDoc(newItemRef, newItemData)
-        .then(() => handleSuccess("Added"))
-        .catch(async (e) => {
-          errorEmitter.emit("permission-error", new FirestorePermissionError({ path: colRef.path, operation: 'create', requestResourceData: newItemData }));
-          setIsSubmitting(false);
-        });
+      updateData.priceHistory = [{ price: data.currentPrice || 0, date: new Date().toISOString() }];
     }
+
+    setDoc(itemRef, updateData, { merge: true }).catch(error => {
+      errorEmitter.emit("permission-error", new FirestorePermissionError({
+        path: itemRef.path,
+        operation: isEditMode ? 'update' : 'create',
+        requestResourceData: updateData
+      }));
+      toast({
+        variant: 'destructive',
+        title: "Sync Failed",
+        description: "Could not save item details.",
+      });
+    });
   };
 
   const imageUrl = form.watch("imageUrl");
@@ -239,12 +221,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
             <div className="flex flex-col items-center gap-4 py-4 bg-muted/20 rounded-2xl border-2 border-dashed border-primary/20 overflow-hidden">
               {isCameraActive ? (
                 <div className="relative w-full aspect-video bg-black flex items-center justify-center rounded-lg">
-                  <video 
-                    ref={videoRef} 
-                    autoPlay 
-                    playsInline 
-                    className="w-full h-full object-cover rounded-lg"
-                  />
+                  <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover rounded-lg" />
                   <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
                     <Button type="button" size="sm" onClick={capturePhoto} className="rounded-full shadow-lg h-12 w-12 p-0">
                       <Camera className="h-6 w-6" />
@@ -281,13 +258,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
               {!isCameraActive && (
                 <div className="flex flex-wrap justify-center gap-2">
                   <div className="relative">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleImageChange}
-                      className="absolute inset-0 opacity-0 cursor-pointer"
-                      id="image-upload"
-                    />
+                    <input type="file" accept="image/*" onChange={handleImageChange} className="absolute inset-0 opacity-0 cursor-pointer" id="image-upload" />
                     <Button type="button" variant="outline" size="sm" className="h-9 px-4 flex items-center gap-2 pointer-events-none">
                       <Upload className="h-4 w-4" />
                       {imageUrl ? "Change" : "Upload"}
@@ -308,7 +279,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                 <FormItem>
                   <FormLabel>Item Name</FormLabel>
                   <FormControl>
-                    <Input placeholder="e.g. Oak Wood Stain, 4x4 Hinges" className="h-10" {...field} />
+                    <Input placeholder="e.g. Oak Wood Stain" className="h-10" {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -329,13 +300,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {categoriesData && categoriesData.length > 0 ? (
-                            categoriesData.map(cat => (
-                                <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
-                            ))
-                        ) : (
-                            <SelectItem value="Other" disabled>No categories found</SelectItem>
-                        )}
+                        {categoriesData?.map(cat => <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>)}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -357,8 +322,6 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                       <SelectContent>
                         <SelectItem value="piece">Piece (pc)</SelectItem>
                         <SelectItem value="liter">Liter (L)</SelectItem>
-                        <SelectItem value="set">Set</SelectItem>
-                        <SelectItem value="kg">Kilogram (kg)</SelectItem>
                         <SelectItem value="meter">Meter (m)</SelectItem>
                         <SelectItem value="box">Box</SelectItem>
                       </SelectContent>
@@ -377,15 +340,8 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                   <FormItem>
                     <FormLabel className="text-xs">Current Stock</FormLabel>
                     <FormControl>
-                      <Input 
-                        type="number" 
-                        {...field} 
-                        disabled={isEditMode} 
-                        className="h-10 bg-background"
-                      />
+                      <Input type="number" {...field} disabled={isEditMode} className="h-10 bg-background" />
                     </FormControl>
-                    {isEditMode && <p className="text-[9px] text-muted-foreground mt-1">Adjust via Log</p>}
-                    {!isEditMode && <FormMessage />}
                   </FormItem>
                 )}
               />
@@ -398,7 +354,6 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                     <FormControl>
                       <Input type="number" {...field} className="h-10 bg-background" />
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -411,7 +366,6 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
                     <FormControl>
                       <Input type="number" step="0.01" {...field} className="h-10 bg-background" />
                     </FormControl>
-                    <FormMessage />
                   </FormItem>
                 )}
               />
@@ -419,10 +373,9 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
 
             <DialogFooter className="pt-6">
               <DialogClose asChild>
-                <Button type="button" variant="outline" className="h-10">Cancel</Button>
+                <Button type="button" variant="outline">Cancel</Button>
               </DialogClose>
-              <Button type="submit" disabled={isSubmitting} className="h-10">
-                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Button type="submit">
                 {isEditMode ? "Save Changes" : "Create Item"}
               </Button>
             </DialogFooter>

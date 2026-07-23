@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
@@ -544,22 +543,28 @@ export default function EmployeeProfilePage() {
       }
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (!employeeId || !firestore) return;
-    try {
-      await deleteDoc(doc(firestore, "employees", employeeId as string));
-      toast({
-        title: "Employee Deleted",
-        description: `${employee?.name} has been removed from the list.`,
-      });
-      router.push("/employees");
-    } catch (error) {
-       const permissionError = new FirestorePermissionError({
+
+    // Optimistic UI: Redirect immediately
+    router.push("/employees");
+    toast({
+      title: "Deleting Employee",
+      description: `${employee?.name} removal in progress...`,
+    });
+
+    deleteDoc(doc(firestore, "employees", employeeId as string))
+      .catch(error => {
+        errorEmitter.emit('permission-error', new FirestorePermissionError({
           path: `employees/${employeeId}`,
           operation: 'delete',
+        }));
+        toast({
+          variant: 'destructive',
+          title: "Deletion Failed",
+          description: "Could not remove employee. Check permissions.",
         });
-        errorEmitter.emit('permission-error', permissionError);
-    }
+      });
   };
   
   const renderAttendanceBadge = (status: string) => {

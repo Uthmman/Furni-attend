@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -16,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, addDoc, doc, setDoc, deleteDoc, query, orderBy } from "firebase/firestore";
 import type { Category } from "@/lib/types";
-import { Edit2, Trash2, Plus, Loader2, Tag } from "lucide-react";
+import { Edit2, Trash2, Plus, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface CategoryManagerProps {
@@ -31,7 +30,6 @@ export function CategoryManager({ isOpen, setIsOpen }: CategoryManagerProps) {
   
   const [newCategoryName, setNewCategoryName] = useState("");
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const categoriesQuery = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -40,51 +38,42 @@ export function CategoryManager({ isOpen, setIsOpen }: CategoryManagerProps) {
 
   const { data: categories, isLoading } = useCollection<Category>(categoriesQuery);
 
-  const handleAddCategory = async () => {
+  const handleAddCategory = () => {
     if (!firestore || !newCategoryName.trim()) return;
-    setIsSubmitting(true);
     
-    const colRef = collection(firestore, "categories");
-    const data = { name: newCategoryName.trim() };
+    const name = newCategoryName.trim();
+    setNewCategoryName("");
+    toast({ title: "Adding Category", description: `${name} is being added.` });
 
-    addDoc(colRef, data)
-      .then(() => {
-        toast({ title: "Category Added", description: `${newCategoryName} is now available.` });
-        setNewCategoryName("");
-      })
-      .catch((e) => {
-        errorEmitter.emit("permission-error", new FirestorePermissionError({ path: "categories", operation: 'create', requestResourceData: data }));
-      })
-      .finally(() => setIsSubmitting(false));
+    addDoc(collection(firestore, "categories"), { name }).catch(e => {
+      errorEmitter.emit("permission-error", new FirestorePermissionError({ path: "categories", operation: 'create', requestResourceData: { name } }));
+      toast({ variant: "destructive", title: "Add Failed" });
+    });
   };
 
-  const handleUpdateCategory = async () => {
+  const handleUpdateCategory = () => {
     if (!firestore || !editingCategory || !newCategoryName.trim()) return;
-    setIsSubmitting(true);
 
-    const catRef = doc(firestore, "categories", editingCategory.id);
-    const data = { name: newCategoryName.trim() };
+    const name = newCategoryName.trim();
+    const id = editingCategory.id;
+    setEditingCategory(null);
+    setNewCategoryName("");
+    toast({ title: "Updating Category" });
 
-    setDoc(catRef, data, { merge: true })
-      .then(() => {
-        toast({ title: "Category Updated" });
-        setEditingCategory(null);
-        setNewCategoryName("");
-      })
-      .catch((e) => {
-        errorEmitter.emit("permission-error", new FirestorePermissionError({ path: catRef.path, operation: 'update', requestResourceData: data }));
-      })
-      .finally(() => setIsSubmitting(false));
+    setDoc(doc(firestore, "categories", id), { name }, { merge: true }).catch(e => {
+      errorEmitter.emit("permission-error", new FirestorePermissionError({ path: `categories/${id}`, operation: 'update', requestResourceData: { name } }));
+      toast({ variant: "destructive", title: "Update Failed" });
+    });
   };
 
-  const handleDeleteCategory = async (id: string) => {
+  const handleDeleteCategory = (id: string) => {
     if (!firestore) return;
-    try {
-        await deleteDoc(doc(firestore, "categories", id));
-        toast({ title: "Category Deleted" });
-    } catch (e) {
-        errorEmitter.emit("permission-error", new FirestorePermissionError({ path: `categories/${id}`, operation: 'delete' }));
-    }
+    toast({ title: "Deleting Category" });
+
+    deleteDoc(doc(firestore, "categories", id)).catch(e => {
+      errorEmitter.emit("permission-error", new FirestorePermissionError({ path: `categories/${id}`, operation: 'delete' }));
+      toast({ variant: "destructive", title: "Delete Failed" });
+    });
   };
 
   return (
@@ -107,11 +96,8 @@ export function CategoryManager({ isOpen, setIsOpen }: CategoryManagerProps) {
                 onChange={(e) => setNewCategoryName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (editingCategory ? handleUpdateCategory() : handleAddCategory())}
               />
-              <Button 
-                onClick={editingCategory ? handleUpdateCategory() : handleAddCategory}
-                disabled={isSubmitting || !newCategoryName.trim()}
-              >
-                {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : (editingCategory ? "Save" : <Plus className="h-4 w-4" />)}
+              <Button onClick={editingCategory ? handleUpdateCategory() : handleAddCategory} disabled={!newCategoryName.trim()}>
+                {editingCategory ? "Save" : <Plus className="h-4 w-4" />}
               </Button>
               {editingCategory && (
                 <Button variant="ghost" onClick={() => { setEditingCategory(null); setNewCategoryName(""); }}>Cancel</Button>
