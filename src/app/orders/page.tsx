@@ -23,7 +23,7 @@ import { secondaryDb } from "@/firebase/secondary";
 import { collection } from "firebase/firestore";
 import { useCollection, useMemoFirebase } from "@/firebase";
 import { format, isValid } from "date-fns";
-import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer } from "lucide-react";
+import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer, PenTool, PlayCircle } from "lucide-react";
 import type { Order } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -40,10 +40,27 @@ export default function OrdersPage() {
 
   const { data: allOrders, isLoading } = useCollection<Order>(ordersCollectionRef);
 
+  const designingCount = useMemo(() => {
+    if (!allOrders) return 0;
+    return allOrders.filter(o => (o.status || "").toLowerCase() === 'designing').length;
+  }, [allOrders]);
+
+  const inProgressCount = useMemo(() => {
+    if (!allOrders) return 0;
+    return allOrders.filter(o => {
+      const s = (o.status || "").toLowerCase();
+      return s === 'in progress' || s === 'processing';
+    }).length;
+  }, [allOrders]);
+
   const activeOrders = useMemo(() => {
     if (!allOrders) return [];
     return allOrders
-      .filter(order => (order.status || "").toLowerCase() !== 'shipped')
+      .filter(order => {
+        const s = (order.status || "").toLowerCase();
+        // Don't show shipped, designing, or in progress in the main list
+        return s !== 'shipped' && s !== 'designing' && s !== 'in progress' && s !== 'processing';
+      })
       .sort((a, b) => {
         const dateA = (a.deadline as any)?.seconds || 0;
         const dateB = (b.deadline as any)?.seconds || 0;
@@ -60,9 +77,12 @@ export default function OrdersPage() {
       case 'completed':
         return <Badge className="bg-green-100 text-green-700 border-green-200">Completed</Badge>;
       case 'processing':
-        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">Processing</Badge>;
+      case 'in progress':
+        return <Badge className="bg-blue-100 text-blue-700 border-blue-200">In Progress</Badge>;
       case 'pending':
         return <Badge variant="outline" className="bg-amber-50 text-amber-600 border-amber-200">Pending</Badge>;
+      case 'designing':
+        return <Badge variant="outline" className="bg-purple-50 text-purple-600 border-purple-200">Designing</Badge>;
       default:
         return <Badge variant="secondary">{status || 'Unknown'}</Badge>;
     }
@@ -94,20 +114,47 @@ export default function OrdersPage() {
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Summary Header */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-purple-50/50 border-purple-100 shadow-sm">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="h-12 w-12 rounded-full bg-purple-100 flex items-center justify-center shrink-0">
+              <PenTool className="h-6 w-6 text-purple-600" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-purple-600 uppercase tracking-wider">Designing</p>
+              <p className="text-2xl font-black text-purple-900">{designingCount} Active Orders</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-blue-50/50 border-blue-100 shadow-sm">
+          <CardContent className="p-4 flex items-center gap-4">
+            <div className="h-12 w-12 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+              <PlayCircle className="h-6 w-6 text-blue-600" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-blue-600 uppercase tracking-wider">In Progress</p>
+              <p className="text-2xl font-black text-blue-900">{inProgressCount} Active Orders</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="shadow-lg border-primary/10">
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-7">
           <div className="space-y-1">
             <CardTitle className="text-2xl font-bold flex items-center gap-2">
               <ShoppingBag className="h-6 w-6 text-primary" />
-              Active Orders
+              Order Queue
             </CardTitle>
             <CardDescription>
-              Displaying ongoing projects (status not Shipped).
+              Displaying pending and completed orders (excluding work in progress).
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <Badge variant="outline" className="px-3 py-1 font-bold">
-              {activeOrders.length} Active
+              {activeOrders.length} In List
             </Badge>
             <Badge variant="secondary" className="px-3 py-1 font-bold">
               {allOrders?.length || 0} Total
@@ -244,8 +291,8 @@ export default function OrdersPage() {
             <div className="flex flex-col items-center justify-center py-20 text-center gap-4 bg-muted/20 rounded-2xl border border-dashed">
               <PackageSearch className="h-12 w-12 text-muted-foreground/40" />
               <div className="space-y-1">
-                <p className="text-lg font-bold text-muted-foreground">No active orders</p>
-                <p className="text-sm text-muted-foreground/60">There are no orders with a status other than 'Shipped'.</p>
+                <p className="text-lg font-bold text-muted-foreground">No orders in queue</p>
+                <p className="text-sm text-muted-foreground/60">The list is empty based on the current filters.</p>
               </div>
             </div>
           )}
