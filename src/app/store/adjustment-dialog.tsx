@@ -253,8 +253,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     batch.commit()
       .then(() => {
-        const threshold = selectedItem.lowStockThreshold === 0 ? -1 : (selectedItem.lowStockThreshold ?? 5);
-        if (data.type === 'Out' && threshold !== -1 && newStockLevel <= threshold) {
+        const threshold = selectedItem.lowStockThreshold ?? 5;
+        // Don't notify if threshold is explicitly 0 (user disabled alerts, only bubble turns red)
+        if (data.type === 'Out' && selectedItem.lowStockThreshold !== 0 && newStockLevel <= threshold) {
           notifyLowStock(selectedItem.name, newStockLevel, threshold, selectedItem.unitOfMeasurement);
         }
       })

@@ -163,12 +163,12 @@ export default function StorePage() {
         (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
       )
       .sort((a, b) => {
-        // Low stock calculation (Threshold 0 means disabled)
-        const aThreshold = a.lowStockThreshold === 0 ? -1 : (a.lowStockThreshold ?? 5);
-        const bThreshold = b.lowStockThreshold === 0 ? -1 : (b.lowStockThreshold ?? 5);
+        // Low stock calculation (Threshold 0 means only alert at 0, no banners)
+        const aThreshold = a.lowStockThreshold ?? 5;
+        const bThreshold = b.lowStockThreshold ?? 5;
         
-        const aIsLow = aThreshold !== -1 && a.stockLevel <= aThreshold;
-        const bIsLow = bThreshold !== -1 && b.stockLevel <= bThreshold;
+        const aIsLow = a.stockLevel <= aThreshold;
+        const bIsLow = b.stockLevel <= bThreshold;
         
         // Prioritize low stock items
         if (aIsLow && !bIsLow) return -1;
@@ -453,8 +453,9 @@ export default function StorePage() {
         <TabsContent value="inventory" className="space-y-6">
            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
              {filteredItems.map(item => {
-               const threshold = item.lowStockThreshold === 0 ? -1 : (item.lowStockThreshold ?? 5);
-               const isLowStock = threshold !== -1 && item.stockLevel <= threshold;
+               const threshold = item.lowStockThreshold ?? 5;
+               const isLowStock = item.stockLevel <= threshold;
+               const showBanner = isLowStock && item.lowStockThreshold !== 0;
                
                return (
                  <Card key={item.id} className="overflow-hidden shadow-md group border-primary/5 transition-all">
@@ -501,7 +502,7 @@ export default function StorePage() {
                             </div>
                           </div>
                        </div>
-                       {isLowStock && (
+                       {showBanner && (
                           <div className="mt-4 bg-destructive/10 text-destructive text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-2">
                             <AlertTriangle className="h-3 w-3" /> LOW STOCK ALERT
                           </div>
