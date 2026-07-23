@@ -139,7 +139,7 @@ export function CategoryManager({ isOpen, setIsOpen }: CategoryManagerProps) {
                 onChange={(e) => setNewCategoryName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && (editingCategory ? handleUpdateCategory() : handleAddCategory())}
               />
-              <Button onClick={editingCategory ? handleUpdateCategory() : handleAddCategory} disabled={!newCategoryName.trim()}>
+              <Button onClick={editingCategory ? handleUpdateCategory : handleAddCategory} disabled={!newCategoryName.trim()}>
                 {editingCategory ? "Save" : <Plus className="h-4 w-4" />}
               </Button>
               {editingCategory && (
