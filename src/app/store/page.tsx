@@ -462,6 +462,7 @@ export default function StorePage() {
                                      <Badge variant="outline" className="text-[8px] h-3.5 py-0 px-1.5 uppercase font-black tracking-tight border-primary/20">
                                      {item.category}
                                      </Badge>
+                                     <span className="text-[10px] font-bold text-muted-foreground lowercase">{item.unitOfMeasurement}</span>
                                   </div>
                                   <div className="text-[10px] font-black text-primary mt-1">ETB {item.currentPrice?.toFixed(2) || "0.00"}</div>
                                </div>
@@ -514,7 +515,10 @@ export default function StorePage() {
                             )}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-sm truncate">{item.name}</h4>
+                            <h4 className="font-bold text-sm truncate">
+                                {item.name}
+                                <span className="ml-2 text-[9px] font-bold text-muted-foreground lowercase">{item.unitOfMeasurement}</span>
+                            </h4>
                             <div className="flex items-center gap-2 mt-1">
                               <Badge variant="secondary" className="text-[9px] h-4 py-0">{item.category}</Badge>
                               <span className="text-[10px] font-bold text-primary flex items-center gap-1">
@@ -561,7 +565,10 @@ export default function StorePage() {
                                   )}
                                 </div>
                               </TableCell>
-                              <TableCell className="font-bold">{item.name}</TableCell>
+                              <TableCell className="font-bold">
+                                {item.name}
+                                <span className="ml-2 text-[10px] font-bold text-muted-foreground lowercase">{item.unitOfMeasurement}</span>
+                              </TableCell>
                               <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
                               <TableCell className="text-right">
                                 <div className="flex items-center justify-end gap-2 text-primary font-black">

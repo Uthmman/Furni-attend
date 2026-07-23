@@ -283,7 +283,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                 name="quantity"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Quantity</FormLabel>
+                    <FormLabel>Quantity {selectedItem && <span className="text-muted-foreground font-normal lowercase">({selectedItem.unitOfMeasurement})</span>}</FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Input type="number" min="1" className="h-11" {...field} />
