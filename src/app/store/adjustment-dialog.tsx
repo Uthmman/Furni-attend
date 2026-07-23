@@ -287,9 +287,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                     <FormControl>
                       <div className="relative">
                         <Input type="number" min="1" className="h-11" {...field} />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground uppercase font-bold">
-                          {selectedItem?.unitOfMeasurement || "unit"}
-                        </span>
                       </div>
                     </FormControl>
                   </FormItem>

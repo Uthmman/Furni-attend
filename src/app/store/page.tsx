@@ -49,6 +49,7 @@ import {
   Image as ImageIcon,
   User,
   XCircle,
+  Clock,
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
@@ -587,76 +588,79 @@ export default function StorePage() {
         </TabsContent>
 
         <TabsContent value="history" className="space-y-6">
-          <Card className="shadow-lg border-primary/10 overflow-hidden">
-            <CardHeader className="bg-primary/5 border-b">
-              <CardTitle className="text-xl">Movement History</CardTitle>
-              <CardDescription className="hidden sm:block">Full audit trail of all quantity changes.</CardDescription>
-            </CardHeader>
-            <CardContent className="p-0">
-               <div className="flex flex-col">
-                  {groupedAdjustments && groupedAdjustments.length > 0 ? (
-                    groupedAdjustments.map((group) => (
-                      <div key={group.date} className="flex flex-col">
-                         <div className="bg-muted/50 px-6 py-2 border-y flex items-center gap-2">
-                            <Calendar className="h-3 w-3 text-muted-foreground" />
-                            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">{group.formatted}</span>
-                         </div>
-                         <div className="divide-y divide-dashed">
-                            {group.items.map((adj) => (
-                                <div key={adj.id} className="p-4 hover:bg-muted/10 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                    <div className="flex-1 min-w-0 flex items-start gap-3">
-                                        <div className={cn(
-                                            "mt-1 p-1.5 rounded-lg shrink-0",
-                                            adj.type === "In" ? "bg-green-100 text-green-700" : "bg-destructive/10 text-destructive"
-                                        )}>
-                                            {adj.type === "In" ? <PlusCircle className="h-4 w-4" /> : <MinusCircle className="h-4 w-4" />}
+           <div className="flex flex-col gap-6">
+              {groupedAdjustments && groupedAdjustments.length > 0 ? (
+                groupedAdjustments.map((group) => (
+                  <div key={group.date} className="space-y-4">
+                     <div className="flex items-center gap-3 px-1">
+                        <div className="h-px flex-1 bg-border" />
+                        <div className="flex items-center gap-2 bg-muted/40 px-3 py-1.5 rounded-full border shadow-sm">
+                           <Calendar className="h-3.5 w-3.5 text-primary" />
+                           <span className="text-[10px] font-black uppercase text-foreground tracking-widest">{group.formatted}</span>
+                        </div>
+                        <div className="h-px flex-1 bg-border" />
+                     </div>
+                     
+                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {group.items.map((adj) => (
+                            <Card key={adj.id} className="relative overflow-hidden group hover:shadow-md transition-all border-primary/5 bg-card/50">
+                                {/* Bubble on top */}
+                                <div className={cn(
+                                    "absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl font-black text-sm shadow-sm z-10 pointer-events-none transition-transform group-hover:scale-105",
+                                    adj.type === "In" ? "bg-green-600 text-white" : "bg-destructive text-white"
+                                )}>
+                                    {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
+                                    <span className="ml-1 text-[8px] uppercase tracking-tighter opacity-80">{adj.type === "In" ? "Restock" : "Usage"}</span>
+                                </div>
+
+                                <CardContent className="p-4 pt-5">
+                                    <div className="space-y-3">
+                                        <div className="pr-12">
+                                            <h4 className="font-bold text-sm line-clamp-1 group-hover:text-primary transition-colors">{adj.itemName}</h4>
+                                            <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground mt-0.5">
+                                                <Clock className="h-2.5 w-2.5" />
+                                                <span>{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "HH:mm") : ""}</span>
+                                            </div>
                                         </div>
-                                        <div className="flex flex-col min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <span className="font-bold text-sm truncate">{adj.itemName}</span>
-                                                <span className="text-[9px] text-muted-foreground/60 font-mono">{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "HH:mm") : ""}</span>
-                                            </div>
-                                            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1">
-                                                {adj.employeeName && (
-                                                    <div className="flex items-center gap-1 text-[9px] text-muted-foreground font-bold uppercase tracking-tight">
-                                                        <User className="h-2 w-2" /> {adj.employeeName}
+
+                                        <div className="flex flex-col gap-1.5 border-t border-dashed pt-3 mt-1">
+                                            {adj.employeeName && (
+                                                <div className="flex items-center gap-2 text-[10px] font-bold text-foreground">
+                                                    <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
+                                                       <User className="h-2.5 w-2.5 text-primary" />
                                                     </div>
-                                                )}
-                                                {adj.orderUniqueName && (
-                                                    <div className="flex items-center gap-1 text-[9px] text-primary font-black uppercase tracking-tight">
-                                                        <ShoppingBag className="h-2 w-2" /> {adj.orderUniqueName}
+                                                    <span className="truncate">{adj.employeeName}</span>
+                                                </div>
+                                            )}
+                                            {adj.orderUniqueName && (
+                                                <div className="flex items-center gap-2 text-[10px] font-black text-primary">
+                                                    <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center">
+                                                       <ShoppingBag className="h-2.5 w-2.5" />
                                                     </div>
-                                                )}
-                                            </div>
-                                            {adj.reason && (
-                                                <div className="mt-1 text-[11px] text-muted-foreground italic flex items-start gap-1.5 line-clamp-1">
-                                                   <History className="h-2.5 w-2.5 mt-0.5 shrink-0 opacity-40" /> {adj.reason}
+                                                    <span className="truncate uppercase tracking-tight">{adj.orderUniqueName}</span>
                                                 </div>
                                             )}
                                         </div>
+
+                                        {adj.reason && (
+                                            <div className="bg-muted/30 p-2 rounded-lg text-[10px] text-muted-foreground italic line-clamp-2 leading-relaxed">
+                                                &ldquo;{adj.reason}&rdquo;
+                                            </div>
+                                        )}
                                     </div>
-                                    <div className="flex items-center justify-between sm:justify-end gap-6 border-t sm:border-t-0 pt-2 sm:pt-0 border-dashed">
-                                        <div className="flex flex-col items-end">
-                                            <span className={cn("text-lg font-black tabular-nums leading-none", adj.type === "In" ? "text-green-600" : "text-destructive")}>
-                                                {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
-                                            </span>
-                                            <span className="text-[8px] text-muted-foreground uppercase font-black tracking-tighter mt-1">{adj.type === "In" ? "Restock" : "Production"}</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                         </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="p-20 text-center text-muted-foreground/40 flex flex-col items-center gap-3">
-                        <History className="h-10 w-10 opacity-20" />
-                        <p className="text-sm font-bold">No activity logs found</p>
-                    </div>
-                  )}
-               </div>
-            </CardContent>
-          </Card>
+                                </CardContent>
+                            </Card>
+                        ))}
+                     </div>
+                  </div>
+                ))
+              ) : (
+                <div className="p-20 text-center text-muted-foreground/40 flex flex-col items-center gap-3 bg-muted/10 rounded-3xl border border-dashed">
+                    <History className="h-10 w-10 opacity-20" />
+                    <p className="text-sm font-bold">No movement logs found</p>
+                </div>
+              )}
+           </div>
         </TabsContent>
 
         <TabsContent value="expenses" className="space-y-6">
