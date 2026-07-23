@@ -157,10 +157,22 @@ export default function StorePage() {
 
   const filteredItems = useMemo(() => {
     if (!items) return [];
-    return items.filter(item => 
-      item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
-    ).sort((a, b) => a.name.localeCompare(b.name));
+    return items
+      .filter(item => 
+        item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
+      )
+      .sort((a, b) => {
+        const aIsLow = a.stockLevel <= (a.lowStockThreshold || 5);
+        const bIsLow = b.stockLevel <= (b.lowStockThreshold || 5);
+        
+        // Prioritize low stock items
+        if (aIsLow && !bIsLow) return -1;
+        if (!aIsLow && bIsLow) return 1;
+        
+        // Secondary sort by name
+        return a.name.localeCompare(b.name);
+      });
   }, [items, searchQuery]);
 
   const groupedAdjustments = useMemo(() => {
