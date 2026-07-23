@@ -28,14 +28,20 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Item, Order, Employee } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
 import { doc, writeBatch, collection, arrayUnion } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
-import { ArrowUpRight, ArrowDownRight, ShoppingCart, ShoppingBag, User } from "lucide-react";
+import { ArrowUpRight, ArrowDownRight, ShoppingCart, ShoppingBag, User, Check, ChevronsUpDown, Search, Package } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notifyLowStock } from "@/app/payroll/actions";
 
@@ -79,6 +85,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const activeOrders = useMemo(() => allOrders?.filter(o => (o.status || "").toLowerCase() !== 'shipped').sort((a, b) => (a.uniqueName || "").localeCompare(b.uniqueName || "")) || [], [allOrders]);
   const activeEmployees = useMemo(() => allEmployees?.filter(e => e.status !== 'Inactive').sort((a, b) => a.name.localeCompare(b.name)) || [], [allEmployees]);
 
+  const [isItemPopoverOpen, setIsItemPopoverOpen] = useState(false);
+  const [itemSearchQuery, setItemSearchQuery] = useState("");
+
   const form = useForm<AdjustmentValues>({
     resolver: zodResolver(adjustmentSchema),
     defaultValues: {
@@ -97,6 +106,13 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const watchedItemId = form.watch("itemId");
   const selectedItem = items.find(i => i.id === watchedItemId);
   const currentType = form.watch("type");
+
+  const filteredItemsForSearch = useMemo(() => {
+    return items.filter(item => 
+      item.name.toLowerCase().includes(itemSearchQuery.toLowerCase()) ||
+      item.category.toLowerCase().includes(itemSearchQuery.toLowerCase())
+    ).sort((a, b) => a.name.localeCompare(b.name));
+  }, [items, itemSearchQuery]);
 
   useEffect(() => {
     if (selectedItem && currentType === 'In') {
@@ -117,6 +133,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
         orderId: "none",
         employeeId: "none",
       });
+      setItemSearchQuery("");
     }
   }, [isOpen, preSelectedItem, forcedType, form]);
 
@@ -170,7 +187,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     batch.update(itemRef, itemUpdate);
 
-    // Optimistic UI: Close immediately
     setIsOpen(false);
     onClose();
     toast({ 
@@ -208,18 +224,79 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
               control={form.control}
               name="itemId"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className="flex flex-col">
                   <FormLabel>Select Item</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value} disabled={!!preSelectedItem}>
-                    <FormControl>
-                      <SelectTrigger className="h-11">
-                        <SelectValue placeholder="Choose item..." />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {items.map(item => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={isItemPopoverOpen} onOpenChange={setIsItemPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <FormControl>
+                        <Button
+                          variant="outline"
+                          role="combobox"
+                          aria-expanded={isItemPopoverOpen}
+                          className={cn(
+                            "w-full justify-between h-11 bg-background font-normal",
+                            !field.value && "text-muted-foreground"
+                          )}
+                          disabled={!!preSelectedItem}
+                        >
+                          {field.value
+                            ? items.find((item) => item.id === field.value)?.name
+                            : "Search workshop supplies..."}
+                          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                        </Button>
+                      </FormControl>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                      <div className="flex flex-col">
+                        <div className="flex items-center border-b px-3 h-11">
+                          <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                          <input
+                            placeholder="Type item name or category..."
+                            className="flex h-full w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            value={itemSearchQuery}
+                            onChange={(e) => setItemSearchQuery(e.target.value)}
+                          />
+                        </div>
+                        <ScrollArea className="h-72">
+                          <div className="p-1">
+                            {filteredItemsForSearch.length > 0 ? (
+                              filteredItemsForSearch.map((item) => (
+                                <button
+                                  key={item.id}
+                                  type="button"
+                                  className={cn(
+                                    "relative flex w-full cursor-default select-none items-center rounded-sm py-2 px-3 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                                    field.value === item.id && "bg-accent/50 text-accent-foreground"
+                                  )}
+                                  onClick={() => {
+                                    form.setValue("itemId", item.id);
+                                    setIsItemPopoverOpen(false);
+                                    setItemSearchQuery("");
+                                  }}
+                                >
+                                  <div className="flex flex-col items-start gap-0.5 flex-1 text-left">
+                                    <span className="font-bold">{item.name}</span>
+                                    <span className="text-[10px] text-muted-foreground uppercase tracking-tight">{item.category} • {item.stockLevel} {item.unitOfMeasurement} in stock</span>
+                                  </div>
+                                  <Check
+                                    className={cn(
+                                      "ml-auto h-4 w-4",
+                                      field.value === item.id ? "opacity-100" : "opacity-0"
+                                    )}
+                                  />
+                                </button>
+                              ))
+                            ) : (
+                              <div className="py-6 text-center text-sm text-muted-foreground flex flex-col items-center gap-2">
+                                <Package className="h-8 w-8 opacity-20" />
+                                No matching supplies found.
+                              </div>
+                            )}
+                          </div>
+                        </ScrollArea>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                   <FormMessage />
                 </FormItem>
               )}
