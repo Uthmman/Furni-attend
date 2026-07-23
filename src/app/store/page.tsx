@@ -125,6 +125,7 @@ export default function StorePage() {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<"In" | "Out" | null>(null);
   
+  const [activeTab, setActiveTab] = useState("inventory");
   const [selectedCostMonth, setSelectedCostMonth] = useState<string>(format(new Date(), "yyyy-MM"));
 
   // Countdown Deletion State
@@ -405,17 +406,19 @@ export default function StorePage() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <Button variant="outline" className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsCategoryManagerOpen(true)}>
-            <Tag className="h-4 w-4" /> Manage Categories
-          </Button>
-          <Button className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsItemFormOpen(true)}>
-            <Plus className="h-4 w-4" /> Add Item
-          </Button>
-        </div>
+        {activeTab === "items" && (
+          <div className="flex items-center gap-2 w-full sm:w-auto animate-in fade-in slide-in-from-right-2 duration-300">
+            <Button variant="outline" className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsCategoryManagerOpen(true)}>
+              <Tag className="h-4 w-4" /> Manage Categories
+            </Button>
+            <Button className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsItemFormOpen(true)}>
+              <Plus className="h-4 w-4" /> Add Item
+            </Button>
+          </div>
+        )}
       </div>
 
-      <Tabs defaultValue="inventory" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center gap-1">
           <TabsTrigger value="inventory" className="flex items-center gap-2 px-3">
             <Package className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Stock</span>
