@@ -28,7 +28,7 @@ import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePe
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
-import { Plus, Sunrise, Sun, CheckCircle2, XCircle, Clock, Square, CheckSquare, MoreHorizontal } from "lucide-react";
+import { Plus, Sunrise, Sun, CheckCircle2, XCircle, Clock, Square, CheckSquare, MoreHorizontal, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -393,6 +393,21 @@ export default function AttendancePage() {
 
   const isSundayAndShouldBeDisabled = getDay(selectedDate) === 0 && selectedEmployeeDetails?.paymentMethod === 'Monthly';
 
+  // Overtime payment preview calculation
+  const calculatedHourlyRate = useMemo(() => {
+    if (!selectedEmployeeDetails) return 0;
+    if (selectedEmployeeDetails.hourlyRate) return selectedEmployeeDetails.hourlyRate;
+    if (selectedEmployeeDetails.paymentMethod === 'Weekly' && selectedEmployeeDetails.dailyRate) {
+      return selectedEmployeeDetails.dailyRate / 8;
+    }
+    if (selectedEmployeeDetails.paymentMethod === 'Monthly' && selectedEmployeeDetails.monthlyRate) {
+      return (selectedEmployeeDetails.monthlyRate / 23.625) / 8;
+    }
+    return 0;
+  }, [selectedEmployeeDetails]);
+
+  const overtimeAmount = (selectedEmployeeAttendance?.overtimeHours || 0) * calculatedHourlyRate;
+
   if (employeesLoading || isUserLoading) {
       return <div>Loading...</div>
   }
@@ -748,14 +763,29 @@ export default function AttendancePage() {
                   <DialogDescription>For {selectedEmployeeAttendance?.employeeName}</DialogDescription>
               </DialogHeader>
                <div className="grid gap-4 py-4">
-                  <Label htmlFor="overtime">Overtime Hours</Label>
+                  <div className="flex justify-between items-center">
+                    <Label htmlFor="overtime">Overtime Hours</Label>
+                    {overtimeAmount > 0 && (
+                      <div className="flex items-center gap-1 text-[11px] font-black text-primary animate-in fade-in slide-in-from-right-2 duration-300">
+                        <Wallet className="h-3 w-3" />
+                        + ETB {overtimeAmount.toFixed(2)}
+                      </div>
+                    )}
+                  </div>
                   <Input 
                       id="overtime"
                       type="number"
                       min="0"
+                      step="0.5"
+                      placeholder="Enter hours..."
                       value={selectedEmployeeAttendance?.overtimeHours || 0}
                       onChange={(e) => handleOvertimeInputChange(Number(e.target.value))}
                   />
+                  {calculatedHourlyRate > 0 && (
+                    <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter opacity-60">
+                      Rate: ETB {calculatedHourlyRate.toFixed(2)} / hour
+                    </p>
+                  )}
               </div>
               <DialogFooter>
                   <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
