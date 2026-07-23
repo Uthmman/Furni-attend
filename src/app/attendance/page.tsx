@@ -147,10 +147,12 @@ export default function AttendancePage() {
   
   const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
   const [isLateDialogOpen, setIsLateDialogOpen] = useState(false);
+  const [isBulkLateDialogOpen, setIsBulkLateDialogOpen] = useState(false);
   const [isOvertimeDialogOpen, setIsOvertimeDialogOpen] = useState(false);
   
   const [selectedEmployeeAttendance, setSelectedEmployeeAttendance] = useState<DailyAttendance | null>(null);
   const [lateDialogData, setLateDialogData] = useState<{ session: 'morning' | 'afternoon', time: string } | null>(null);
+  const [bulkLateData, setBulkLateData] = useState<{ session: 'morning' | 'afternoon' | 'both', time: string } | null>(null);
 
   useEffect(() => {
     setTitle("Log Attendance");
@@ -240,8 +242,14 @@ export default function AttendancePage() {
     }
   };
 
-  const handleBulkStatusUpdate = async (session: 'morning' | 'afternoon' | 'both', status: AttendanceStatus) => {
+  const handleBulkStatusUpdate = async (session: 'morning' | 'afternoon' | 'both', status: AttendanceStatus, lateTime?: string) => {
     if (selectedIds.size === 0 || !firestore) return;
+
+    if (status === 'Late' && !lateTime) {
+      setBulkLateData({ session, time: session === 'afternoon' ? '13:30' : '08:00' });
+      setIsBulkLateDialogOpen(true);
+      return;
+    }
 
     const isSunday = getDay(selectedDate) === 0;
     const toUpdate: DailyAttendance[] = [];
@@ -258,12 +266,12 @@ export default function AttendancePage() {
         
         if (session === 'morning' || session === 'both') {
           updated.morningStatus = status;
-          updated.morningEntry = (status === 'Present' || status === 'Permission') ? "08:00" : (status === 'Late' ? "08:30" : "");
+          updated.morningEntry = status === 'Late' ? (lateTime || "08:30") : ((status === 'Present' || status === 'Permission') ? "08:00" : "");
         }
         
         if (session === 'afternoon' || session === 'both') {
           updated.afternoonStatus = status;
-          updated.afternoonEntry = (status === 'Present' || status === 'Permission') ? "13:30" : (status === 'Late' ? "14:00" : "");
+          updated.afternoonEntry = status === 'Late' ? (lateTime || "14:00") : ((status === 'Present' || status === 'Permission') ? "13:30" : "");
         }
 
         if (updated.morningStatus === 'Absent' && updated.afternoonStatus === 'Absent') {
@@ -281,6 +289,8 @@ export default function AttendancePage() {
 
     await saveAttendanceBatch(toUpdate);
     setSelectedIds(new Set());
+    setIsBulkLateDialogOpen(false);
+    setBulkLateData(null);
   };
 
   const openAttendanceDialog = (employeeId: string) => {
@@ -475,6 +485,9 @@ export default function AttendancePage() {
                           <DropdownMenuSubContent>
                             <DropdownMenuItem onClick={() => handleBulkStatusUpdate('both', 'Present')}>
                                <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" /> Mark Both Present
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => handleBulkStatusUpdate('both', 'Late')}>
+                               <Clock className="mr-2 h-4 w-4 text-amber-500" /> Mark Both Late
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleBulkStatusUpdate('both', 'Absent')}>
                                <XCircle className="mr-2 h-4 w-4 text-destructive" /> Mark Both Absent
@@ -706,6 +719,28 @@ export default function AttendancePage() {
               <DialogFooter>
                   <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
                   <Button onClick={handleSaveLateTime}>Save Time</Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
+      <Dialog open={isBulkLateDialogOpen} onOpenChange={setIsBulkLateDialogOpen}>
+          <DialogContent className="sm:max-w-xs">
+              <DialogHeader>
+                  <DialogTitle>Enter Bulk Late Time</DialogTitle>
+                  <DialogDescription>Marking {selectedIds.size} employees late for {bulkLateData?.session === 'both' ? 'full day' : bulkLateData?.session === 'morning' ? 'morning' : 'afternoon'}.</DialogDescription>
+              </DialogHeader>
+              <div className="grid gap-4 py-4">
+                  <Label htmlFor="bulkLateTime">Common Entry Time</Label>
+                  <Input 
+                      id="bulkLateTime"
+                      type="time"
+                      value={bulkLateData?.time}
+                      onChange={(e) => setBulkLateData(prev => prev ? {...prev, time: e.target.value} : null)}
+                  />
+              </div>
+              <DialogFooter>
+                  <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
+                  <Button onClick={() => bulkLateData && handleBulkStatusUpdate(bulkLateData.session, 'Late', bulkLateData.time)}>Apply to Selected</Button>
               </DialogFooter>
           </DialogContent>
       </Dialog>
