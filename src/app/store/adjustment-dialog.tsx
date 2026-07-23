@@ -35,10 +35,10 @@ import {
 } from "@/components/ui/popover";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import type { Item, Order, Employee } from "@/lib/types";
+import type { Item, Order, Employee, StockAdjustment } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
-import { doc, writeBatch, collection, arrayUnion } from "firebase/firestore";
+import { doc, writeBatch, collection, arrayUnion, query, orderBy, limit } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
 import { 
@@ -58,7 +58,8 @@ import {
   Zap,
   Droplets,
   Layers,
-  Tag
+  Tag,
+  Store
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notifyLowStock } from "@/app/payroll/actions";
@@ -115,11 +116,28 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   }, [firestore, authUser]);
   const { data: allEmployees, isLoading: employeesLoading } = useCollection<Employee>(employeesCollectionRef);
 
+  // Fetch adjustments to get unique supplier names
+  const adjQuery = useMemoFirebase(() => {
+    if (!firestore || !authUser) return null;
+    return query(collection(firestore, "stockAdjustments"), orderBy("adjustmentDate", "desc"), limit(100));
+  }, [firestore, authUser]);
+  const { data: recentAdjustments } = useCollection<StockAdjustment>(adjQuery);
+
+  const uniqueSuppliers = useMemo(() => {
+    if (!recentAdjustments) return [];
+    const suppliers = recentAdjustments
+        .filter(a => a.type === 'In' && a.supplier)
+        .map(a => a.supplier as string);
+    return Array.from(new Set(suppliers)).sort((a, b) => a.localeCompare(b));
+  }, [recentAdjustments]);
+
   const activeOrders = useMemo(() => allOrders?.filter(o => (o.status || "").toLowerCase() !== 'shipped').sort((a, b) => (a.uniqueName || "").localeCompare(b.uniqueName || "")) || [], [allOrders]);
   const activeEmployees = useMemo(() => allEmployees?.filter(e => e.status !== 'Inactive').sort((a, b) => a.name.localeCompare(b.name)) || [], [allEmployees]);
 
   const [isItemPopoverOpen, setIsItemPopoverOpen] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState("");
+  
+  const [isSupplierPopoverOpen, setIsSupplierPopoverOpen] = useState(false);
 
   const form = useForm<AdjustmentValues>({
     resolver: zodResolver(adjustmentSchema),
@@ -139,6 +157,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const watchedItemId = form.watch("itemId");
   const selectedItem = items.find(i => i.id === watchedItemId);
   const currentType = form.watch("type");
+  const watchedSupplier = form.watch("supplier");
 
   const filteredItemsForSearch = useMemo(() => {
     return items.filter(item => 
@@ -146,6 +165,11 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       item.category.toLowerCase().includes(itemSearchQuery.toLowerCase())
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [items, itemSearchQuery]);
+
+  const filteredSuppliers = useMemo(() => {
+    if (!watchedSupplier) return uniqueSuppliers;
+    return uniqueSuppliers.filter(s => s.toLowerCase().includes(watchedSupplier.toLowerCase()));
+  }, [uniqueSuppliers, watchedSupplier]);
 
   useEffect(() => {
     if (selectedItem && currentType === 'In') {
@@ -436,9 +460,44 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                       control={form.control}
                       name="supplier"
                       render={({ field }) => (
-                        <FormItem>
+                        <FormItem className="flex flex-col">
                           <FormLabel className="text-xs">Supplier</FormLabel>
-                          <FormControl><Input placeholder="Supplier name" className="h-10 bg-background" {...field} /></FormControl>
+                          <Popover open={isSupplierPopoverOpen} onOpenChange={setIsSupplierPopoverOpen}>
+                             <PopoverTrigger asChild>
+                                <FormControl>
+                                    <div className="relative">
+                                        <Input 
+                                            placeholder="Supplier name" 
+                                            className="h-10 bg-background" 
+                                            {...field} 
+                                            onFocus={() => setIsSupplierPopoverOpen(true)}
+                                        />
+                                    </div>
+                                </FormControl>
+                             </PopoverTrigger>
+                             {filteredSuppliers.length > 0 && (
+                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
+                                    <ScrollArea className="h-40">
+                                        <div className="flex flex-col gap-0.5">
+                                            {filteredSuppliers.map(s => (
+                                                <button
+                                                    key={s}
+                                                    type="button"
+                                                    className="flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-accent rounded-md text-left transition-colors"
+                                                    onClick={() => {
+                                                        form.setValue("supplier", s);
+                                                        setIsSupplierPopoverOpen(false);
+                                                    }}
+                                                >
+                                                    <Store className="h-3 w-3 opacity-50" />
+                                                    {s}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </ScrollArea>
+                                </PopoverContent>
+                             )}
+                          </Popover>
                         </FormItem>
                       )}
                     />
