@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import {
   Card,
@@ -37,7 +37,7 @@ import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Employee } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone, Trash2, Edit, Calendar, UserMinus, Send, Loader2 } from "lucide-react";
+import { Copy, Phone, Trash2, Edit, Calendar, UserMinus, Send, Loader2, XCircle } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
@@ -223,6 +223,11 @@ export default function EmployeeProfilePage() {
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
   const [summaryText, setSummaryText] = useState("");
   const [isSending, setIsSending] = useState(false);
+
+  // Countdown Deletion State
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteCountdown, setDeleteCountdown] = useState(0);
+  const deleteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const employeeDocRef = useMemoFirebase(() => {
     if (!firestore || !employeeId || !user) return null;
@@ -543,14 +548,45 @@ export default function EmployeeProfilePage() {
       }
   };
 
-  const handleDelete = () => {
+  const handleStartDeletionCountdown = () => {
+    setIsDeleting(true);
+    setDeleteCountdown(3);
+    
+    const timer = setInterval(() => {
+      setDeleteCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          executeDelete();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    deleteTimerRef.current = timer;
+  };
+
+  const handleCancelDeletion = () => {
+    if (deleteTimerRef.current) {
+      clearInterval(deleteTimerRef.current);
+      deleteTimerRef.current = null;
+    }
+    setIsDeleting(false);
+    setDeleteCountdown(0);
+    toast({
+      title: "Deletion Cancelled",
+      description: "Employee record was not removed.",
+    });
+  };
+
+  const executeDelete = () => {
     if (!employeeId || !firestore) return;
 
     // Optimistic UI: Redirect immediately
     router.push("/employees");
     toast({
-      title: "Deleting Employee",
-      description: `${employee?.name} removal in progress...`,
+      title: "Deletion Complete",
+      description: `${employee?.name} has been removed.`,
     });
 
     deleteDoc(doc(firestore, "employees", employeeId as string))
@@ -562,10 +598,16 @@ export default function EmployeeProfilePage() {
         toast({
           variant: 'destructive',
           title: "Deletion Failed",
-          description: "Could not remove employee. Check permissions.",
+          description: "Could not remove employee from database.",
         });
       });
   };
+
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) clearInterval(deleteTimerRef.current);
+    };
+  }, []);
   
   const renderAttendanceBadge = (status: string) => {
     return (
@@ -640,17 +682,26 @@ export default function EmployeeProfilePage() {
           </AlertDialogTrigger>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+              <AlertDialogTitle>{isDeleting ? "Aborting Possible..." : "Final Confirmation"}</AlertDialogTitle>
               <AlertDialogDescription>
-                This action cannot be undone. This will permanently delete the
-                employee and all associated data.
+                {isDeleting 
+                  ? `Deleting ${employee.name} in ${deleteCountdown}s...` 
+                  : "This action cannot be undone. All personal attendance data for this employee will be lost."}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Cancel</AlertDialogCancel>
-              <AlertDialogAction onClick={handleDelete}>
-                Continue
-              </AlertDialogAction>
+              {isDeleting ? (
+                <Button variant="outline" onClick={handleCancelDeletion} className="gap-2 border-destructive text-destructive hover:bg-destructive/5">
+                  <XCircle className="h-4 w-4" /> Cancel Deletion
+                </Button>
+              ) : (
+                <>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <Button variant="destructive" onClick={handleStartDeletionCountdown}>
+                    Confirm Delete
+                  </Button>
+                </>
+              )}
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>

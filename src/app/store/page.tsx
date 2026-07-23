@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import {
@@ -48,6 +48,7 @@ import {
   Tag,
   Image as ImageIcon,
   User,
+  XCircle,
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
@@ -125,6 +126,11 @@ export default function StorePage() {
   
   const [selectedCostMonth, setSelectedCostMonth] = useState<string>(format(new Date(), "yyyy-MM"));
 
+  // Countdown Deletion State
+  const [itemToDelete, setItemToDelete] = useState<string | null>(null);
+  const [deleteCountdown, setDeleteCountdown] = useState(0);
+  const deleteTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
     setTitle("Store Management");
   }, [setTitle]);
@@ -199,19 +205,56 @@ export default function StorePage() {
     setIsAdjustmentOpen(true);
   };
 
-  const handleDeleteItem = async (e: React.MouseEvent, itemId: string) => {
+  const handleStartDeleteCountdown = (e: React.MouseEvent, itemId: string) => {
     e.stopPropagation();
+    setItemToDelete(itemId);
+    setDeleteCountdown(3);
+    
+    const timer = setInterval(() => {
+      setDeleteCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          executeDeleteItem(itemId);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    
+    deleteTimerRef.current = timer;
+  };
+
+  const handleCancelDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (deleteTimerRef.current) clearInterval(deleteTimerRef.current);
+    setItemToDelete(null);
+    setDeleteCountdown(0);
+    toast({ title: "Deletion Cancelled" });
+  };
+
+  const executeDeleteItem = async (itemId: string) => {
     if (!firestore) return;
+    setItemToDelete(null);
+    setDeleteCountdown(0);
+
+    toast({ title: "Item Deleted", description: "The supply record has been removed." });
+
     try {
         await deleteDoc(doc(firestore, "items", itemId));
-        toast({ title: "Item Removed", description: "The item has been deleted from the registry." });
     } catch (e) {
         errorEmitter.emit("permission-error", new FirestorePermissionError({ path: `items/${itemId}`, operation: 'delete' }));
     }
   };
 
+  useEffect(() => {
+    return () => {
+      if (deleteTimerRef.current) clearInterval(deleteTimerRef.current);
+    };
+  }, []);
+
   const renderPriceHistory = (item: Item) => {
     const history = (item.priceHistory || []).slice().reverse();
+    const isThisItemDeleting = itemToDelete === item.id;
     
     return (
       <div className="flex flex-col max-h-[400px] overflow-y-auto">
@@ -220,25 +263,35 @@ export default function StorePage() {
             <TrendingUp className="h-3 w-3" /> Supply Dashboard
           </p>
           <div className="flex gap-1">
-            <Button variant="outline" size="sm" className="h-8 text-[10px] font-bold gap-1 px-2" onClick={(e) => handleEditItem(e, item)}>
-              <Edit2 className="h-3 w-3" /> Edit
-            </Button>
+            {!isThisItemDeleting && (
+              <Button variant="outline" size="sm" className="h-8 text-[10px] font-bold gap-1 px-2" onClick={(e) => handleEditItem(e, item)}>
+                <Edit2 className="h-3 w-3" /> Edit
+              </Button>
+            )}
             <AlertDialog>
               <AlertDialogTrigger asChild>
-                <Button variant="outline" size="sm" className="h-8 text-[10px] font-bold gap-1 px-2 text-destructive hover:text-destructive border-destructive/20">
-                  <Trash2 className="h-3 w-3" /> Delete
-                </Button>
+                {!isThisItemDeleting ? (
+                  <Button variant="outline" size="sm" className="h-8 text-[10px] font-bold gap-1 px-2 text-destructive hover:text-destructive border-destructive/20">
+                    <Trash2 className="h-3 w-3" /> Delete
+                  </Button>
+                ) : (
+                  <Button variant="destructive" size="sm" className="h-8 text-[10px] font-bold gap-1 px-2" onClick={handleCancelDelete}>
+                    <XCircle className="h-3 w-3" /> Cancel ({deleteCountdown}s)
+                  </Button>
+                )}
               </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete {item.name}?</AlertDialogTitle>
-                  <AlertDialogDescription>This will remove the item from your registry. Historical movements will remain.</AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={(e) => handleDeleteItem(e, item.id)} className="bg-destructive hover:bg-destructive/90">Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
+              {!isThisItemDeleting && (
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you sure about deleting {item.name}?</AlertDialogTitle>
+                    <AlertDialogDescription>Removing this item from the registry won't delete past stock logs, but the item itself will be hidden.</AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Keep Item</AlertDialogCancel>
+                    <Button variant="destructive" onClick={(e) => handleStartDeleteCountdown(e, item.id)}>Start 3s Countdown</Button>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              )}
             </AlertDialog>
           </div>
         </div>
