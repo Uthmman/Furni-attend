@@ -185,7 +185,7 @@ export default function AttendancePage() {
   const handleDateSelect = useCallback((date: Date | undefined) => {
     if (!date) return;
     setSelectedDate(date);
-    setSelectedIds(new Set()); // Reset selection on date change
+    setSelectedIds(new Set()); 
   }, []);
 
   const saveAttendanceBatch = async (attendanceDataList: DailyAttendance[]) => {
@@ -212,16 +212,15 @@ export default function AttendancePage() {
     });
 
     try {
+        // SDK handles local optimistic state via real-time listeners.
+        // batch.commit() is non-blocking to the UI flow.
         await batch.commit();
-        toast({ title: attendanceDataList.length > 1 ? `${attendanceDataList.length} records updated!` : "Attendance saved!" });
-        setAttendance((prev) =>
-          prev.map((a) => {
-            const updated = attendanceDataList.find(u => u.employeeId === a.employeeId);
-            return updated ? updated : a;
-          })
-        );
       } catch(e) {
-        toast({ variant: 'destructive', title: "Save failed", description: "You don't have permission to perform this action." });
+        toast({ 
+          variant: 'destructive', 
+          title: "Save failed", 
+          description: "Database write error. Check your connection and permissions." 
+        });
       };
   };
 
@@ -258,39 +257,36 @@ export default function AttendancePage() {
       if (selectedIds.has(att.employeeId)) {
         const employee = employees.find(e => e.id === att.employeeId);
         const isMonthly = employee?.paymentMethod === 'Monthly';
-
-        // Skip monthly employees on Sunday
         if (isSunday && isMonthly) return;
 
         const updated = { ...att };
-        
         if (session === 'morning' || session === 'both') {
           updated.morningStatus = status;
           updated.morningEntry = status === 'Late' ? (lateTime || "08:30") : ((status === 'Present' || status === 'Permission') ? "08:00" : "");
         }
-        
         if (session === 'afternoon' || session === 'both') {
           updated.afternoonStatus = status;
           updated.afternoonEntry = status === 'Late' ? (lateTime || "14:00") : ((status === 'Present' || status === 'Permission') ? "13:30" : "");
         }
-
         if (updated.morningStatus === 'Absent' && updated.afternoonStatus === 'Absent') {
           updated.overtimeHours = 0;
         }
-
         toUpdate.push(updated);
       }
     });
 
     if (toUpdate.length === 0) {
-      toast({ variant: 'destructive', title: "No records updated", description: "Selected employees couldn't be updated (e.g. Monthly employees on Sunday)." });
+      toast({ variant: 'destructive', title: "No records updated", description: "Selected employees couldn't be updated." });
       return;
     }
 
-    await saveAttendanceBatch(toUpdate);
+    // Reset UI immediately for snappy feel
     setSelectedIds(new Set());
     setIsBulkLateDialogOpen(false);
     setBulkLateData(null);
+
+    // Save in background
+    saveAttendanceBatch(toUpdate);
   };
 
   const openAttendanceDialog = (employeeId: string) => {
@@ -345,9 +341,9 @@ export default function AttendancePage() {
           updatedAttendance.overtimeHours = 0;
       }
 
-      await saveAttendanceBatch([updatedAttendance]);
-      setSelectedEmployeeAttendance(updatedAttendance);
+      // Snappy UI: Close dialog first
       setIsAttendanceDialogOpen(false);
+      saveAttendanceBatch([updatedAttendance]);
   };
 
   const handleSaveLateTime = async () => {
@@ -362,11 +358,12 @@ export default function AttendancePage() {
         updatedAttendance.afternoonEntry = lateDialogData.time;
     }
     
-    await saveAttendanceBatch([updatedAttendance]);
-    
+    // Snappy UI: Close dialogs first
     setIsLateDialogOpen(false);
     setIsAttendanceDialogOpen(false);
     setLateDialogData(null);
+    
+    saveAttendanceBatch([updatedAttendance]);
     setSelectedEmployeeAttendance(null);
   };
   
@@ -378,9 +375,13 @@ export default function AttendancePage() {
 
   const handleSaveOvertime = async () => {
     if (!selectedEmployeeAttendance || !firestore) return;
-    await saveAttendanceBatch([selectedEmployeeAttendance]);
+    const data = { ...selectedEmployeeAttendance };
+    
+    // Snappy UI: Close immediately
     setIsOvertimeDialogOpen(false);
     setSelectedEmployeeAttendance(null);
+    
+    saveAttendanceBatch([data]);
   };
 
   const selectedEmployeeDetails: Employee | undefined = useMemo(() => {
@@ -432,7 +433,6 @@ export default function AttendancePage() {
                       <DropdownMenuLabel>Log Status for Selection</DropdownMenuLabel>
                       <DropdownMenuSeparator />
                       
-                      {/* AM Submenu */}
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger>
                           <Sunrise className="mr-2 h-4 w-4 text-orange-500" />
@@ -453,7 +453,6 @@ export default function AttendancePage() {
                         </DropdownMenuPortal>
                       </DropdownMenuSub>
 
-                      {/* PM Submenu */}
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger>
                           <Sun className="mr-2 h-4 w-4 text-amber-500" />
@@ -476,7 +475,6 @@ export default function AttendancePage() {
 
                       <DropdownMenuSeparator />
                       
-                      {/* Both Submenu */}
                       <DropdownMenuSub>
                         <DropdownMenuSubTrigger className="font-bold">
                           <span>Full Day</span>
@@ -585,7 +583,6 @@ export default function AttendancePage() {
           </div>
           {selectedEmployeeAttendance && (
             <div className="p-6 space-y-8">
-              {/* Morning Session */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
@@ -643,7 +640,6 @@ export default function AttendancePage() {
                 </div>
               </div>
 
-              {/* Afternoon Session */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 font-semibold text-sm uppercase tracking-wider text-muted-foreground">
@@ -727,7 +723,7 @@ export default function AttendancePage() {
           <DialogContent className="sm:max-w-xs">
               <DialogHeader>
                   <DialogTitle>Enter Bulk Late Time</DialogTitle>
-                  <DialogDescription>Marking {selectedIds.size} employees late for {bulkLateData?.session === 'both' ? 'full day' : bulkLateData?.session === 'morning' ? 'morning' : 'afternoon'}.</DialogDescription>
+                  <DialogDescription>Marking {selectedIds.size} employees late.</DialogDescription>
               </DialogHeader>
               <div className="grid gap-4 py-4">
                   <Label htmlFor="bulkLateTime">Common Entry Time</Label>
