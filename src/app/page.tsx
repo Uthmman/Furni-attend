@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useMemo, useEffect, useState } from 'react';
@@ -8,6 +7,7 @@ import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRigh
 import type { Employee, AttendanceRecord, Order } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfDay, endOfDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
+import { secondaryDb } from "@/firebase/secondary";
 import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PayrollHistoryChart } from './payroll/payroll-history-chart';
@@ -20,7 +20,6 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Progress } from "@/components/ui/progress";
-import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
 import { autoSendPayrollNotification } from './payroll/actions';
@@ -192,11 +191,11 @@ export default function DashboardPage() {
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
   const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
 
-  // Fetch Orders from primary database
+  // Fetch Orders from SECONDARY database
   const ordersCollectionRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return collection(firestore, "orders");
-  }, [firestore, user]);
+    if (!secondaryDb || !user) return null;
+    return collection(secondaryDb, "orders");
+  }, [user]);
   const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
 
   const todayAttendanceCollectionRef = useMemoFirebase(() => {

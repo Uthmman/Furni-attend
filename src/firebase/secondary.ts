@@ -1,4 +1,3 @@
-
 'use client';
 
 import { initializeApp, getApps } from "firebase/app";
@@ -8,6 +7,7 @@ import {
   persistentLocalCache, 
   persistentMultipleTabManager 
 } from "firebase/firestore";
+import { getAuth, signInAnonymously } from "firebase/auth";
 
 const secondaryFirebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_SECONDARY_FIREBASE_API_KEY,
@@ -19,22 +19,30 @@ const secondaryFirebaseConfig = {
   measurementId: process.env.NEXT_PUBLIC_SECONDARY_FIREBASE_MEASUREMENT_ID
 };
 
-function getSecondaryFirestore() {
+function getSecondaryInstance() {
   const appName = "secondary-orders-app";
   const apps = getApps();
   let app = apps.find(a => a.name === appName);
   
   if (!app) {
     app = initializeApp(secondaryFirebaseConfig, appName);
+    // Authenticate as anonymous to the secondary project to satisfy security rules
+    const auth = getAuth(app);
+    signInAnonymously(auth).catch(err => {
+      console.error("Secondary project anonymous auth failed:", err);
+    });
   }
   
+  let db;
   try {
-    return initializeFirestore(app, {
+    db = initializeFirestore(app, {
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
     });
   } catch (e) {
-    return getFirestore(app);
+    db = getFirestore(app);
   }
+
+  return db;
 }
 
-export const secondaryDb = getSecondaryFirestore();
+export const secondaryDb = getSecondaryInstance();

@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo } from "react";
@@ -20,7 +19,8 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { collection } from "firebase/firestore";
-import { useCollection, useMemoFirebase, useFirestore, useUser } from "@/firebase";
+import { useCollection, useMemoFirebase, useUser } from "@/firebase";
+import { secondaryDb } from "@/firebase/secondary";
 import { format, isValid } from "date-fns";
 import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer, PenTool, PlayCircle } from "lucide-react";
 import type { Order } from "@/lib/types";
@@ -28,7 +28,6 @@ import { cn } from "@/lib/utils";
 
 export default function OrdersPage() {
   const { setTitle } = usePageTitle();
-  const firestore = useFirestore();
   const { user } = useUser();
 
   useEffect(() => {
@@ -36,9 +35,9 @@ export default function OrdersPage() {
   }, [setTitle]);
 
   const ordersCollectionRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
-    return collection(firestore, "orders");
-  }, [firestore, user]);
+    if (!secondaryDb || !user) return null;
+    return collection(secondaryDb, "orders");
+  }, [user]);
 
   const { data: allOrders, isLoading } = useCollection<Order>(ordersCollectionRef);
 

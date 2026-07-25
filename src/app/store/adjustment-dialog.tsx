@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -38,6 +37,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Item, Order, Employee, StockAdjustment } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
+import { secondaryDb } from "@/firebase/secondary";
 import { doc, writeBatch, collection, arrayUnion, query, orderBy, limit } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
@@ -107,9 +107,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const { toast } = useToast();
 
   const ordersCollectionRef = useMemoFirebase(() => {
-    if (!firestore || !authUser) return null;
-    return collection(firestore, "orders");
-  }, [firestore, authUser]);
+    if (!secondaryDb || !authUser) return null;
+    return collection(secondaryDb, "orders");
+  }, [authUser]);
   const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
 
   const employeesCollectionRef = useMemoFirebase(() => {
