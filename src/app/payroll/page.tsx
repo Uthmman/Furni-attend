@@ -75,7 +75,6 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 };
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
-    // Robust search logic with noon-reference
     let date = new Date(ethYear + 7, ethMonth + 7, ethDay, 12, 0, 0);
     for (let i = 0; i < 60; i++) {
         const eth = toEthiopian(date);
@@ -115,13 +114,7 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
         return 0;
     }
 
-    if (getDay(recordDate) === 6) { // Saturday
-        if (record.morningStatus !== 'Absent') {
-             return 4.5;
-        }
-        return 0;
-    }
-    
+    // Removed hardcoded Saturday 4.5h cap to support 48h work weeks (session-based logic sums to 8h)
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
@@ -229,7 +222,6 @@ export default function PayrollPage() {
             return d < min ? d : min;
         }, new Date());
         
-        // Month Options
         const mOptions = [];
         let currentMonthStart = toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1);
         for(let i=0; i < 12; i++){
@@ -245,11 +237,10 @@ export default function PayrollPage() {
         setMonthOptions(mOptions);
         if (mOptions.length > 0) setSelectedMonth(new Date(mOptions[0]?.value));
 
-        // Week Options
         const wOptions = [];
-        let currentWeekStart = startOfWeek(today, { weekStartsOn: 0 }); // Sunday
+        let currentWeekStart = startOfWeek(today, { weekStartsOn: 0 }); 
         for(let i=0; i < 12; i++){
-            const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 }); // Saturday
+            const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 }); 
             if (weekEnd < earliestAttendance) break;
             const startDayEth = ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' });
             const endDayEth = ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -292,22 +283,15 @@ export default function PayrollPage() {
 
         relevantRecords.forEach(r => {
             minutesLate += calculateMinutesLate(r);
-            // Session-aware absence tracking for recorded absences
-            const isSaturday = getDay(getDateFromRecord(r.date)) === 6;
             if (r.morningStatus === 'Absent') hoursAbsent += 4.5;
-            if (!isSaturday && r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
+            if (r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
         });
 
         periodDays.forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
             if (!recordedDates.has(dayStr)) {
-                // Not recorded means absent
-                const isSunday = getDay(day) === 0;
-                const isSaturday = getDay(day) === 6;
-                if (!isSunday && !isSaturday) {
-                    hoursAbsent += 8;
-                } else if (isSaturday) {
-                    hoursAbsent += 4.5;
+                if (getDay(day) !== 0) {
+                    hoursAbsent += 8; // Both Saturday and weekdays are 8h absence if unrecorded
                 }
             }
         });
@@ -391,10 +375,8 @@ export default function PayrollPage() {
             if(recordDate > today) return;
 
             const recordDateStr = format(recordDate, 'yyyy-MM-dd');
-            const isSaturday = getDay(recordDate) === 6;
-
             if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr))) projectedHoursAbsent += 4.5;
-            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr)))) projectedHoursAbsent += 3.5;
+            if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr))) projectedHoursAbsent += 3.5;
             
             displayMinutesLate += calculateMinutesLate(r);
         });
@@ -403,10 +385,10 @@ export default function PayrollPage() {
         const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
 
         calculationPeriodDays.forEach(day => {
-            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { // Mon-Sat and up to today
+            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { 
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDatesForMonth.has(dayStr)) {
-                    projectedHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                    projectedHoursAbsent += 8; // Saturday is 8h in absence too
                 }
             }
         });

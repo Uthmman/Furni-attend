@@ -87,6 +87,11 @@ const calculateHoursWorked = (record: AttendanceRecord): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
 
+    if (getDay(recordDate) === 0) { // Sunday check
+        if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') return 8;
+        return 0;
+    }
+
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
@@ -181,7 +186,8 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
-    return weekdays + (saturdays * 0.5625);
+    // Saturdays are full units (8h)
+    return weekdays + saturdays;
 };
 
 const calculateMinutesLate = (record: AttendanceRecord): number => {
@@ -224,7 +230,6 @@ export default function EmployeeProfilePage() {
   const [summaryText, setSummaryText] = useState("");
   const [isSending, setIsSending] = useState(false);
 
-  // Countdown Deletion State
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteCountdown, setDeleteCountdown] = useState(0);
   const deleteTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -363,10 +368,9 @@ export default function EmployeeProfilePage() {
             let isAbsent = false;
             
             const recordDateStr = format(recordDate, 'yyyy-MM-dd');
-            const isSaturday = getDay(recordDate) === 6;
 
             let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
-            let afternoonIsUnpaidAbsence = !isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr)));
+            let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
 
             if (morningIsUnpaidAbsence) {
                 totalHoursAbsent += 4.5;
@@ -399,11 +403,7 @@ export default function EmployeeProfilePage() {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
                     const formattedDate = format(day, 'MMM d');
-                    if (getDay(day) === 6) { 
-                        totalHoursAbsent += 4.5;
-                    } else {
-                        totalHoursAbsent += 8;
-                    }
+                    totalHoursAbsent += 8; // Both Saturday and weekdays are 8h absence if unrecorded
                      if(!absentDates.includes(formattedDate)) {
                         absentDates.push(formattedDate);
                     }
@@ -462,10 +462,8 @@ export default function EmployeeProfilePage() {
               if (day >= employeeStartDate && day <= today) {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
-                    if(getDay(day) === 6){ // Saturday
-                        totalHoursAbsent += 4.5;
-                    } else if (getDay(day) !== 0) {
-                        totalHoursAbsent += 8;
+                    if (getDay(day) !== 0) {
+                        totalHoursAbsent += 8; // Non-sunday absences are 8h
                     }
                 }
               }
@@ -474,9 +472,8 @@ export default function EmployeeProfilePage() {
 
       filteredAttendance.forEach(record => {
           totalMinutesLate += calculateMinutesLate(record);
-          const isSaturday = getDay(getDateFromRecord(record.date)) === 6;
           if (record.morningStatus === 'Absent') totalHoursAbsent += 4.5;
-          if (!isSaturday && record.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
+          if (record.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
       });
       
       const baseAmount = totalHours * (currentHourlyRate || 0);
@@ -582,7 +579,6 @@ export default function EmployeeProfilePage() {
   const executeDelete = () => {
     if (!employeeId || !firestore) return;
 
-    // Optimistic UI: Redirect immediately
     router.push("/employees");
     toast({
       title: "Deletion Complete",

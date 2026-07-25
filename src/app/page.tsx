@@ -91,23 +91,17 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
-    return weekdays + (saturdays * 0.5625);
+    // Saturdays are now treated as full 8h workdays (1.0 unit)
+    return weekdays + saturdays;
 };
 
 const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
 
-    if (getDay(recordDate) === 0) {
+    if (getDay(recordDate) === 0) { // Is Sunday
         if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') {
              return 8; 
-        }
-        return 0;
-    }
-
-    if (getDay(recordDate) === 6) {
-        if (record.morningStatus !== 'Absent') {
-             return 4.5;
         }
         return 0;
     }
@@ -191,7 +185,6 @@ export default function DashboardPage() {
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
   const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
 
-  // Fetch Orders from SECONDARY database
   const ordersCollectionRef = useMemoFirebase(() => {
     if (!secondaryDb || !user) return null;
     return collection(secondaryDb, "orders");
@@ -205,7 +198,6 @@ export default function DashboardPage() {
 
   const { data: todayAttendance, loading: todayAttendanceLoading } = useCollection<AttendanceRecord>(todayAttendanceCollectionRef);
 
-  // loading state calculation
   const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading || ordersLoading;
 
   useEffect(() => {
@@ -265,7 +257,7 @@ export default function DashboardPage() {
     const daysInMonthCount = getEthiopianMonthDays(ethNow.year, ethNow.month);
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
     
-    const estWeekly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 7 : 0), 0);
+    const estWeekly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 6 : 0), 0);
     const estMonthly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : 0), 0);
 
     const actualWeekly = activeEmployees.reduce((acc, emp) => {
@@ -296,17 +288,16 @@ export default function DashboardPage() {
         const minutesLate = recordsInMonth.reduce((sum, r) => {
             const recordDate = getDateFromRecord(r.date);
             const dateStr = format(recordDate, 'yyyy-MM-dd');
-            const isSaturday = getDay(recordDate) === 6;
             
             if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
-            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) totalHoursAbsent += 3.5;
+            if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 3.5;
             
             return sum + calculateMinutesLate(r);
         }, 0);
 
         eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
             if (day >= empStartDate && getDay(day) !== 0 && !recordsInMonth.some(r => isSameDay(getDateFromRecord(r.date), day))) {
-                totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                totalHoursAbsent += 8; // All non-Sunday unrecorded days are 8h absences
             }
         });
 
@@ -319,7 +310,6 @@ export default function DashboardPage() {
     return { totalEmployees, onSiteToday: onSiteTodayCount, estWeekly, actualWeekly, estMonthly, actualMonthly };
   }, [activeEmployees, allAttendance]);
 
-  // Automated Notification Logic
   useEffect(() => {
     if (loading || !dashboardStats || allAttendance.length === 0 || !firestore) return;
 
@@ -328,14 +318,12 @@ export default function DashboardPage() {
         const ethNow = toEthiopian(now);
         const metadataRef = doc(firestore, 'metadata', 'payroll_notifications');
         
-        // --- Weekly Logic ---
         if (getDay(now) === 6 && now.getHours() >= 17) {
             const weekId = format(startOfWeek(now, { weekStartsOn: 0 }), 'yyyy-MM-dd');
             const weekEnd = endOfWeek(now, { weekStartsOn: 0 });
             const docId = `weekly_${weekId}`;
             const label = `${ethiopianDateFormatter(startOfWeek(now, { weekStartsOn: 0 }), { month: 'short', day: 'numeric' })} - ${ethiopianDateFormatter(weekEnd, { month: 'short', day: 'numeric', year: 'numeric' })}`;
             
-            // Check if already sent
             const docSnap = await getDoc(metadataRef);
             const notifiedData = docSnap.exists() ? docSnap.data() : {};
             if (notifiedData[docId]) return;
@@ -371,25 +359,17 @@ export default function DashboardPage() {
                             type: 'weekly',
                             periodId: weekId
                         }
-                    }, { merge: true }).catch(e => {
-                        errorEmitter.emit('permission-error', new FirestorePermissionError({
-                            path: metadataRef.path,
-                            operation: 'update',
-                            requestResourceData: { [docId]: { sentAt: new Date().toISOString() } }
-                        }));
-                    });
+                    }, { merge: true });
                 }
             }
         }
 
-        // --- Monthly Logic ---
         if (ethNow.day === 30) {
             const monthId = `${ethNow.year}-${ethNow.month}`;
             const docId = `monthly_${monthId}`;
             const monthStart = toGregorian(ethNow.year, ethNow.month, 1);
             const label = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethNow.year}`;
             
-            // Check if already sent
             const docSnap = await getDoc(metadataRef);
             const notifiedData = docSnap.exists() ? docSnap.data() : {};
             if (notifiedData[docId]) return;
@@ -421,13 +401,7 @@ export default function DashboardPage() {
                             type: 'monthly',
                             periodId: monthId
                         }
-                    }, { merge: true }).catch(e => {
-                        errorEmitter.emit('permission-error', new FirestorePermissionError({
-                            path: metadataRef.path,
-                            operation: 'update',
-                            requestResourceData: { [docId]: { sentAt: new Date().toISOString() } }
-                        }));
-                    });
+                    }, { merge: true });
                 }
             }
         }
@@ -468,15 +442,14 @@ export default function DashboardPage() {
                 records.forEach(r => {
                     const recordDate = getDateFromRecord(r.date);
                     const dateStr = format(recordDate, 'yyyy-MM-dd');
-                    const isSaturday = getDay(recordDate) === 6;
                     if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
-                    if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) hoursAbsent += 3.5;
+                    if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 3.5;
                     minutesLate += calculateMinutesLate(r);
                 });
 
                 eachDayOfInterval(monthInterval).forEach(day => {
                     if (day >= empStartDate && getDay(day) !== 0 && !records.some(r => isSameDay(getDateFromRecord(r.date), day))) {
-                        hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                        hoursAbsent += 8;
                     }
                 });
 
@@ -533,15 +506,14 @@ export default function DashboardPage() {
         
         eachDayOfInterval({ start: weekStart, end: weekEnd > today ? today : weekEnd }).forEach(day => {
             if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
-                hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                hoursAbsent += 8;
             }
         });
         
         records.forEach(r => {
             minutesLate += calculateMinutesLate(r);
-            const isSaturday = getDay(getDateFromRecord(r.date)) === 6;
             if (r.morningStatus === 'Absent') hoursAbsent += 4.5;
-            if (!isSaturday && r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
+            if (r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
         });
 
         return {
@@ -594,17 +566,15 @@ export default function DashboardPage() {
             if(recordDate > today) return;
 
             const dateStr = format(recordDate, 'yyyy-MM-dd');
-            const isSaturday = getDay(recordDate) === 6;
-
             if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
-            if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) hoursAbsent += 3.5;
+            if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 3.5;
             
             minutesLate += calculateMinutesLate(r);
         });
 
         eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
             if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
-                hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                hoursAbsent += 8;
             }
         });
 
@@ -658,13 +628,12 @@ export default function DashboardPage() {
                 const recordDate = getDateFromRecord(r.date);
                 if(recordDate > today) return;
                 const dateStr = format(recordDate, 'yyyy-MM-dd');
-                const isSaturday = getDay(recordDate) === 6;
                 if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
-                if (!isSaturday && (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr)))) hoursAbsent += 3.5;
+                if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 3.5;
                 minutesLate += calculateMinutesLate(r);
             });
             eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
-                if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) hoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) hoursAbsent += 8;
             });
             finalAmount = (base - ((hoursAbsent * hourly) + (minutesLate * minuteRate))) + (overtimeHours * hourly);
         } else {
@@ -752,7 +721,7 @@ export default function DashboardPage() {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
             amount = record ? (calculateHoursWorked(record) + (record.overtimeHours || 0)) * (hourly || 0) : (getDay(new Date(selectedDay)) === 0 ? (hourly || 0) * 8 : 0);
         } else {
-            const daily = (emp.monthlyRate || 0) / 23.625;
+            const daily = (emp.monthlyRate || 0) / (getMonthlyWorkingUnits(new Date(selectedDay), 30));
             amount = record ? daily : 0; 
         }
         return { 
@@ -1189,7 +1158,6 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
 
-        {/* Upcoming Orders Section */}
         <div className="space-y-4">
           <div className="flex items-center justify-between px-1">
             <div className="flex items-center gap-2">
@@ -1259,7 +1227,6 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
 
-        {/* Unified Total Section */}
         <Card className="shadow-lg border-primary/40 bg-primary/5">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
