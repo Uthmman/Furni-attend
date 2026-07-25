@@ -6,9 +6,9 @@ import { StatCard } from "@/components/stat-card";
 import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins, BarChart3, ShoppingBag, Timer, PackageSearch, ArrowRight } from "lucide-react";
 import type { Employee, AttendanceRecord, Order } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfDay, endOfDay } from "date-fns";
-import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
-import { collection, getDocs } from "firebase/firestore";
+import { collection, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PayrollHistoryChart } from './payroll/payroll-history-chart';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,7 +22,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { Progress } from "@/components/ui/progress";
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
-import { autoSendPayrollNotification } from './payroll/actions';
+import { sendAdminPayrollSummary } from './payroll/actions';
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) {
@@ -321,18 +321,25 @@ export default function DashboardPage() {
 
   // Automated Notification Logic
   useEffect(() => {
-    if (loading || !dashboardStats || allAttendance.length === 0) return;
+    if (loading || !dashboardStats || allAttendance.length === 0 || !firestore) return;
 
     const checkAutoNotifications = async () => {
         const now = new Date();
         const ethNow = toEthiopian(now);
+        const metadataRef = doc(firestore, 'metadata', 'payroll_notifications');
         
         // --- Weekly Logic ---
         if (getDay(now) === 6 && now.getHours() >= 17) {
             const weekId = format(startOfWeek(now, { weekStartsOn: 0 }), 'yyyy-MM-dd');
             const weekEnd = endOfWeek(now, { weekStartsOn: 0 });
+            const docId = `weekly_${weekId}`;
             const label = `${ethiopianDateFormatter(startOfWeek(now, { weekStartsOn: 0 }), { month: 'short', day: 'numeric' })} - ${ethiopianDateFormatter(weekEnd, { month: 'short', day: 'numeric', year: 'numeric' })}`;
             
+            // Check if already sent
+            const docSnap = await getDoc(metadataRef);
+            const notifiedData = docSnap.exists() ? docSnap.data() : {};
+            if (notifiedData[docId]) return;
+
             let weeklySummary = `📊 *Automatic Weekly Payroll Summary*\n`;
             weeklySummary += `📅 Period: ${label}\n\n`;
             
@@ -356,16 +363,37 @@ export default function DashboardPage() {
             weeklySummary += `*TOTAL PAYOUT: ETB ${total.toFixed(2)}*`;
             
             if (count > 0) {
-                autoSendPayrollNotification('weekly', weekId, weeklySummary);
+                const result = await sendAdminPayrollSummary(weeklySummary);
+                if (result.success) {
+                    setDoc(metadataRef, {
+                        [docId]: {
+                            sentAt: new Date().toISOString(),
+                            type: 'weekly',
+                            periodId: weekId
+                        }
+                    }, { merge: true }).catch(e => {
+                        errorEmitter.emit('permission-error', new FirestorePermissionError({
+                            path: metadataRef.path,
+                            operation: 'update',
+                            requestResourceData: { [docId]: { sentAt: new Date().toISOString() } }
+                        }));
+                    });
+                }
             }
         }
 
         // --- Monthly Logic ---
         if (ethNow.day === 30) {
             const monthId = `${ethNow.year}-${ethNow.month}`;
+            const docId = `monthly_${monthId}`;
             const monthStart = toGregorian(ethNow.year, ethNow.month, 1);
             const label = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethNow.year}`;
             
+            // Check if already sent
+            const docSnap = await getDoc(metadataRef);
+            const notifiedData = docSnap.exists() ? docSnap.data() : {};
+            if (notifiedData[docId]) return;
+
             let monthlySummary = `📊 *Automatic Monthly Payroll Summary*\n`;
             monthlySummary += `📅 Period: ${label}\n\n`;
             
@@ -385,14 +413,29 @@ export default function DashboardPage() {
             monthlySummary += `*TOTAL PAYOUT: ETB ${total.toFixed(2)}*`;
             
             if (count > 0) {
-                autoSendPayrollNotification('monthly', monthId, monthlySummary);
+                const result = await sendAdminPayrollSummary(monthlySummary);
+                if (result.success) {
+                    setDoc(metadataRef, {
+                        [docId]: {
+                            sentAt: new Date().toISOString(),
+                            type: 'monthly',
+                            periodId: monthId
+                        }
+                    }, { merge: true }).catch(e => {
+                        errorEmitter.emit('permission-error', new FirestorePermissionError({
+                            path: metadataRef.path,
+                            operation: 'update',
+                            requestResourceData: { [docId]: { sentAt: new Date().toISOString() } }
+                        }));
+                    });
+                }
             }
         }
     };
 
     const timer = setTimeout(checkAutoNotifications, 5000); 
     return () => clearTimeout(timer);
-  }, [dashboardStats, allAttendance, activeEmployees, loading]);
+  }, [dashboardStats, allAttendance, activeEmployees, loading, firestore]);
 
   const payrollHistory = useMemo(() => {
     if (!employees || allAttendance.length === 0) return [];
