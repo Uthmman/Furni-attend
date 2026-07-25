@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -37,15 +38,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Item, Order, Employee, StockAdjustment } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { secondaryDb } from "@/firebase/secondary";
 import { doc, writeBatch, collection, arrayUnion, query, orderBy, limit } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
 import { 
   ArrowUpRight, 
   ArrowDownRight, 
-  ShoppingCart, 
-  ShoppingBag, 
   User, 
   Check, 
   ChevronsUpDown, 
@@ -59,7 +57,8 @@ import {
   Droplets,
   Layers,
   Tag,
-  Store
+  Store,
+  ShoppingBag
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notifyLowStock } from "@/app/payroll/actions";
@@ -107,7 +106,10 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const { user: authUser } = useUser();
   const { toast } = useToast();
 
-  const ordersCollectionRef = useMemoFirebase(() => collection(secondaryDb, "orders"), []);
+  const ordersCollectionRef = useMemoFirebase(() => {
+    if (!firestore || !authUser) return null;
+    return collection(firestore, "orders");
+  }, [firestore, authUser]);
   const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
 
   const employeesCollectionRef = useMemoFirebase(() => {
@@ -116,7 +118,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   }, [firestore, authUser]);
   const { data: allEmployees, isLoading: employeesLoading } = useCollection<Employee>(employeesCollectionRef);
 
-  // Fetch adjustments to get unique supplier names
   const adjQuery = useMemoFirebase(() => {
     if (!firestore || !authUser) return null;
     return query(collection(firestore, "stockAdjustments"), orderBy("adjustmentDate", "desc"), limit(100));
@@ -136,7 +137,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
   const [isItemPopoverOpen, setIsItemPopoverOpen] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState("");
-  
   const [isSupplierPopoverOpen, setIsSupplierPopoverOpen] = useState(false);
 
   const form = useForm<AdjustmentValues>({
@@ -254,7 +254,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     batch.commit()
       .then(() => {
         const threshold = selectedItem.lowStockThreshold ?? 5;
-        // Don't notify if threshold is explicitly 0 (user disabled alerts, only bubble turns red)
         if (data.type === 'Out' && selectedItem.lowStockThreshold !== 0 && newStockLevel <= threshold) {
           notifyLowStock(selectedItem.name, newStockLevel, threshold, selectedItem.unitOfMeasurement);
         }
@@ -311,7 +310,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                           <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                           <input
                             placeholder="Type item name or category..."
-                            className="flex h-full w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                            className="flex h-full w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground"
                             value={itemSearchQuery}
                             onChange={(e) => setItemSearchQuery(e.target.value)}
                           />
@@ -324,7 +323,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                                   key={item.id}
                                   type="button"
                                   className={cn(
-                                    "relative flex w-full cursor-default select-none items-center rounded-sm py-2 px-3 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+                                    "relative flex w-full cursor-default select-none items-center rounded-sm py-2 px-3 text-sm outline-none hover:bg-accent hover:text-accent-foreground",
                                     field.value === item.id && "bg-accent/50 text-accent-foreground"
                                   )}
                                   onClick={() => {
@@ -424,9 +423,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                   <FormItem>
                     <FormLabel>Quantity {selectedItem && <span className="text-muted-foreground font-normal lowercase">({selectedItem.unitOfMeasurement})</span>}</FormLabel>
                     <FormControl>
-                      <div className="relative">
-                        <Input type="number" min="1" className="h-11" {...field} />
-                      </div>
+                      <Input type="number" min="1" className="h-11" {...field} />
                     </FormControl>
                   </FormItem>
                 )}
@@ -467,14 +464,12 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                           <Popover open={isSupplierPopoverOpen} onOpenChange={setIsSupplierPopoverOpen}>
                              <PopoverTrigger asChild>
                                 <FormControl>
-                                    <div className="relative">
-                                        <Input 
-                                            placeholder="Supplier name" 
-                                            className="h-10 bg-background" 
-                                            {...field} 
-                                            onFocus={() => setIsSupplierPopoverOpen(true)}
-                                        />
-                                    </div>
+                                    <Input 
+                                        placeholder="Supplier name" 
+                                        className="h-10 bg-background" 
+                                        {...field} 
+                                        onFocus={() => setIsSupplierPopoverOpen(true)}
+                                    />
                                 </FormControl>
                              </PopoverTrigger>
                              {filteredSuppliers.length > 0 && (

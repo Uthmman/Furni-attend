@@ -19,9 +19,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { secondaryDb } from "@/firebase/secondary";
 import { collection } from "firebase/firestore";
-import { useCollection, useMemoFirebase } from "@/firebase";
+import { useCollection, useMemoFirebase, useFirestore, useUser } from "@/firebase";
 import { format, isValid } from "date-fns";
 import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer, PenTool, PlayCircle } from "lucide-react";
 import type { Order } from "@/lib/types";
@@ -29,14 +28,17 @@ import { cn } from "@/lib/utils";
 
 export default function OrdersPage() {
   const { setTitle } = usePageTitle();
+  const firestore = useFirestore();
+  const { user } = useUser();
 
   useEffect(() => {
     setTitle("Orders Management");
   }, [setTitle]);
 
   const ordersCollectionRef = useMemoFirebase(() => {
-    return collection(secondaryDb, "orders");
-  }, []);
+    if (!firestore || !user) return null;
+    return collection(firestore, "orders");
+  }, [firestore, user]);
 
   const { data: allOrders, isLoading } = useCollection<Order>(ordersCollectionRef);
 
@@ -106,7 +108,7 @@ export default function OrdersPage() {
       <div className="flex h-[400px] w-full items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" />
-          <p className="text-sm font-medium text-muted-foreground">Fetching orders from registration system...</p>
+          <p className="text-sm font-medium text-muted-foreground">Fetching orders...</p>
         </div>
       </div>
     );

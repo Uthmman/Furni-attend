@@ -47,4 +47,4 @@ service cloud.firestore {
     }
   }
 }
-// Deployment Trigger Comment: Added rules for orders collection to resolve permission errors.
+// Deployment Trigger Comment: Forced redeploy to ensure orders collection rules are active on the primary database.

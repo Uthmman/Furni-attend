@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo, useEffect, useState } from 'react';
@@ -7,7 +8,6 @@ import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRigh
 import type { Employee, AttendanceRecord, Order } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfDay, endOfDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser } from "@/firebase";
-import { secondaryDb } from "@/firebase/secondary";
 import { collection, getDocs } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { PayrollHistoryChart } from './payroll/payroll-history-chart';
@@ -192,10 +192,11 @@ export default function DashboardPage() {
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
   const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
 
-  // Fetch Orders from secondary database
+  // Fetch Orders from primary database
   const ordersCollectionRef = useMemoFirebase(() => {
-    return collection(secondaryDb, "orders");
-  }, []);
+    if (!firestore || !user) return null;
+    return collection(firestore, "orders");
+  }, [firestore, user]);
   const { data: allOrders, isLoading: ordersLoading } = useCollection<Order>(ordersCollectionRef);
 
   const todayAttendanceCollectionRef = useMemoFirebase(() => {
@@ -205,7 +206,7 @@ export default function DashboardPage() {
 
   const { data: todayAttendance, loading: todayAttendanceLoading } = useCollection<AttendanceRecord>(todayAttendanceCollectionRef);
 
-  // loading state calculation moved high up to avoid ReferenceErrors
+  // loading state calculation
   const loading = employeesLoading || attendanceLoading || isUserLoading || todayAttendanceLoading || ordersLoading;
 
   useEffect(() => {
@@ -328,7 +329,6 @@ export default function DashboardPage() {
         const ethNow = toEthiopian(now);
         
         // --- Weekly Logic ---
-        // Payment Day: Saturday at 5:00 PM (17:00)
         if (getDay(now) === 6 && now.getHours() >= 17) {
             const weekId = format(startOfWeek(now, { weekStartsOn: 0 }), 'yyyy-MM-dd');
             const weekEnd = endOfWeek(now, { weekStartsOn: 0 });
@@ -362,7 +362,6 @@ export default function DashboardPage() {
         }
 
         // --- Monthly Logic ---
-        // Payment Day: 30th of Ethiopian Month
         if (ethNow.day === 30) {
             const monthId = `${ethNow.year}-${ethNow.month}`;
             const monthStart = toGregorian(ethNow.year, ethNow.month, 1);
@@ -392,7 +391,7 @@ export default function DashboardPage() {
         }
     };
 
-    const timer = setTimeout(checkAutoNotifications, 5000); // Wait 5s for calculations to settle
+    const timer = setTimeout(checkAutoNotifications, 5000); 
     return () => clearTimeout(timer);
   }, [dashboardStats, allAttendance, activeEmployees, loading]);
 
@@ -642,97 +641,6 @@ export default function DashboardPage() {
 
   const totalUnifiedMonthly = useMemo(() => unifiedMonthlyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [unifiedMonthlyPayroll]);
 
-  const weeklyExpenseData = useMemo(() => {
-    if (!selectedWeekStart || !employees || allAttendance.length === 0) return [];
-    const weekStart = startOfDay(new Date(selectedWeekStart));
-    const weekEnd = endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
-    const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
-
-    const ethMonthStart = toGregorian(toEthiopian(weekStart).year, toEthiopian(weekStart).month, 1);
-    const workingUnits = getMonthlyWorkingUnits(ethMonthStart, 30);
-
-    return daysInWeek.map(day => {
-        let dailyTotal = 0;
-        const dayStr = format(day, "yyyy-MM-dd");
-
-        employees.forEach(emp => {
-            let hourlyRate = 0;
-            if (emp.paymentMethod === 'Monthly') {
-                hourlyRate = (emp.monthlyRate || 0) / workingUnits / 8;
-            } else {
-                hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            }
-            
-            const record = allAttendance.find(r => r.employeeId === emp.id && format(getDateFromRecord(r.date), "yyyy-MM-dd") === dayStr);
-            if (record) {
-                dailyTotal += (calculateHoursWorked(record, emp.paymentMethod === 'Monthly') + (record.overtimeHours || 0)) * hourlyRate;
-            } else if (emp.paymentMethod === 'Weekly' && getDay(day) === 0) {
-                if (new Date(emp.attendanceStartDate || 0) <= day) dailyTotal += 8 * hourlyRate;
-            }
-        });
-
-        return { name: ethiopianDateFormatter(day, { weekday: 'short' }), total: Math.round(dailyTotal) };
-    });
-  }, [selectedWeekStart, employees, allAttendance]);
-
-  const monthlyExpenseData = useMemo(() => {
-    if (!selectedMonthStart || !employees || allAttendance.length === 0) return [];
-    const monthStart = startOfDay(new Date(selectedMonthStart));
-    const ethMonth = toEthiopian(monthStart);
-    const daysInMonthCount = getEthiopianMonthDays(ethMonth.year, ethMonth.month);
-    const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
-    const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
-    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
-
-    return daysInMonth.map(day => {
-        let dailyTotal = 0;
-        const dayStr = format(day, "yyyy-MM-dd");
-
-        employees.forEach(emp => {
-            let hourlyRate = 0;
-            if (emp.paymentMethod === 'Monthly') {
-                hourlyRate = (emp.monthlyRate || 0) / workingUnits / 8;
-            } else {
-                hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            }
-            
-            const record = allAttendance.find(r => r.employeeId === emp.id && format(getDateFromRecord(r.date), "yyyy-MM-dd") === dayStr);
-            if (record) {
-                dailyTotal += (calculateHoursWorked(record, emp.paymentMethod === 'Monthly') + (record.overtimeHours || 0)) * hourlyRate;
-            } else if (emp.paymentMethod === 'Weekly' && getDay(day) === 0) {
-                if (new Date(emp.attendanceStartDate || 0) <= day) dailyTotal += 8 * hourlyRate;
-            }
-        });
-
-        return { name: toEthiopian(day).day.toString(), total: Math.round(dailyTotal) };
-    });
-  }, [selectedMonthStart, employees, allAttendance]);
-
-
-  const dailyEarnings = useMemo(() => {
-    if (!employees || !selectedDay) return [];
-    
-    return employees.filter(e => e.status !== 'Inactive' || todayAttendance?.some(r => r.employeeId === e.id)).map(emp => {
-        const record = todayAttendance?.find(r => r.employeeId === emp.id);
-        let amount = 0;
-        if (emp.paymentMethod === 'Weekly') {
-            const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            amount = record ? (calculateHoursWorked(record) + (record.overtimeHours || 0)) * (hourly || 0) : (getDay(new Date(selectedDay)) === 0 ? (hourly || 0) * 8 : 0);
-        } else {
-            const daily = (emp.monthlyRate || 0) / 23.625;
-            amount = record ? daily : (getDay(new Date(selectedDay)) === 0 ? 0 : 0); 
-        }
-        return { 
-            employeeId: emp.id, name: emp.name, morning: record?.morningEntry || "—", afternoon: record?.afternoonEntry || "—",
-            status: record?.morningStatus || "Absent", amount, overtimeHours: record?.overtimeHours || 0
-        };
-    });
-  }, [employees, todayAttendance, selectedDay]);
-
-  const totalDailyEarnings = useMemo(() => dailyEarnings.reduce((acc, curr) => acc + curr.amount, 0), [dailyEarnings]);
-  const totalWeeklyPayroll = useMemo(() => weeklyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [weeklyPayroll]);
-  const totalMonthlyPayroll = useMemo(() => monthlyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [monthlyPayroll]);
-
   const weekOptions = useMemo(() => {
     const today = new Date();
     const currentWeekStr = format(startOfWeek(today, { weekStartsOn: 0 }), "yyyy-MM-dd");
@@ -792,6 +700,30 @@ export default function DashboardPage() {
     return isValid(d) ? format(d, "MMM d, yyyy") : "N/A";
   };
 
+  const dailyEarnings = useMemo(() => {
+    if (!employees || !selectedDay) return [];
+    
+    return employees.filter(e => e.status !== 'Inactive' || todayAttendance?.some(r => r.employeeId === e.id)).map(emp => {
+        const record = todayAttendance?.find(r => r.employeeId === emp.id);
+        let amount = 0;
+        if (emp.paymentMethod === 'Weekly') {
+            const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+            amount = record ? (calculateHoursWorked(record) + (record.overtimeHours || 0)) * (hourly || 0) : (getDay(new Date(selectedDay)) === 0 ? (hourly || 0) * 8 : 0);
+        } else {
+            const daily = (emp.monthlyRate || 0) / 23.625;
+            amount = record ? daily : 0; 
+        }
+        return { 
+            employeeId: emp.id, name: emp.name, morning: record?.morningEntry || "—", afternoon: record?.afternoonEntry || "—",
+            status: record?.morningStatus || "Absent", amount, overtimeHours: record?.overtimeHours || 0
+        };
+    });
+  }, [employees, todayAttendance, selectedDay]);
+
+  const totalDailyEarnings = useMemo(() => dailyEarnings.reduce((acc, curr) => acc + curr.amount, 0), [dailyEarnings]);
+  const totalWeeklyPayroll = useMemo(() => weeklyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [weeklyPayroll]);
+  const totalMonthlyPayroll = useMemo(() => monthlyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [monthlyPayroll]);
+
   if (loading) {
     return (
         <div className="flex h-full w-full items-center justify-center">
@@ -831,16 +763,12 @@ export default function DashboardPage() {
 
   const handlePrevDay = () => {
     const d = parse(selectedDay, "yyyy-MM-dd", new Date());
-    if (isValid(d)) {
-        handleGlobalDateSelect(addDays(d, -1));
-    }
+    if (isValid(d)) handleGlobalDateSelect(addDays(d, -1));
   };
 
   const handleNextDay = () => {
     const d = parse(selectedDay, "yyyy-MM-dd", new Date());
-    if (isValid(d)) {
-        handleGlobalDateSelect(addDays(d, 1));
-    }
+    if (isValid(d)) handleGlobalDateSelect(addDays(d, 1));
   };
 
   const attendancePercentage = dashboardStats.totalEmployees > 0 ? (dashboardStats.onSiteToday / dashboardStats.totalEmployees) * 100 : 0;
