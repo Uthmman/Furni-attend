@@ -40,6 +40,11 @@ service cloud.firestore {
     match /metadata/{docId} {
       allow read, write: if isAuthenticated();
     }
+
+    // Orders management
+    match /orders/{orderId} {
+      allow read, write: if isAuthenticated();
+    }
   }
 }
-// Deployment Trigger Comment: Updated rules to ensure categories and metadata access.
+// Deployment Trigger Comment: Added rules for orders collection to resolve permission errors.
