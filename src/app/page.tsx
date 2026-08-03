@@ -4,7 +4,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, HandCoins, Calendar as CalendarIcon, Wallet2 } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3 } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
@@ -157,8 +157,8 @@ const EmployeeCard = ({
     <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors">
         <CardContent className="p-4 space-y-4">
             <div className="flex justify-between items-start">
-                <Link href={`/employees/${employeeId}`} className="hover:underline decoration-primary/40 underline-offset-4">
-                    <h3 className="font-bold text-[#1e293b] text-base">{name}</h3>
+                <Link href={`/employees/${employeeId}`} className="group inline-flex items-center gap-1">
+                    <h3 className="font-bold text-[#1e293b] text-base group-hover:text-primary transition-colors underline decoration-transparent group-hover:decoration-primary/30 underline-offset-4">{name}</h3>
                 </Link>
                 {isToday ? (
                   <Badge 
@@ -566,50 +566,50 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8 pb-10">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard title="Active Team" value={activeEmployees.length} icon={<Users className="h-5 w-5 text-blue-600" />} />
-        <Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <StatCard title="Total Daily Cost" value={`ETB ${totalDailyEarnings.toLocaleString()}`} icon={<Wallet2 className="h-5 w-5 text-amber-600" />} />
+        <Card className="shadow-sm border-primary/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">On-site Today</CardTitle>
+            <CardTitle className="text-sm font-bold text-muted-foreground uppercase tracking-wider">On-site Today</CardTitle>
             <UserCheck className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="text-2xl font-bold">{dailyEarnings.filter(e => e.status !== 'Absent').length} / {activeEmployees.length}</div>
-            <Progress value={activeEmployees.length > 0 ? (dailyEarnings.filter(e => e.status !== 'Absent').length / activeEmployees.length) * 100 : 0} className="h-2" />
+            <div className="text-2xl font-black text-[#1e293b]">{dailyEarnings.filter(e => e.status !== 'Absent').length} / {activeEmployees.length}</div>
+            <Progress value={activeEmployees.length > 0 ? (dailyEarnings.filter(e => e.status !== 'Absent').length / activeEmployees.length) * 100 : 0} className="h-1.5" />
           </CardContent>
         </Card>
-        <StatCard title="Total Daily Cost" value={`ETB ${totalDailyEarnings.toLocaleString()}`} icon={<Wallet2 className="h-5 w-5 text-amber-600" />} />
-        <StatCard title="Unified Expenditure" value={`ETB ${unifiedMonthTotal.toLocaleString()}`} icon={<Wallet className="h-5 w-5 text-purple-600" />} />
+        <StatCard title="Weekly Est" value={`ETB ${weeklySummary.grandTotal.toLocaleString()}`} icon={<HandCoins className="h-5 w-5 text-blue-600" />} />
+        <StatCard title="Monthly Est" value={`ETB ${unifiedMonthTotal.toLocaleString()}`} icon={<BarChart3 className="h-5 w-5 text-purple-600" />} />
       </div>
 
-       <Card className="shadow-lg">
-            <CardHeader className="flex flex-row items-center justify-between border-b pb-6">
+       <Card className="shadow-lg border-none rounded-3xl overflow-hidden">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b bg-[#f8faff] py-6 px-8">
                 <div>
-                    <CardTitle className="text-xl">Detailed Overview</CardTitle>
-                    <CardDescription>Track payments and performance across periods</CardDescription>
+                    <CardTitle className="text-2xl font-black text-[#1e293b] tracking-tight font-headline">Detailed Overview</CardTitle>
+                    <CardDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Track payments and performance across periods</CardDescription>
                 </div>
                 <Popover>
                     <PopoverTrigger asChild>
-                        <Button variant="outline" className="h-10 px-4 flex items-center gap-2">
+                        <Button variant="outline" className="h-12 px-6 rounded-2xl border-2 flex items-center gap-3 bg-white hover:bg-[#f8faff] font-bold text-[#1e293b]">
                           <CalendarIcon className="h-4 w-4 text-primary" /> 
                           {ethiopianDateFormatter(new Date(selectedDay), { month: 'long', day: 'numeric', year: 'numeric' })}
                         </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="end">
+                    <PopoverContent className="w-auto p-0 border-none shadow-2xl rounded-3xl" align="end">
                       <Calendar mode="single" selected={new Date(selectedDay)} onSelect={(d) => d && setSelectedDay(format(d, "yyyy-MM-dd"))} initialFocus />
                     </PopoverContent>
                 </Popover>
             </CardHeader>
-            <CardContent className="pt-6">
+            <CardContent className="p-8">
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
-                    <TabsList className="grid w-full grid-cols-3 mb-8 h-12">
-                        <TabsTrigger value="today">Today</TabsTrigger>
-                        <TabsTrigger value="week">This Week</TabsTrigger>
-                        <TabsTrigger value="month">This Month</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-3 mb-10 h-14 p-1.5 bg-[#f1f5f9] rounded-2xl">
+                        <TabsTrigger value="today" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">Today</TabsTrigger>
+                        <TabsTrigger value="week" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">This Week</TabsTrigger>
+                        <TabsTrigger value="month" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">This Month</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="today" className="space-y-6">
-                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                             {dailyEarnings.map(item => (
                                 <EmployeeCard 
                                     key={item.employeeId}
@@ -632,15 +632,15 @@ export default function DashboardPage() {
                     </TabsContent>
 
                     <TabsContent value="week" className="space-y-6">
-                        <div className="flex justify-center mb-6">
+                        <div className="flex justify-center mb-8">
                             <Select value={selectedWeekStart} onValueChange={setSelectedWeekStart}>
-                                <SelectTrigger className="w-full max-w-sm"><SelectValue placeholder="Select week" /></SelectTrigger>
-                                <SelectContent>{periodOptions.weeks.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
+                                <SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#f8faff] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select week" /></SelectTrigger>
+                                <SelectContent className="rounded-2xl">{periodOptions.weeks.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                        {lazyLoading ? <div className="h-40 flex items-center justify-center"><Clock className="animate-spin h-6 w-6 text-primary" /></div> : (
-                            <div className="flex flex-col gap-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-primary" /><p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Compiling Week...</p></div> : (
+                            <div className="flex flex-col gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {weeklySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
                                         <EmployeeCard 
                                             key={emp.id}
@@ -657,24 +657,24 @@ export default function DashboardPage() {
                                         />
                                     ))}
                                 </div>
-                                <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-2xl p-8 text-center shadow-sm">
-                                    <p className="text-[10px] font-black text-[#9d174d] uppercase tracking-widest mb-1">TOTAL WEEKLY PAYROLL</p>
-                                    <p className="text-4xl font-black text-[#be185d]">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-3xl p-10 text-center shadow-sm">
+                                    <p className="text-[11px] font-black text-[#9d174d] uppercase tracking-[0.2em] mb-2">TOTAL WEEKLY PAYROLL</p>
+                                    <p className="text-5xl font-black text-[#be185d] tracking-tighter">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
                         )}
                     </TabsContent>
 
                     <TabsContent value="month" className="space-y-6">
-                        <div className="flex justify-center mb-6">
+                        <div className="flex justify-center mb-8">
                             <Select value={selectedMonthStart} onValueChange={setSelectedMonthStart}>
-                                <SelectTrigger className="w-full max-w-sm"><SelectValue placeholder="Select month" /></SelectTrigger>
-                                <SelectContent>{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
+                                <SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#f8faff] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select month" /></SelectTrigger>
+                                <SelectContent className="rounded-2xl">{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                         {lazyLoading ? <div className="h-40 flex items-center justify-center"><Clock className="animate-spin h-6 w-6 text-primary" /></div> : (
-                            <div className="flex flex-col gap-4">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                         {lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-primary" /><p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Compiling Month...</p></div> : (
+                            <div className="flex flex-col gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {monthlySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
                                         <EmployeeCard 
                                             key={emp.id}
@@ -691,9 +691,9 @@ export default function DashboardPage() {
                                         />
                                     ))}
                                 </div>
-                                <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-2xl p-8 text-center shadow-sm">
-                                    <p className="text-[10px] font-black text-[#9d174d] uppercase tracking-widest mb-1">TOTAL MONTHLY PAYROLL</p>
-                                    <p className="text-4xl font-black text-[#be185d]">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-3xl p-10 text-center shadow-sm">
+                                    <p className="text-[11px] font-black text-[#9d174d] uppercase tracking-[0.2em] mb-2">TOTAL MONTHLY PAYROLL</p>
+                                    <p className="text-5xl font-black text-[#be185d] tracking-tighter">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
                         )}
@@ -702,34 +702,39 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
 
-        <Card className="shadow-lg border-primary/40 bg-primary/5">
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                  <div className="bg-primary p-2.5 rounded-lg text-primary-foreground"><Wallet className="h-6 w-6" /></div>
+        <Card className="shadow-lg border-none bg-primary/5 rounded-3xl overflow-hidden">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-8 border-b border-primary/10">
+                <div className="flex items-center gap-4">
+                  <div className="bg-primary p-3.5 rounded-2xl text-primary-foreground shadow-lg shadow-primary/20"><Wallet className="h-7 w-7" /></div>
                   <div>
-                      <CardTitle className="text-xl">Historical Workshop Audit</CardTitle>
-                      <CardDescription>Consolidated monthly expense summary</CardDescription>
+                      <CardTitle className="text-2xl font-black text-[#1e293b] tracking-tight font-headline">Historical Workshop Audit</CardTitle>
+                      <CardDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Consolidated monthly expense summary</CardDescription>
                   </div>
                 </div>
-                <div className="w-full sm:w-[240px]">
+                <div className="w-full sm:w-[280px]">
                     <Select value={selectedUnifiedMonth} onValueChange={setSelectedUnifiedMonth}>
-                        <SelectTrigger className="h-10 bg-background"><SelectValue placeholder="Select month" /></SelectTrigger>
-                        <SelectContent>{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent>
+                        <SelectTrigger className="h-12 bg-white rounded-2xl border-none font-bold px-6 shadow-sm focus:ring-2 focus:ring-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
+                        <SelectContent className="rounded-2xl">{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent>
                     </Select>
                 </div>
             </CardHeader>
-            <CardContent className="flex justify-center py-10">
+            <CardContent className="flex justify-center py-16">
                 {unifiedLoading ? (
-                    <div className="flex flex-col items-center gap-2">
-                        <Clock className="animate-spin h-8 w-8 text-primary" />
-                        <p className="text-xs font-bold text-muted-foreground uppercase">Calculating Audit...</p>
+                    <div className="flex flex-col items-center gap-4">
+                        <Clock className="animate-spin h-10 w-10 text-primary opacity-40" />
+                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.3em]">Calculating Audit...</p>
                     </div>
                 ) : (
-                    <div className="text-center">
-                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Expenditure Total</p>
-                        <p className="text-5xl font-black text-primary tracking-tighter">
+                    <div className="text-center group">
+                        <p className="text-[11px] font-black text-muted-foreground/60 uppercase tracking-[0.4em] mb-4 group-hover:text-primary transition-colors">Expenditure Total</p>
+                        <p className="text-6xl sm:text-7xl font-black text-primary tracking-tighter drop-shadow-sm">
                             ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
+                        <div className="flex items-center justify-center gap-4 mt-8 opacity-20">
+                            <div className="h-[2px] w-12 bg-primary rounded-full" />
+                            <Wallet2 className="h-5 w-5 text-primary" />
+                            <div className="h-[2px] w-12 bg-primary rounded-full" />
+                        </div>
                     </div>
                 )}
             </CardContent>
@@ -737,4 +742,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
