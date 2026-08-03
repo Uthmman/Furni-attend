@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Employee, PayrollSettings, AttendanceRecord } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone, Trash2, Edit, Calendar, UserMinus, Send, Loader2, XCircle } from "lucide-react";
+import { Copy, Phone, Trash2, Edit, Calendar, UserMinus, Send, Loader2, XCircle, ChevronDown, ChevronUp, CopyIcon, CalendarDays } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
@@ -213,22 +213,40 @@ export default function EmployeeProfilePage() {
 
   const displayedHistory = useMemo(() => {
     if (!selectedPeriod || !employee) return [];
-    const startDate = startOfDay(new Date(selectedPeriod)); let interval;
+    const startDate = startOfDay(new Date(selectedPeriod));
+    let interval;
+    const today = startOfDay(new Date());
+
     if (employee.paymentMethod === 'Weekly') {
       const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
-      interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
+      const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
+      const actualEnd = weekEnd > today ? today : weekEnd;
+      interval = { start: startOfDay(weekStart), end: endOfDay(actualEnd) };
     } else {
       const ethDate = toEthiopian(startDate);
       const daysInMonthCount = getEthiopianMonthDays(ethDate.year, ethDate.month);
-      interval = { start: startOfDay(startDate), end: endOfDay(addDays(startDate, daysInMonthCount - 1)) };
+      const monthEnd = addDays(startDate, daysInMonthCount - 1);
+      const actualEnd = monthEnd > today ? today : monthEnd;
+      interval = { start: startOfDay(startDate), end: endOfDay(actualEnd) };
     }
-    const days = eachDayOfInterval(interval); const today = new Date();
+
+    const days = eachDayOfInterval(interval);
     const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
     return days.map(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
         const existingRecord = employeeAttendance.find(r => format(r.date, 'yyyy-MM-dd') === dateStr);
         if (existingRecord) return existingRecord;
-        return { id: dateStr, employeeId: employee.id, date: day.toISOString(), morningStatus: (day <= today && day >= employeeStartDate && getDay(day) !== 0) ? 'Absent' : 'Present', afternoonStatus: (day <= today && day >= employeeStartDate && getDay(day) !== 0) ? 'Absent' : 'Present', isVirtual: true } as any;
+        
+        const isSun = getDay(day) === 0;
+        return { 
+            id: dateStr, 
+            employeeId: employee.id, 
+            date: day.toISOString(), 
+            morningStatus: isSun ? '—' : (day >= employeeStartDate ? 'Absent' : 'Present'), 
+            afternoonStatus: isSun ? '—' : (day >= employeeStartDate ? 'Absent' : 'Present'), 
+            isVirtual: true,
+            isSunday: isSun
+        } as any;
     }).reverse();
   }, [employeeAttendance, selectedPeriod, employee]);
 
@@ -276,6 +294,8 @@ export default function EmployeeProfilePage() {
                 let pAbs = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dStr));
                 if (mAbs) totalHoursAbsent += 4.5;
                 if (pAbs && !isSat) totalHoursAbsent += 3.5;
+                
+                // Bonus for Saturday Afternoon
                 if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
                     otPayTotal += 3.5 * hourlyRateCalc * normalOTRate;
                     otHoursTotal += 3.5;
@@ -342,8 +362,9 @@ export default function EmployeeProfilePage() {
   if (!employee) return <div>Employee not found</div>;
 
   return (
-    <div className="flex flex-col gap-6 max-w-4xl mx-auto">
+    <div className="flex flex-col gap-6 max-w-4xl mx-auto pb-12">
        <EmployeeForm isOpen={isFormOpen} setIsOpen={setIsFormOpen} employee={employee} />
+       
        <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Payroll Summary</DialogTitle><DialogDescription>For {employee.name} covering {payrollData.periodLabel}</DialogDescription></DialogHeader>
@@ -358,168 +379,202 @@ export default function EmployeeProfilePage() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex justify-between items-center px-1">
-        <div className="flex items-center gap-4">
-            <Avatar className="w-14 h-14 text-xl border-2 border-primary/10 shadow-sm"><AvatarFallback className="bg-primary/5 text-primary font-black">{getInitials(employee.name)}</AvatarFallback></Avatar>
-            <div>
-                <h1 className="text-2xl font-black text-[#1e293b] tracking-tight">{employee.name}</h1>
-                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{employee.position}</p>
+      {/* Profile Card */}
+      <Card className="shadow-lg border-none overflow-hidden rounded-3xl">
+        <CardContent className="p-8">
+            <div className="flex justify-between items-start mb-10">
+                <div className="flex items-center gap-6">
+                    <Avatar className="w-20 h-20 text-2xl border-4 border-primary/5 bg-primary/5 shadow-inner">
+                        <AvatarFallback className="bg-transparent text-primary font-black text-3xl">{getInitials(employee.name)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                        <h1 className="text-3xl font-black text-[#1e293b] tracking-tight mb-1">{employee.name}</h1>
+                        <Badge className="bg-primary/10 text-primary hover:bg-primary/20 border-none font-black text-[10px] uppercase tracking-widest px-3 h-6 rounded-full">
+                            {employee.status || "Active"}
+                        </Badge>
+                    </div>
+                </div>
+                <div className="flex gap-2">
+                    <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full hover:bg-muted" onClick={() => setIsFormOpen(true)}><Edit className="h-4 w-4 text-muted-foreground" /></Button>
+                    <AlertDialog>
+                        <AlertDialogTrigger asChild><Button variant="ghost" size="icon" className="h-10 w-10 rounded-full text-destructive hover:bg-destructive/5"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger>
+                        <AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Delete Record?</AlertDialogTitle><AlertDialogDescription>This will remove {employee.name} permanently.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Keep</AlertDialogCancel><Button variant="destructive" onClick={() => { if(!firestore) return; deleteDoc(doc(firestore, "employees", employeeId as string)).then(() => router.push("/employees")); }}>Delete</Button></AlertDialogFooter></AlertDialogContent>
+                    </AlertDialog>
+                </div>
             </div>
-        </div>
-        <div className="flex gap-2">
-            <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" onClick={() => setIsFormOpen(true)}><Edit className="h-4 w-4 text-muted-foreground" /></Button>
-            <AlertDialog>
-            <AlertDialogTrigger asChild><Button variant="outline" size="icon" className="h-10 w-10 rounded-full border-destructive/20 hover:bg-destructive/5"><Trash2 className="h-4 w-4 text-destructive/70" /></Button></AlertDialogTrigger>
-            <AlertDialogContent>
-                <AlertDialogHeader><AlertDialogTitle>Final Confirmation</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. All data will be lost.</AlertDialogDescription></AlertDialogHeader>
-                <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><Button variant="destructive" onClick={() => { if(!firestore) return; deleteDoc(doc(firestore, "employees", employeeId as string)).then(() => router.push("/employees")); }}>Confirm Delete</Button></AlertDialogFooter>
-            </AlertDialogContent>
-            </AlertDialog>
-        </div>
-      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        <div className="lg:col-span-2 flex flex-col gap-6">
-            <Card className="shadow-lg border-none">
-                <CardHeader className="flex flex-row items-start justify-between pb-4">
-                    <div className="space-y-0.5">
-                        <h2 className="text-2xl font-black text-[#1e293b] tracking-tight font-headline">Payroll Summary</h2>
-                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">{payrollData.periodLabel}</p>
+            <div className="space-y-6">
+                <div className="flex items-center justify-between group">
+                    <span className="text-[13px] font-bold text-[#64748b]">Start Date</span>
+                    <div className="flex items-center gap-3 text-right">
+                        <div className="flex flex-col items-end">
+                            <span className="text-sm font-black text-[#1e293b]">{employee.attendanceStartDate ? format(new Date(employee.attendanceStartDate), "MMM d, yyyy") : "—"}</span>
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-tight">{employee.attendanceStartDate ? ethiopianDateFormatter(new Date(employee.attendanceStartDate), { day: 'numeric', month: 'long', year: 'numeric' }) : "—"}</span>
+                        </div>
+                        <CalendarDays className="h-4 w-4 text-muted-foreground/40" />
                     </div>
-                    <div className="flex gap-1">
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-muted/30"><Calendar className="h-3.5 w-3.5 text-muted-foreground" /></Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-56 p-2" align="end">
-                                <div className="space-y-1">
-                                    {periodOptions.map(option => (
-                                        <button 
-                                            key={option.value} 
-                                            onClick={() => setSelectedPeriod(option.value)}
-                                            className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", selectedPeriod === option.value ? "bg-primary text-primary-foreground" : "hover:bg-muted")}
-                                        >
-                                            {option.label}
-                                        </button>
-                                    ))}
-                                </div>
-                            </PopoverContent>
-                        </Popover>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-muted/30" onClick={handleViewSummary}><Copy className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-bold text-[#64748b]">Phone Number</span>
+                    <div className="flex items-center gap-3">
+                        <a href={`tel:${employee.phone}`} className="text-sm font-black text-[#1e293b] hover:text-primary transition-colors">{employee.phone}</a>
+                        <Phone className="h-4 w-4 text-muted-foreground/40" />
                     </div>
-                </CardHeader>
-                <CardContent className="space-y-5">
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-bold text-[#64748b]">Account Number</span>
+                    <div className="flex items-center gap-3">
+                        <span className="text-sm font-black text-[#1e293b] font-mono">{employee.accountNumber}</span>
+                        <button onClick={() => { copy(employee.accountNumber); toast({ title: "Copied!" }); }} className="text-muted-foreground/40 hover:text-primary"><CopyIcon className="h-4 w-4" /></button>
+                    </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-bold text-[#64748b]">Payment Method</span>
+                    <Badge variant="secondary" className="bg-[#f1f5f9] text-[#1e293b] font-black text-[10px] h-6 px-3">{employee.paymentMethod}</Badge>
+                </div>
+
+                <div className="flex items-center justify-between">
+                    <span className="text-[13px] font-bold text-[#64748b]">{employee.paymentMethod === 'Monthly' ? 'Monthly Rate' : 'Daily Rate'}</span>
+                    <span className="text-sm font-black text-[#1e293b]">ETB {employee.paymentMethod === 'Monthly' ? employee.monthlyRate : employee.dailyRate}</span>
+                </div>
+
+                <div className="pt-6 border-t border-dashed">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[13px] font-bold text-[#64748b]">Period Hourly Rate</span>
+                        <span className="text-sm font-black text-primary">ETB {payrollData.hourlyRate?.toFixed(2)}</span>
+                    </div>
+                </div>
+            </div>
+        </CardContent>
+      </Card>
+
+      {/* Select Period Card */}
+      <Card className="shadow-lg border-none rounded-3xl">
+        <CardContent className="p-8">
+            <h2 className="text-2xl font-black text-[#1e293b] tracking-tight font-headline mb-6">Select Period</h2>
+            <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="h-14 rounded-2xl bg-[#f8faff] border-none font-bold text-[#1e293b] px-6">
+                    <SelectValue placeholder="Select a period" />
+                </SelectTrigger>
+                <SelectContent className="rounded-2xl">
+                    {periodOptions.map(option => (
+                        <SelectItem key={option.value} value={option.value} className="font-bold py-3">{option.label}</SelectItem>
+                    ))}
+                </SelectContent>
+            </Select>
+        </CardContent>
+      </Card>
+
+      {/* Payroll Summary Card */}
+      <Card className="shadow-lg border-none rounded-3xl relative overflow-hidden">
+        <CardContent className="p-8">
+            <div className="flex justify-between items-start mb-8">
+                <div>
+                    <h2 className="text-2xl font-black text-[#1e293b] tracking-tight font-headline">Payroll Summary</h2>
+                    <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mt-1">{payrollData.periodLabel}</p>
+                </div>
+                <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full bg-muted/30" onClick={handleViewSummary}><CopyIcon className="h-4 w-4 text-muted-foreground" /></Button>
+            </div>
+
+            <div className="space-y-6">
+                <div className="space-y-1">
+                    <p className="text-[13px] font-bold text-[#64748b]">Base Salary</p>
+                    <p className="text-3xl font-black text-[#1e293b]">ETB {((payrollData.baseSalary || 0) || ( (payrollData.hours || 0) * (payrollData.hourlyRate || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                </div>
+
+                <div className="space-y-1">
+                    <p className="text-[13px] font-bold text-[#64748b]">Late Deduction ({payrollData.minutesLate} mins)</p>
+                    <p className="text-xl font-black text-amber-500">- ETB {payrollData.lateDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                </div>
+
+                <div className="space-y-1">
+                    <p className="text-[13px] font-bold text-[#64748b]">Absence Deduction ({payrollData.hoursAbsent?.toFixed(1)} hrs)</p>
+                    <p className="text-xl font-black text-red-500">- ETB {payrollData.absenceDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                </div>
+
+                {payrollData.overtimePay > 0 && (
                     <div className="space-y-1">
-                        <p className="text-[13px] font-black text-[#64748b] uppercase tracking-tighter">Base Salary</p>
-                        <p className="text-2xl font-black text-[#1e293b]">ETB {((payrollData.baseSalary || 0) || ( (payrollData.hours || 0) * (payrollData.hourlyRate || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        <p className="text-[13px] font-bold text-[#64748b]">Overtime Pay ({payrollData.overtimeHours?.toFixed(1)} hrs)</p>
+                        <p className="text-xl font-black text-blue-500">+ ETB {payrollData.overtimePay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                     </div>
+                )}
 
-                    {payrollData.lateDeduction > 0 && (
-                        <div className="space-y-1">
-                            <p className="text-[12px] font-bold text-[#64748b]">Late Deduction ({payrollData.minutesLate} mins)</p>
-                            <p className="text-lg font-black text-amber-600">- ETB {payrollData.lateDeduction.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                        </div>
-                    )}
+                <div className="pt-6 border-t-4 border-[#f8faff]">
+                    <p className="text-[13px] font-black text-primary uppercase tracking-widest mb-1">Net Salary</p>
+                    <p className="text-4xl font-black text-primary tracking-tighter">ETB {payrollData.totalAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                </div>
+            </div>
+        </CardContent>
+      </Card>
 
-                    {payrollData.absenceDeduction > 0 && (
-                        <div className="space-y-1">
-                            <p className="text-[12px] font-bold text-[#64748b]">Absence Deduction ({payrollData.hoursAbsent?.toFixed(1)} hrs)</p>
-                            <p className="text-lg font-black text-red-500">- ETB {payrollData.absenceDeduction.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                        </div>
-                    )}
-
-                    {payrollData.overtimePay > 0 && (
-                        <div className="space-y-1">
-                            <p className="text-[12px] font-bold text-[#64748b]">Overtime Pay ({payrollData.overtimeHours?.toFixed(1)} hrs)</p>
-                            <p className="text-lg font-black text-blue-500">+ ETB {payrollData.overtimePay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                        </div>
-                    )}
-
-                    <div className="space-y-1 pt-2 border-t border-dashed">
-                        <p className="text-[13px] font-black text-[#64748b] uppercase tracking-tighter">Net Salary</p>
-                        <p className="text-3xl font-black text-primary">ETB {payrollData.totalAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                    </div>
-                </CardContent>
-            </Card>
-
-            <Card className="shadow-lg border-none bg-muted/20">
-                <CardContent className="pt-6">
-                    <div className="grid gap-4">
-                        <div className="flex items-center justify-between"><p className="text-xs font-bold text-[#64748b] uppercase tracking-widest">Phone</p><a href={`tel:${employee.phone}`} className="flex items-center text-sm font-black text-primary">{employee.phone}</a></div>
-                        <div className="flex items-center justify-between"><p className="text-xs font-bold text-[#64748b] uppercase tracking-widest">Bank Account</p><p className="text-sm font-black text-[#1e293b]">{employee.accountNumber}</p></div>
-                        <div className="flex items-center justify-between"><p className="text-xs font-bold text-[#64748b] uppercase tracking-widest">Method</p><Badge variant="secondary" className="font-black text-[10px] h-6 px-3">{employee.paymentMethod}</Badge></div>
-                    </div>
-                </CardContent>
-            </Card>
-        </div>
-
-        <div className="lg:col-span-3">
-          <Card className="shadow-lg border-none overflow-hidden">
-            <CardHeader className="bg-[#f8faff] border-b border-blue-50 py-6">
-              <div className="space-y-0.5 text-center">
+      {/* Attendance History Card */}
+      <Card className="shadow-lg border-none rounded-3xl overflow-hidden">
+        <CardHeader className="bg-[#f8faff] border-b border-blue-50 py-8">
+            <div className="text-center">
                 <h2 className="text-2xl font-black text-[#1e293b] tracking-tight font-headline">Attendance History</h2>
-                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">{payrollData.periodLabel}</p>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-                <Table>
-                    <TableHeader className="bg-[#f8faff]/50">
-                        <TableRow>
-                            <TableHead className="text-[10px] font-black uppercase text-[#94a3b8] tracking-widest pl-6 py-4">Date</TableHead>
-                            <TableHead className="text-[10px] font-black uppercase text-[#94a3b8] tracking-widest py-4">Morning</TableHead>
-                            <TableHead className="text-[10px] font-black uppercase text-[#94a3b8] tracking-widest py-4 pr-6">Afternoon</TableHead>
-                        </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                    {displayedHistory.length > 0 ? (
-                        displayedHistory.map((record) => (
-                        <TableRow key={record.id} className={cn("hover:bg-muted/10 transition-colors", record.isVirtual && "opacity-60")}>
-                            <TableCell className="pl-6 py-4">
-                                <div className="flex flex-col">
-                                    <span className="font-bold text-sm text-[#1e293b]">{format(getDateFromRecord(record.date), 'EEE, MMM d')}</span>
-                                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-tight">{ethiopianDateFormatter(getDateFromRecord(record.date), { day: 'numeric', month: 'short' })}</span>
-                                </div>
-                            </TableCell>
-                            <TableCell className="py-4">
-                                <div className="flex items-center gap-2">
-                                    <Badge 
-                                        variant="outline" 
-                                        className={cn(
-                                            "px-2 h-6 text-[10px] font-black border-none", 
-                                            record.morningStatus === 'Present' ? "bg-[#dcfce7] text-[#166534]" : 
-                                            record.morningStatus === 'Late' ? "bg-[#fef3c7] text-[#92400e]" : 
-                                            record.morningStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : "bg-[#dbeafe] text-[#1e40af]"
-                                        )}
-                                    >
-                                        {record.morningStatus}
-                                    </Badge>
-                                </div>
-                            </TableCell>
-                            <TableCell className="py-4 pr-6">
-                                <div className="flex items-center gap-2">
-                                    <Badge 
-                                        variant="outline" 
-                                        className={cn(
-                                            "px-2 h-6 text-[10px] font-black border-none", 
-                                            record.afternoonStatus === 'Present' ? "bg-[#dcfce7] text-[#166534]" : 
-                                            record.afternoonStatus === 'Late' ? "bg-[#fef3c7] text-[#92400e]" : 
-                                            record.afternoonStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : "bg-[#dbeafe] text-[#1e40af]"
-                                        )}
-                                    >
-                                        {record.afternoonStatus}
-                                    </Badge>
-                                    {record.overtimeHours > 0 && <span className="text-[9px] text-primary font-black bg-primary/10 px-1.5 py-0.5 rounded-full">+{record.overtimeHours}h OT</span>}
-                                </div>
-                            </TableCell>
-                        </TableRow>
-                        ))
-                    ) : (<TableRow><TableCell colSpan={3} className="text-center h-24 font-bold text-muted-foreground">No records for this period.</TableCell></TableRow>)}
-                    </TableBody>
-                </Table>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest mt-1">{payrollData.periodLabel}</p>
+            </div>
+        </CardHeader>
+        <CardContent className="p-0">
+            <Table>
+                <TableHeader className="bg-[#f8faff]/50">
+                    <TableRow>
+                        <TableHead className="text-[10px] font-black uppercase text-[#94a3b8] tracking-[0.2em] pl-8 py-5">Date</TableHead>
+                        <TableHead className="text-[10px] font-black uppercase text-[#94a3b8] tracking-[0.2em] py-5">Morning</TableHead>
+                        <TableHead className="text-[10px] font-black uppercase text-[#94a3b8] tracking-[0.2em] py-5 pr-8">Afternoon</TableHead>
+                    </TableRow>
+                </TableHeader>
+                <TableBody>
+                {displayedHistory.length > 0 ? (
+                    displayedHistory.map((record) => (
+                    <TableRow key={record.id} className={cn("hover:bg-muted/5 transition-colors border-blue-50", record.isVirtual && "opacity-80")}>
+                        <TableCell className="pl-8 py-5">
+                            <div className="flex flex-col">
+                                <span className="font-black text-sm text-[#1e293b]">{format(getDateFromRecord(record.date), 'EEE, MMM d')}</span>
+                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">{ethiopianDateFormatter(getDateFromRecord(record.date), { day: 'numeric', month: 'short' })}</span>
+                            </div>
+                        </TableCell>
+                        <TableCell className="py-5">
+                            <div className="flex items-center gap-2">
+                                <Badge 
+                                    variant="outline" 
+                                    className={cn(
+                                        "px-2.5 h-6 text-[10px] font-black border-none rounded-md", 
+                                        record.morningStatus === 'Present' ? "bg-[#dcfce7] text-[#166534]" : 
+                                        record.morningStatus === 'Late' ? "bg-[#fef3c7] text-[#92400e]" : 
+                                        record.morningStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : "bg-muted text-muted-foreground/60"
+                                    )}
+                                >
+                                    {record.morningStatus}
+                                </Badge>
+                            </div>
+                        </TableCell>
+                        <TableCell className="py-5 pr-8">
+                            <div className="flex items-center gap-2">
+                                <Badge 
+                                    variant="outline" 
+                                    className={cn(
+                                        "px-2.5 h-6 text-[10px] font-black border-none rounded-md", 
+                                        record.afternoonStatus === 'Present' ? "bg-[#dcfce7] text-[#166534]" : 
+                                        record.afternoonStatus === 'Late' ? "bg-[#fef3c7] text-[#92400e]" : 
+                                        record.afternoonStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : "bg-muted text-muted-foreground/60"
+                                    )}
+                                >
+                                    {record.afternoonStatus}
+                                </Badge>
+                                {record.overtimeHours > 0 && <span className="text-[9px] text-primary font-black bg-primary/10 px-2 py-0.5 rounded-full">+{record.overtimeHours}h OT</span>}
+                            </div>
+                        </TableCell>
+                    </TableRow>
+                    ))
+                ) : (<TableRow><TableCell colSpan={3} className="text-center h-40 font-black text-muted-foreground/40 text-xs uppercase tracking-widest">No records available</TableCell></TableRow>)}
+                </TableBody>
+            </Table>
+        </CardContent>
+      </Card>
     </div>
   );
 }
