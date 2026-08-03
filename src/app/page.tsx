@@ -3,7 +3,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, HandCoins, Calendar as CalendarIcon, ChevronRight } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, HandCoins, Calendar as CalendarIcon, Wallet2 } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
@@ -11,7 +11,6 @@ import { collection, query, where, getDocs, doc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -236,7 +235,9 @@ export default function DashboardPage() {
   const activeEmployees = useMemo(() => allEmployees?.filter(e => e.status !== 'Inactive') || [], [allEmployees]);
 
   const [lazyAttendance, setLazyAttendance] = useState<AttendanceRecord[]>([]);
+  const [unifiedAttendance, setUnifiedAttendance] = useState<AttendanceRecord[]>([]);
   const [lazyLoading, setLazyLoading] = useState(false);
+  const [unifiedLoading, setUnifiedLoading] = useState(false);
   const [activeTab, setActiveTab] = useState("today");
 
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -300,6 +301,36 @@ export default function DashboardPage() {
     };
     if (activeEmployees.length > 0 && activeTab !== 'today') fetchLazyData();
   }, [activeTab, selectedWeekStart, selectedMonthStart, activeEmployees, firestore, user]);
+
+  useEffect(() => {
+    const fetchUnifiedData = async () => {
+        if (!firestore || !user || !selectedUnifiedMonth) return;
+        setUnifiedLoading(true);
+        try {
+            const start = startOfDay(new Date(selectedUnifiedMonth));
+            const eth = toEthiopian(start);
+            const end = endOfDay(addDays(start, getEthiopianMonthDays(eth.year, eth.month) - 1));
+            
+            const records: AttendanceRecord[] = [];
+            const fetchPromises = activeEmployees.map(async (emp) => {
+                const q = query(
+                    collection(firestore, 'employees', emp.id, 'attendance'), 
+                    where('date', '>=', start.toISOString()), 
+                    where('date', '<=', end.toISOString())
+                );
+                const snap = await getDocs(q);
+                snap.forEach(d => records.push({ ...d.data(), employeeId: emp.id } as AttendanceRecord));
+            });
+            await Promise.all(fetchPromises);
+            setUnifiedAttendance(records);
+        } catch (e) {
+            console.error("Unified fetch failed:", e);
+        } finally { 
+            setUnifiedLoading(false); 
+        }
+    };
+    if (activeEmployees.length > 0) fetchUnifiedData();
+  }, [selectedUnifiedMonth, activeEmployees, firestore, user]);
 
   const dashboardStats = useMemo(() => {
     const totalEmployees = activeEmployees.length;
@@ -477,6 +508,67 @@ export default function DashboardPage() {
     });
     return { data, grandTotal };
   }, [activeEmployees, lazyAttendance, selectedMonthStart, normalOTRate, sundayOTRate]);
+
+  const unifiedMonthTotal = useMemo(() => {
+    if (!selectedUnifiedMonth || activeEmployees.length === 0) return 0;
+    
+    const start = startOfDay(new Date(selectedUnifiedMonth));
+    const eth = toEthiopian(start);
+    const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
+    const units = getMonthlyWorkingUnits(start, daysInMonth);
+    const today = new Date();
+    
+    let totalExpenditure = 0;
+
+    activeEmployees.forEach(emp => {
+        const records = unifiedAttendance.filter(r => r.employeeId === emp.id);
+        const recordedDays = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        
+        if (emp.paymentMethod === 'Monthly') {
+            const baseSalary = emp.monthlyRate || 0;
+            const hourly = baseSalary / units / 8;
+            const minuteRate = hourly / 60;
+            
+            let otAmount = 0;
+            let totalDeduction = 0;
+            let lateMins = 0;
+
+            records.forEach(r => {
+                const d = getDateFromRecord(r.date);
+                const isSunday = getDay(d) === 0;
+                const isSaturday = getDay(d) === 6;
+
+                if (isSunday && (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')) {
+                    otAmount += 8 * hourly * sundayOTRate;
+                } else if (!isSunday) {
+                    if (r.morningStatus === 'Absent') totalDeduction += 4.5 * hourly;
+                    if (r.afternoonStatus === 'Absent' && !isSaturday) totalDeduction += 3.5 * hourly;
+                    lateMins += calculateMinutesLate(r);
+                }
+                if (r.overtimeHours) otAmount += r.overtimeHours * hourly * normalOTRate;
+            });
+
+            eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
+                if (day <= today && getDay(day) !== 0 && !recordedDays.has(format(day, 'yyyy-MM-dd'))) {
+                    totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
+                }
+            });
+
+            totalExpenditure += baseSalary - totalDeduction - (lateMins * minuteRate) + otAmount;
+
+        } else {
+            const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+            let empTotal = 0;
+
+            records.forEach(r => {
+                empTotal += (calculateHoursWorked(r) * (hourly || 0)) + ((r.overtimeHours || 0) * (hourly || 0) * normalOTRate);
+            });
+            totalExpenditure += empTotal;
+        }
+    });
+
+    return totalExpenditure;
+  }, [activeEmployees, unifiedAttendance, selectedUnifiedMonth, normalOTRate, sundayOTRate]);
 
   const handleGlobalDateSelect = (date: Date | undefined) => {
       if (date) {
@@ -667,10 +759,21 @@ export default function DashboardPage() {
                 </div>
             </CardHeader>
             <CardContent className="flex justify-center py-10">
-                <div className="text-center">
-                    <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Total Expenditure Estimate</p>
-                    <p className="text-5xl font-black text-primary tracking-tighter">ETB {dashboardStats.estMonthly.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                </div>
+                {unifiedLoading ? (
+                    <div className="flex flex-col items-center gap-2">
+                        <Clock className="animate-spin h-8 w-8 text-primary" />
+                        <p className="text-xs font-bold text-muted-foreground uppercase">Calculating Audit...</p>
+                    </div>
+                ) : (
+                    <div className="text-center">
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3 flex items-center justify-center gap-2">
+                            <Wallet2 className="h-3.5 w-3.5" /> Total Expenditure Audit
+                        </p>
+                        <p className="text-5xl font-black text-primary tracking-tighter">
+                            ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                    </div>
+                )}
             </CardContent>
         </Card>
     </div>
