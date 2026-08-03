@@ -152,9 +152,6 @@ export default function EmployeeProfilePage() {
   const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
   const [summaryText, setSummaryText] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteCountdown, setDeleteCountdown] = useState(0);
-  const deleteTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const employeeDocRef = useMemoFirebase(() => {
     if (!firestore || !employeeId || !user) return null;
@@ -270,9 +267,8 @@ export default function EmployeeProfilePage() {
             if (isSun) {
                 const isWorking = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
                 if (isWorking) {
-                    let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
-                    otPayTotal += sH * hourlyRateCalc * sundayOTRate;
-                    otHoursTotal += sH;
+                    otPayTotal += 8 * hourlyRateCalc * sundayOTRate;
+                    otHoursTotal += 8;
                 }
             } else {
                 let mAbs = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dStr));
@@ -298,7 +294,18 @@ export default function EmployeeProfilePage() {
 
       const absenceDeduction = totalHoursAbsent * hourlyRateCalc;
       const lateDeduction = recordsInPeriod.reduce((acc, r) => acc + calculateMinutesLate(r), 0) * minuteRate;
-      return { totalAmount: baseSalary - (absenceDeduction + lateDeduction) + otPayTotal, baseSalary, lateDeduction, absenceDeduction, hoursAbsent: totalHoursAbsent, minutesLate: recordsInPeriod.reduce((acc, r) => acc + calculateMinutesLate(r), 0), periodLabel: selectedPeriodLabel, overtimePay: otPayTotal, overtimeHours: otHoursTotal, hourlyRate: hourlyRateCalc };
+      return { 
+        totalAmount: baseSalary - (absenceDeduction + lateDeduction) + otPayTotal, 
+        baseSalary, 
+        lateDeduction, 
+        absenceDeduction, 
+        hoursAbsent: totalHoursAbsent, 
+        minutesLate: recordsInPeriod.reduce((acc, r) => acc + calculateMinutesLate(r), 0), 
+        periodLabel: selectedPeriodLabel, 
+        overtimePay: otPayTotal, 
+        overtimeHours: otHoursTotal, 
+        hourlyRate: hourlyRateCalc 
+      };
     } else {
       const hourly = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
       const weekStart = startOfWeek(new Date(selectedPeriod), { weekStartsOn: 0 });
@@ -316,12 +323,12 @@ export default function EmployeeProfilePage() {
     let msg = `💰 *Payroll Summary* for *${employee.name}*\n📅 Period: ${payrollData.periodLabel}\n\n`;
     if (employee.paymentMethod === 'Monthly') {
       msg += `Base Salary: ETB ${(payrollData.baseSalary || 0).toFixed(2)}\n`;
-      if ((payrollData.lateDeduction || 0) > 0) msg += `Late Deduction: - ETB ${(payrollData.lateDeduction || 0).toFixed(2)}\n`;
-      if ((payrollData.absenceDeduction || 0) > 0) msg += `Absence Deduction: - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
+      if ((payrollData.lateDeduction || 0) > 0) msg += `Late Deduction (${payrollData.minutesLate} mins): - ETB ${(payrollData.lateDeduction || 0).toFixed(2)}\n`;
+      if ((payrollData.absenceDeduction || 0) > 0) msg += `Absence Deduction (${payrollData.hoursAbsent?.toFixed(1)} hrs): - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
       if ((payrollData.overtimePay || 0) > 0) msg += `Overtime Pay (${payrollData.overtimeHours?.toFixed(1)} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
       msg += `--------------------\n*Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     } else {
-      msg += `Base Pay: ETB ${( (payrollData.hours || 0) * (payrollData.hourlyRate || 0)).toFixed(2)}\n`;
+      msg += `Base Pay (${payrollData.hours?.toFixed(1)} hrs): ETB ${( (payrollData.hours || 0) * (payrollData.hourlyRate || 0)).toFixed(2)}\n`;
       if ((payrollData.overtimePay || 0) > 0) msg += `Overtime Pay (${payrollData.overtimeHours} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
       msg += `--------------------\n*Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     }
@@ -330,11 +337,11 @@ export default function EmployeeProfilePage() {
 
   useEffect(() => { if (periodOptions.length > 0 && !selectedPeriod) setSelectedPeriod(periodOptions[0].value); }, [periodOptions, selectedPeriod]);
 
-  if (employeeLoading || attendanceLoading || isUserLoading) return <div>Loading...</div>
+  if (employeeLoading || attendanceLoading || isUserLoading) return <div className="h-screen w-full flex items-center justify-center"><Loader2 className="animate-spin h-8 w-8 text-primary" /></div>
   if (!employee) return <div>Employee not found</div>;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-6 max-w-4xl mx-auto">
        <EmployeeForm isOpen={isFormOpen} setIsOpen={setIsFormOpen} employee={employee} />
        <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
         <DialogContent>
@@ -350,90 +357,164 @@ export default function EmployeeProfilePage() {
         </DialogContent>
       </Dialog>
 
-      <div className="flex justify-end gap-2">
-        <Button variant="outline" onClick={() => setIsFormOpen(true)}><Edit className="mr-2 h-4 w-4" /> Edit</Button>
-        <AlertDialog>
-          <AlertDialogTrigger asChild><Button variant="destructive"><Trash2 className="mr-2 h-4 w-4" /> Delete</Button></AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader><AlertDialogTitle>Final Confirmation</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. All data will be lost.</AlertDialogDescription></AlertDialogHeader>
-            <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><Button variant="destructive" onClick={() => { if(!firestore) return; deleteDoc(doc(firestore, "employees", employeeId as string)).then(() => router.push("/employees")); }}>Confirm Delete</Button></AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+      <div className="flex justify-between items-center px-1">
+        <div className="flex items-center gap-4">
+            <Avatar className="w-14 h-14 text-xl border-2 border-primary/10 shadow-sm"><AvatarFallback className="bg-primary/5 text-primary font-black">{getInitials(employee.name)}</AvatarFallback></Avatar>
+            <div>
+                <h1 className="text-2xl font-black text-[#1e293b] tracking-tight">{employee.name}</h1>
+                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">{employee.position}</p>
+            </div>
+        </div>
+        <div className="flex gap-2">
+            <Button variant="outline" size="icon" className="h-10 w-10 rounded-full" onClick={() => setIsFormOpen(true)}><Edit className="h-4 w-4 text-muted-foreground" /></Button>
+            <AlertDialog>
+            <AlertDialogTrigger asChild><Button variant="outline" size="icon" className="h-10 w-10 rounded-full border-destructive/20 hover:bg-destructive/5"><Trash2 className="h-4 w-4 text-destructive/70" /></Button></AlertDialogTrigger>
+            <AlertDialogContent>
+                <AlertDialogHeader><AlertDialogTitle>Final Confirmation</AlertDialogTitle><AlertDialogDescription>This action cannot be undone. All data will be lost.</AlertDialogDescription></AlertDialogHeader>
+                <AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><Button variant="destructive" onClick={() => { if(!firestore) return; deleteDoc(doc(firestore, "employees", employeeId as string)).then(() => router.push("/employees")); }}>Confirm Delete</Button></AlertDialogFooter>
+            </AlertDialogContent>
+            </AlertDialog>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-1 flex flex-col gap-6">
-           <Card>
-            <Accordion type="single" collapsible className="w-full">
-              <AccordionItem value="item-1" className="border-b-0">
-                <AccordionTrigger className="p-6 hover:no-underline">
-                  <div className="flex items-center gap-4 text-left w-full">
-                      <Avatar className="w-20 h-20 text-3xl"><AvatarFallback>{getInitials(employee.name)}</AvatarFallback></Avatar>
-                      <div><CardTitle>{employee.name}</CardTitle><Badge variant="secondary" className="mt-1">{employee.position}</Badge></div>
-                  </div>
-                </AccordionTrigger>
-                <AccordionContent>
-                  <CardContent className="text-sm pt-0">
-                    <div className="grid gap-4">
-                        <div className="flex items-center justify-between"><p className="font-semibold">Phone</p><a href={`tel:${employee.phone}`} className="flex items-center text-primary"><Phone className="mr-2 h-3 w-3" />{employee.phone}</a></div>
-                        <div className="flex items-center justify-between"><p className="font-semibold">Account</p><p className="text-muted-foreground">{employee.accountNumber}</p></div>
-                        <div className="flex items-center justify-between"><p className="font-semibold">Method</p><Badge variant="outline">{employee.paymentMethod}</Badge></div>
-                        <div className="flex items-center justify-between border-t pt-2 mt-2"><p className="font-semibold">Hourly Rate</p><p className="text-primary font-bold">ETB {payrollData.hourlyRate?.toFixed(2) || "N/A"}</p></div>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+        <div className="lg:col-span-2 flex flex-col gap-6">
+            <Card className="shadow-lg border-none">
+                <CardHeader className="flex flex-row items-start justify-between pb-4">
+                    <div className="space-y-0.5">
+                        <h2 className="text-2xl font-black text-[#1e293b] tracking-tight font-headline">Payroll Summary</h2>
+                        <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">{payrollData.periodLabel}</p>
                     </div>
-                  </CardContent>
-                </AccordionContent>
-              </AccordionItem>
-            </Accordion>
-          </Card>
-          
-           <Card>
-              <CardHeader><CardTitle>Select Period</CardTitle></CardHeader>
-              <CardContent>
-                <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                    <SelectTrigger><SelectValue placeholder="Select a period" /></SelectTrigger>
-                    <SelectContent>{periodOptions.map(option => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                </Select>
-              </CardContent>
-            </Card>
-          
-           <Card>
-                <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <div><CardTitle>Summary</CardTitle><CardDescription>{payrollData.periodLabel}</CardDescription></div>
-                    <Button variant="outline" size="icon" onClick={handleViewSummary}><Copy className="h-4 w-4" /></Button>
+                    <div className="flex gap-1">
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-muted/30"><Calendar className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-56 p-2" align="end">
+                                <div className="space-y-1">
+                                    {periodOptions.map(option => (
+                                        <button 
+                                            key={option.value} 
+                                            onClick={() => setSelectedPeriod(option.value)}
+                                            className={cn("w-full text-left px-3 py-2 text-xs font-bold rounded-lg transition-colors", selectedPeriod === option.value ? "bg-primary text-primary-foreground" : "hover:bg-muted")}
+                                        >
+                                            {option.label}
+                                        </button>
+                                    ))}
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full bg-muted/30" onClick={handleViewSummary}><Copy className="h-3.5 w-3.5 text-muted-foreground" /></Button>
+                    </div>
                 </CardHeader>
-                <CardContent className="grid gap-4 pt-4">
-                    <div className="flex justify-between"><span>Base Amount:</span><span className="font-bold">ETB {((payrollData.baseSalary || 0) || ( (payrollData.hours || 0) * (payrollData.hourlyRate || 0))).toFixed(2)}</span></div>
-                    {payrollData.overtimePay > 0 && <div className="flex justify-between text-primary"><span>Overtime:</span><span>+ ETB {payrollData.overtimePay.toFixed(2)}</span></div>}
-                    {payrollData.absenceDeduction > 0 && <div className="flex justify-between text-destructive"><span>Absence:</span><span>- ETB {payrollData.absenceDeduction.toFixed(2)}</span></div>}
-                    <div className="border-t pt-2 flex justify-between text-xl font-black text-primary"><span>Total:</span><span>ETB {payrollData.totalAmount?.toFixed(2)}</span></div>
+                <CardContent className="space-y-5">
+                    <div className="space-y-1">
+                        <p className="text-[13px] font-black text-[#64748b] uppercase tracking-tighter">Base Salary</p>
+                        <p className="text-2xl font-black text-[#1e293b]">ETB {((payrollData.baseSalary || 0) || ( (payrollData.hours || 0) * (payrollData.hourlyRate || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    </div>
+
+                    {payrollData.lateDeduction > 0 && (
+                        <div className="space-y-1">
+                            <p className="text-[12px] font-bold text-[#64748b]">Late Deduction ({payrollData.minutesLate} mins)</p>
+                            <p className="text-lg font-black text-amber-600">- ETB {payrollData.lateDeduction.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        </div>
+                    )}
+
+                    {payrollData.absenceDeduction > 0 && (
+                        <div className="space-y-1">
+                            <p className="text-[12px] font-bold text-[#64748b]">Absence Deduction ({payrollData.hoursAbsent?.toFixed(1)} hrs)</p>
+                            <p className="text-lg font-black text-red-500">- ETB {payrollData.absenceDeduction.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        </div>
+                    )}
+
+                    {payrollData.overtimePay > 0 && (
+                        <div className="space-y-1">
+                            <p className="text-[12px] font-bold text-[#64748b]">Overtime Pay ({payrollData.overtimeHours?.toFixed(1)} hrs)</p>
+                            <p className="text-lg font-black text-blue-500">+ ETB {payrollData.overtimePay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        </div>
+                    )}
+
+                    <div className="space-y-1 pt-2 border-t border-dashed">
+                        <p className="text-[13px] font-black text-[#64748b] uppercase tracking-tighter">Net Salary</p>
+                        <p className="text-3xl font-black text-primary">ETB {payrollData.totalAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    </div>
+                </CardContent>
+            </Card>
+
+            <Card className="shadow-lg border-none bg-muted/20">
+                <CardContent className="pt-6">
+                    <div className="grid gap-4">
+                        <div className="flex items-center justify-between"><p className="text-xs font-bold text-[#64748b] uppercase tracking-widest">Phone</p><a href={`tel:${employee.phone}`} className="flex items-center text-sm font-black text-primary">{employee.phone}</a></div>
+                        <div className="flex items-center justify-between"><p className="text-xs font-bold text-[#64748b] uppercase tracking-widest">Bank Account</p><p className="text-sm font-black text-[#1e293b]">{employee.accountNumber}</p></div>
+                        <div className="flex items-center justify-between"><p className="text-xs font-bold text-[#64748b] uppercase tracking-widest">Method</p><Badge variant="secondary" className="font-black text-[10px] h-6 px-3">{employee.paymentMethod}</Badge></div>
+                    </div>
                 </CardContent>
             </Card>
         </div>
-        <div className="lg:col-span-2">
-          <Card>
-            <CardHeader><CardTitle>Attendance History</CardTitle><CardDescription>{payrollData.periodLabel}</CardDescription></CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
+
+        <div className="lg:col-span-3">
+          <Card className="shadow-lg border-none overflow-hidden">
+            <CardHeader className="bg-[#f8faff] border-b border-blue-50 py-6">
+              <div className="space-y-0.5 text-center">
+                <h2 className="text-2xl font-black text-[#1e293b] tracking-tight font-headline">Attendance History</h2>
+                <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">{payrollData.periodLabel}</p>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
                 <Table>
-                    <TableHeader><TableRow><TableHead>Date</TableHead><TableHead>Morning</TableHead><TableHead>Afternoon</TableHead></TableRow></TableHeader>
+                    <TableHeader className="bg-[#f8faff]/50">
+                        <TableRow>
+                            <TableHead className="text-[10px] font-black uppercase text-[#94a3b8] tracking-widest pl-6 py-4">Date</TableHead>
+                            <TableHead className="text-[10px] font-black uppercase text-[#94a3b8] tracking-widest py-4">Morning</TableHead>
+                            <TableHead className="text-[10px] font-black uppercase text-[#94a3b8] tracking-widest py-4 pr-6">Afternoon</TableHead>
+                        </TableRow>
+                    </TableHeader>
                     <TableBody>
                     {displayedHistory.length > 0 ? (
                         displayedHistory.map((record) => (
-                        <TableRow key={record.id} className={cn(record.isVirtual && "bg-muted/10")}>
-                            <TableCell>
+                        <TableRow key={record.id} className={cn("hover:bg-muted/10 transition-colors", record.isVirtual && "opacity-60")}>
+                            <TableCell className="pl-6 py-4">
                                 <div className="flex flex-col">
-                                    <span className="font-medium">{format(getDateFromRecord(record.date), 'EEE, MMM d')}</span>
-                                    <span className="text-[10px] text-muted-foreground uppercase">{ethiopianDateFormatter(getDateFromRecord(record.date), { day: 'numeric', month: 'short' })}</span>
+                                    <span className="font-bold text-sm text-[#1e293b]">{format(getDateFromRecord(record.date), 'EEE, MMM d')}</span>
+                                    <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-tight">{ethiopianDateFormatter(getDateFromRecord(record.date), { day: 'numeric', month: 'short' })}</span>
                                 </div>
                             </TableCell>
-                            <TableCell><div className="flex flex-col"><Badge variant="outline" className={cn("px-1.5 h-5 text-[10px]", record.morningStatus === 'Present' && "bg-secondary")}>{record.morningStatus}</Badge></div></TableCell>
-                            <TableCell><div className="flex flex-col"><Badge variant="outline" className={cn("px-1.5 h-5 text-[10px]", record.afternoonStatus === 'Present' && "bg-secondary")}>{record.afternoonStatus}</Badge>{record.overtimeHours > 0 && <span className="text-[9px] text-primary font-bold">+{record.overtimeHours}h OT</span>}</div></TableCell>
+                            <TableCell className="py-4">
+                                <div className="flex items-center gap-2">
+                                    <Badge 
+                                        variant="outline" 
+                                        className={cn(
+                                            "px-2 h-6 text-[10px] font-black border-none", 
+                                            record.morningStatus === 'Present' ? "bg-[#dcfce7] text-[#166534]" : 
+                                            record.morningStatus === 'Late' ? "bg-[#fef3c7] text-[#92400e]" : 
+                                            record.morningStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : "bg-[#dbeafe] text-[#1e40af]"
+                                        )}
+                                    >
+                                        {record.morningStatus}
+                                    </Badge>
+                                </div>
+                            </TableCell>
+                            <TableCell className="py-4 pr-6">
+                                <div className="flex items-center gap-2">
+                                    <Badge 
+                                        variant="outline" 
+                                        className={cn(
+                                            "px-2 h-6 text-[10px] font-black border-none", 
+                                            record.afternoonStatus === 'Present' ? "bg-[#dcfce7] text-[#166534]" : 
+                                            record.afternoonStatus === 'Late' ? "bg-[#fef3c7] text-[#92400e]" : 
+                                            record.afternoonStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : "bg-[#dbeafe] text-[#1e40af]"
+                                        )}
+                                    >
+                                        {record.afternoonStatus}
+                                    </Badge>
+                                    {record.overtimeHours > 0 && <span className="text-[9px] text-primary font-black bg-primary/10 px-1.5 py-0.5 rounded-full">+{record.overtimeHours}h OT</span>}
+                                </div>
+                            </TableCell>
                         </TableRow>
                         ))
-                    ) : (<TableRow><TableCell colSpan={3} className="text-center h-24">No records.</TableCell></TableRow>)}
+                    ) : (<TableRow><TableCell colSpan={3} className="text-center h-24 font-bold text-muted-foreground">No records for this period.</TableCell></TableRow>)}
                     </TableBody>
                 </Table>
-              </div>
             </CardContent>
           </Card>
         </div>
@@ -441,4 +522,3 @@ export default function EmployeeProfilePage() {
     </div>
   );
 }
-
