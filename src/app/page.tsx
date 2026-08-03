@@ -159,6 +159,9 @@ export default function DashboardPage() {
   }, [firestore, user]);
   const { data: settings } = useDoc<PayrollSettings>(settingsRef);
 
+  const normalOTRate = settings?.normalOvertimeRate || 1.5;
+  const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
+
   useEffect(() => { setTitle("Dashboard"); }, [setTitle]);
 
   const todayAttendanceRef = useMemoFirebase(() => {
@@ -217,24 +220,59 @@ export default function DashboardPage() {
 
   const dailyEarnings = useMemo(() => {
     if (!activeEmployees || !selectedDay) return [];
-    const normalOTRate = settings?.normalOvertimeRate || 1.5;
     return activeEmployees.map(emp => {
         const record = todayRecords?.find(r => r.employeeId === emp.id);
         let amount = 0;
+        let lateMins = record ? calculateMinutesLate(record) : 0;
+        let absentHours = 0;
+        let otHours = record?.overtimeHours || 0;
+        let otAmount = 0;
+
         if (emp.paymentMethod === 'Weekly') {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            amount = record ? (calculateHoursWorked(record) * (hourly || 0)) + ((record.overtimeHours || 0) * (hourly || 0) * normalOTRate) : (getDay(new Date(selectedDay)) === 0 ? (hourly || 0) * 8 : 0);
+            if (record) {
+                amount = (calculateHoursWorked(record) * (hourly || 0)) + (otHours * (hourly || 0) * normalOTRate);
+                otAmount = otHours * (hourly || 0) * normalOTRate;
+                if (record.morningStatus === 'Absent') absentHours += 4.5;
+                if (record.afternoonStatus === 'Absent') absentHours += 3.5;
+            } else if (getDay(new Date(selectedDay)) === 0) {
+                amount = (hourly || 0) * 8;
+            } else {
+                absentHours = 8;
+            }
         } else {
             const units = getMonthlyWorkingUnits(new Date(selectedDay), 30);
+            const hourly = (emp.monthlyRate || 0) / units / 8;
             const daily = (emp.monthlyRate || 0) / units;
-            amount = record ? daily : 0; 
+            const minuteRate = hourly / 60;
+
+            if (record) {
+                const isSunday = getDay(new Date(selectedDay)) === 0;
+                const isSaturday = getDay(new Date(selectedDay)) === 6;
+                
+                let absenceDeduction = 0;
+                if (record.morningStatus === 'Absent') { absenceDeduction += 4.5 * hourly; absentHours += 4.5; }
+                if (record.afternoonStatus === 'Absent' && !isSaturday) { absenceDeduction += 3.5 * hourly; absentHours += 3.5; }
+                
+                let lateDeduction = lateMins * minuteRate;
+                otAmount = otHours * hourly * normalOTRate;
+
+                if (isSunday && (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent')) {
+                    otAmount += 8 * hourly * sundayOTRate;
+                    otHours += 8;
+                }
+
+                amount = daily - absenceDeduction - lateDeduction + otAmount;
+            } else {
+                if (getDay(new Date(selectedDay)) !== 0) absentHours = getDay(new Date(selectedDay)) === 6 ? 4.5 : 8;
+            }
         }
         return { 
             employeeId: emp.id, name: emp.name, morning: record?.morningEntry || "—", afternoon: record?.afternoonEntry || "—",
-            status: record?.morningStatus || "Absent", amount, overtimeHours: record?.overtimeHours || 0
+            status: record?.morningStatus || "Absent", amount, overtimeHours: otHours, overtimeAmount: otAmount, lateMins, absentHours, paymentMethod: emp.paymentMethod
         };
     });
-  }, [activeEmployees, todayRecords, selectedDay, settings]);
+  }, [activeEmployees, todayRecords, selectedDay, normalOTRate, sundayOTRate]);
 
   const periodOptions = useMemo(() => {
     const now = new Date();
@@ -262,31 +300,89 @@ export default function DashboardPage() {
     let grandTotal = 0;
     const data = weeklyEmps.map(emp => {
         const records = lazyAttendance.filter(r => r.employeeId === emp.id);
-        const otHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
         const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-        const normalOTRate = settings?.normalOvertimeRate || 1.5;
-        const baseHours = records.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
-        const lateMins = records.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
-        const total = (baseHours * (hourly || 0)) + (otHours * (hourly || 0) * normalOTRate);
+        
+        let totalOTHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+        let baseHours = records.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
+        let lateMins = records.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
+        
+        let absentHours = 0;
+        const start = startOfDay(new Date(selectedWeekStart));
+        const end = endOfDay(endOfWeek(start, { weekStartsOn: 0 }));
+        const interval = eachDayOfInterval({ start, end });
+        const recordedDays = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+
+        records.forEach(r => {
+            if (r.morningStatus === 'Absent') absentHours += 4.5;
+            if (r.afternoonStatus === 'Absent') absentHours += 3.5;
+        });
+
+        interval.forEach(day => {
+            if (getDay(day) !== 0 && !recordedDays.has(format(day, 'yyyy-MM-dd'))) absentHours += 8;
+        });
+
+        const total = (baseHours * (hourly || 0)) + (totalOTHours * (hourly || 0) * normalOTRate);
+        const otAmount = totalOTHours * (hourly || 0) * normalOTRate;
         grandTotal += total;
-        return { emp, baseHours, lateMins, total };
+        
+        return { emp, baseHours, lateMins, total, absentHours, overtimeHours: totalOTHours, overtimeAmount: otAmount };
     });
     return { data, grandTotal };
-  }, [activeEmployees, lazyAttendance, settings]);
+  }, [activeEmployees, lazyAttendance, selectedWeekStart, normalOTRate]);
 
   const monthlySummary = useMemo(() => {
     const monthlyEmps = activeEmployees.filter(e => e.paymentMethod === 'Monthly');
     let grandTotal = 0;
     const data = monthlyEmps.map(emp => {
         const records = lazyAttendance.filter(r => r.employeeId === emp.id);
-        const otHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-        const lateMins = records.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
-        const total = emp.monthlyRate || 0; // Simplified monthly logic for dashboard
-        grandTotal += total;
-        return { emp, lateMins, total };
+        const start = startOfDay(new Date(selectedMonthStart));
+        const eth = toEthiopian(start);
+        const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
+        const units = getMonthlyWorkingUnits(start, daysInMonth);
+        const hourly = (emp.monthlyRate || 0) / units / 8;
+        const minuteRate = hourly / 60;
+        const daily = (emp.monthlyRate || 0) / units;
+
+        let lateMins = records.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
+        let otHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+        let otAmount = otHours * hourly * normalOTRate;
+        let absentHours = 0;
+        let totalDeduction = 0;
+
+        const interval = eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) });
+        const recordedDays = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+
+        records.forEach(r => {
+            const d = getDateFromRecord(r.date);
+            const isSunday = getDay(d) === 0;
+            const isSaturday = getDay(d) === 6;
+
+            if (isSunday && (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')) {
+                otAmount += 8 * hourly * sundayOTRate;
+                otHours += 8;
+            } else if (!isSunday) {
+                if (r.morningStatus === 'Absent') { totalDeduction += 4.5 * hourly; absentHours += 4.5; }
+                if (r.afternoonStatus === 'Absent' && !isSaturday) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
+            }
+        });
+
+        const today = new Date();
+        interval.forEach(day => {
+            if (day <= today && getDay(day) !== 0 && !recordedDays.has(format(day, 'yyyy-MM-dd'))) {
+                const abs = getDay(day) === 6 ? 4.5 : 8;
+                absentHours += abs;
+                totalDeduction += abs * hourly;
+            }
+        });
+
+        const lateDeduction = lateMins * minuteRate;
+        const netSalary = (emp.monthlyRate || 0) - totalDeduction - lateDeduction + otAmount;
+        grandTotal += netSalary;
+
+        return { emp, lateMins, total: netSalary, absentHours, overtimeHours: otHours, overtimeAmount: otAmount };
     });
     return { data, grandTotal };
-  }, [activeEmployees, lazyAttendance]);
+  }, [activeEmployees, lazyAttendance, selectedMonthStart, normalOTRate, sundayOTRate]);
 
   const handleGlobalDateSelect = (date: Date | undefined) => {
       if (date) {
@@ -298,6 +394,42 @@ export default function DashboardPage() {
   };
 
   const attendancePercentage = dashboardStats.totalEmployees > 0 ? (dashboardStats.onSiteToday / dashboardStats.totalEmployees) * 100 : 0;
+
+  const EmployeeCard = ({ name, paymentMethod, lateMins, absentHours, overtimeHours, overtimeAmount, total, amountLabel, employeeId }: any) => (
+    <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors">
+        <CardContent className="p-4 space-y-4">
+            <div className="flex justify-between items-center">
+                <h3 className="font-bold text-[#1e293b] text-base">{name}</h3>
+                <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60">
+                    {paymentMethod}
+                </Badge>
+            </div>
+            
+            <div className="flex gap-2">
+                <div className="flex-1 bg-muted/20 rounded-full h-8 flex items-center px-4 justify-between">
+                    <span className={cn("text-[11px] font-medium", lateMins > 0 ? "text-amber-600" : "text-muted-foreground/60")}>
+                        {lateMins > 0 ? `Late: ${lateMins}m` : "No late mins"}
+                    </span>
+                    <span className={cn("text-[11px] font-bold", absentHours > 0 ? "text-destructive" : "text-muted-foreground/60")}>
+                        {absentHours > 0 ? `Absent: ${absentHours.toFixed(1)}h` : "Full attendance"}
+                    </span>
+                </div>
+            </div>
+
+            <div className="bg-primary/5 rounded-full h-8 flex items-center px-4 justify-between">
+                <span className="text-[11px] font-medium text-primary/80">Overtime:</span>
+                <span className="text-[11px] font-bold text-primary">
+                    +{overtimeHours} hrs (ETB {overtimeAmount.toFixed(2)})
+                </span>
+            </div>
+
+            <div className="pt-2 flex justify-between items-center border-t border-dashed">
+                <span className="text-[11px] font-bold text-[#1e293b]">{amountLabel}:</span>
+                <span className="text-xl font-black text-primary">ETB {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            </div>
+        </CardContent>
+    </Card>
+  );
 
   if (employeesLoading || isUserLoading) return <div className="flex h-screen w-full items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" /></div>;
 
@@ -361,35 +493,21 @@ export default function DashboardPage() {
                     </TabsList>
                     
                     <TabsContent value="today" className="space-y-6">
-                        <div className="rounded-xl border overflow-hidden">
-                            <Table>
-                                <TableHeader className="bg-muted/50">
-                                    <TableRow>
-                                        <TableHead>Employee</TableHead>
-                                        <TableHead>Morning</TableHead>
-                                        <TableHead>Afternoon</TableHead>
-                                        <TableHead>Status</TableHead>
-                                        <TableHead className="text-right">Daily Earn</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {dailyEarnings.map(item => (
-                                        <TableRow key={item.employeeId} className="hover:bg-muted/30">
-                                            <TableCell className="font-medium">
-                                              <Link href={`/employees/${item.employeeId}`} className="hover:underline">{item.name}</Link>
-                                            </TableCell>
-                                            <TableCell className="text-muted-foreground font-mono text-xs">{item.morning}</TableCell>
-                                            <TableCell className="text-muted-foreground font-mono text-xs">{item.afternoon}</TableCell>
-                                            <TableCell>
-                                              <Badge variant={item.status === 'Absent' ? 'destructive' : 'outline'} className={cn(item.status === 'Present' && "bg-secondary")}>
-                                                {item.status}
-                                              </Badge>
-                                            </TableCell>
-                                            <TableCell className="text-right font-bold text-primary">ETB {item.amount.toFixed(2)}</TableCell>
-                                        </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
+                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {dailyEarnings.map(item => (
+                                <EmployeeCard 
+                                    key={item.employeeId}
+                                    employeeId={item.employeeId}
+                                    name={item.name}
+                                    paymentMethod={item.paymentMethod}
+                                    lateMins={item.lateMins}
+                                    absentHours={item.absentHours}
+                                    overtimeHours={item.overtimeHours}
+                                    overtimeAmount={item.overtimeAmount}
+                                    total={item.amount}
+                                    amountLabel="Daily Earn"
+                                />
+                            ))}
                         </div>
                         <div className="flex justify-center pt-4">
                             <div className="bg-primary/5 border rounded-2xl p-6 w-full max-w-md text-center">
@@ -408,33 +526,25 @@ export default function DashboardPage() {
                         </div>
                         {lazyLoading ? <div className="h-40 flex items-center justify-center"><Clock className="animate-spin h-6 w-6 text-primary" /></div> : (
                             <div className="flex flex-col gap-4">
-                                {weeklySummary.data.map(({ emp, baseHours, lateMins, total }) => (
-                                    <Card key={emp.id} className="border shadow-none">
-                                        <CardContent className="p-4 space-y-4">
-                                            <div className="flex justify-between items-start">
-                                                <p className="font-bold text-[#1e293b]">{emp.name}</p>
-                                                <Link href={`/employees/${emp.id}`}><ChevronRight className="h-4 w-4 text-muted-foreground" /></Link>
-                                            </div>
-                                            <div className="bg-muted/30 p-3 rounded-lg flex justify-between items-center">
-                                                <span className="text-xs text-muted-foreground font-medium">Working Hours:</span>
-                                                <span className="text-sm font-bold">{baseHours.toFixed(1)} hrs</span>
-                                            </div>
-                                            {lateMins > 0 && (
-                                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                                    <Clock className="h-3 w-3" />
-                                                    <span>Late: {lateMins}m</span>
-                                                </div>
-                                            )}
-                                            <div className="pt-3 border-t border-dashed flex justify-between items-center">
-                                                <span className="text-xs font-bold text-[#1e293b]">Weekly Total:</span>
-                                                <span className="text-lg font-black text-primary">ETB {total.toFixed(2)}</span>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                                <div className="mt-4 bg-[#fff7ed] border border-[#fed7aa] rounded-2xl p-8 text-center shadow-sm">
-                                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">TOTAL WEEKLY PAYROLL</p>
-                                    <p className="text-4xl font-black text-[#ea580c]">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {weeklySummary.data.map(({ emp, baseHours, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
+                                        <EmployeeCard 
+                                            key={emp.id}
+                                            employeeId={emp.id}
+                                            name={emp.name}
+                                            paymentMethod="Weekly"
+                                            lateMins={lateMins}
+                                            absentHours={absentHours}
+                                            overtimeHours={overtimeHours}
+                                            overtimeAmount={overtimeAmount}
+                                            total={total}
+                                            amountLabel="Weekly Total"
+                                        />
+                                    ))}
+                                </div>
+                                <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-2xl p-8 text-center shadow-sm">
+                                    <p className="text-[10px] font-black text-[#9d174d] uppercase tracking-widest mb-1">TOTAL WEEKLY PAYROLL (WEEKLY-PAID)</p>
+                                    <p className="text-4xl font-black text-[#be185d]">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
                         )}
@@ -449,33 +559,25 @@ export default function DashboardPage() {
                         </div>
                          {lazyLoading ? <div className="h-40 flex items-center justify-center"><Clock className="animate-spin h-6 w-6 text-primary" /></div> : (
                             <div className="flex flex-col gap-4">
-                                {monthlySummary.data.map(({ emp, lateMins, total }) => (
-                                    <Card key={emp.id} className="border shadow-none">
-                                        <CardContent className="p-4 space-y-4">
-                                            <div className="flex justify-between items-start">
-                                                <p className="font-bold text-[#1e293b]">{emp.name}</p>
-                                                <Link href={`/employees/${emp.id}`}><ChevronRight className="h-4 w-4 text-muted-foreground" /></Link>
-                                            </div>
-                                            <div className="bg-muted/30 p-3 rounded-lg flex justify-between items-center">
-                                                <span className="text-xs text-muted-foreground font-medium">Standard Hours:</span>
-                                                <span className="text-sm font-bold">192.0 hrs</span>
-                                            </div>
-                                            {lateMins > 0 && (
-                                                <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                                    <Clock className="h-3 w-3" />
-                                                    <span>Late: {lateMins}m</span>
-                                                </div>
-                                            )}
-                                            <div className="pt-3 border-t border-dashed flex justify-between items-center">
-                                                <span className="text-xs font-bold text-[#1e293b]">Monthly Total:</span>
-                                                <span className="text-lg font-black text-primary">ETB {total.toFixed(2)}</span>
-                                            </div>
-                                        </CardContent>
-                                    </Card>
-                                ))}
-                                <div className="mt-4 bg-[#fff7ed] border border-[#fed7aa] rounded-2xl p-8 text-center shadow-sm">
-                                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest mb-1">TOTAL MONTHLY PAYROLL</p>
-                                    <p className="text-4xl font-black text-[#ea580c]">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    {monthlySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
+                                        <EmployeeCard 
+                                            key={emp.id}
+                                            employeeId={emp.id}
+                                            name={emp.name}
+                                            paymentMethod="Monthly"
+                                            lateMins={lateMins}
+                                            absentHours={absentHours}
+                                            overtimeHours={overtimeHours}
+                                            overtimeAmount={overtimeAmount}
+                                            total={total}
+                                            amountLabel="Month To-Date"
+                                        />
+                                    ))}
+                                </div>
+                                <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-2xl p-8 text-center shadow-sm">
+                                    <p className="text-[10px] font-black text-[#9d174d] uppercase tracking-widest mb-1">TOTAL MONTHLY PAYROLL (MONTHLY-PAID)</p>
+                                    <p className="text-4xl font-black text-[#be185d]">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
                         )}
