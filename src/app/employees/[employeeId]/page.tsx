@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
@@ -35,7 +36,7 @@ import {
 } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { Employee } from "@/lib/types";
+import type { Employee, PayrollSettings } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Copy, Phone, Trash2, Edit, Calendar, UserMinus, Send, Loader2, XCircle } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
@@ -186,8 +187,9 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
-    // Saturdays are full units (8h)
-    return weekdays + saturdays;
+    // Saturdays counted as 1.0 unit because missing them is 8h absence for morning but user said afternoon not deducted
+    // Actually if missing afternoon is free, then Saturday is only 4.5h work for the monthly salary
+    return weekdays + (saturdays * 0.5625);
 };
 
 const calculateMinutesLate = (record: AttendanceRecord): number => {
@@ -246,6 +248,12 @@ export default function EmployeeProfilePage() {
       return collection(firestore, 'employees', employeeId as string, 'attendance');
   }, [firestore, employeeId, user]);
   const { data: allAttendance, isLoading: attendanceLoading } = useCollection<AttendanceRecord>(attendanceColRef);
+  
+  const settingsRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'metadata', 'payroll_settings');
+  }, [firestore, user]);
+  const { data: settings } = useDoc<PayrollSettings>(settingsRef);
   
   const [selectedPeriod, setSelectedPeriod] = useState<string | undefined>(undefined);
 
@@ -333,6 +341,9 @@ export default function EmployeeProfilePage() {
   const payrollData = useMemo(() => {
     if (!employee || !selectedPeriod) return { totalAmount: 0, periodLabel: "" };
 
+    const normalOTRate = settings?.normalOvertimeRate || 1.5;
+    const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
+
     const selectedPeriodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || "";
 
     if (employee.paymentMethod === 'Monthly') {
@@ -362,11 +373,24 @@ export default function EmployeeProfilePage() {
         const absentDates: string[] = [];
         const lateDates: string[] = [];
         let totalHoursAbsent = 0;
+        let sundayOTAmount = 0;
+        let sundayOTHours = 0;
+
         const minutesLate = filteredAttendance.reduce((acc, r) => {
             const recordDate = getDateFromRecord(r.date);
             const formattedDate = format(recordDate, 'MMM d');
+            const isSaturday = getDay(recordDate) === 6;
+            const isSunday = getDay(recordDate) === 0;
+
+            if (isSunday) {
+                if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                    sundayOTAmount += 8 * hourlyRateCalc * sundayOTRate;
+                    sundayOTHours += 8;
+                }
+                return acc;
+            }
+
             let isAbsent = false;
-            
             const recordDateStr = format(recordDate, 'yyyy-MM-dd');
 
             let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
@@ -376,7 +400,7 @@ export default function EmployeeProfilePage() {
                 totalHoursAbsent += 4.5;
                 isAbsent = true;
             }
-            if (afternoonIsUnpaidAbsence) {
+            if (afternoonIsUnpaidAbsence && !isSaturday) {
                 totalHoursAbsent += 3.5;
                 isAbsent = true;
             }
@@ -403,7 +427,11 @@ export default function EmployeeProfilePage() {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
                     const formattedDate = format(day, 'MMM d');
-                    totalHoursAbsent += 8; // Both Saturday and weekdays are 8h absence if unrecorded
+                    if (getDay(day) === 6) {
+                        totalHoursAbsent += 4.5; // Only morning for Saturday unrecorded
+                    } else {
+                        totalHoursAbsent += 8;
+                    }
                      if(!absentDates.includes(formattedDate)) {
                         absentDates.push(formattedDate);
                     }
@@ -414,10 +442,11 @@ export default function EmployeeProfilePage() {
       const absenceDeduction = totalHoursAbsent * hourlyRateCalc;
       const lateDeduction = minutesLate * minuteRate;
 
-      const overtimeHours = filteredAttendance.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-      const overtimePay = overtimeHours * hourlyRateCalc;
+      const manualOTHours = filteredAttendance.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+      const manualOTPay = manualOTHours * hourlyRateCalc * normalOTRate;
       
-      const netSalary = baseSalary - (absenceDeduction + lateDeduction) + overtimePay;
+      const totalOTPay = manualOTPay + sundayOTAmount;
+      const netSalary = baseSalary - (absenceDeduction + lateDeduction) + totalOTPay;
 
       return {
           totalAmount: netSalary,
@@ -429,14 +458,14 @@ export default function EmployeeProfilePage() {
           periodLabel: selectedPeriodLabel,
           absentDates: absentDates,
           lateDates: lateDates,
-          overtimePay: overtimePay,
-          overtimeHours: overtimeHours,
+          overtimePay: totalOTPay,
+          overtimeHours: manualOTHours + sundayOTHours,
           hourlyRate: hourlyRateCalc
       };
 
     } else { // Weekly logic
       const currentHourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
-      const totalOvertimeHours = filteredAttendance.reduce((acc, record) => {
+      const totalOTHours = filteredAttendance.reduce((acc, record) => {
           return acc + (record.overtimeHours || 0);
       }, 0);
       
@@ -444,7 +473,7 @@ export default function EmployeeProfilePage() {
           return acc + calculateHoursWorked(record);
       }, 0);
 
-      const overtimePay = totalOvertimeHours * (currentHourlyRate || 0);
+      const overtimePay = totalOTHours * (currentHourlyRate || 0) * normalOTRate;
       
       let totalMinutesLate = 0;
       let totalHoursAbsent = 0;
@@ -463,7 +492,7 @@ export default function EmployeeProfilePage() {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
                     if (getDay(day) !== 0) {
-                        totalHoursAbsent += 8; // Non-sunday absences are 8h
+                        totalHoursAbsent += 8; // Weekly unrecorded Saturday is 8h for work tracking
                     }
                 }
               }
@@ -489,11 +518,11 @@ export default function EmployeeProfilePage() {
         periodLabel: selectedPeriodLabel,
         hoursAbsent: totalHoursAbsent,
         minutesLate: totalMinutesLate,
-        overtimeHours: totalOvertimeHours,
+        overtimeHours: totalOTHours,
         hourlyRate: currentHourlyRate
       };
     }
-  }, [employee, allAttendance, filteredAttendance, periodOptions, selectedPeriod]);
+  }, [employee, allAttendance, filteredAttendance, periodOptions, selectedPeriod, settings]);
 
   const handleViewSummary = () => {
     if (!employee || !payrollData) return;
@@ -510,7 +539,7 @@ export default function EmployeeProfilePage() {
         summaryMessage += `Absence Deduction (${(payrollData.hoursAbsent || 0).toFixed(1)} hrs): - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
       }
       if ((payrollData.overtimePay || 0) > 0) {
-        summaryMessage += `Overtime Pay (${payrollData.overtimeHours} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+        summaryMessage += `Overtime Pay: + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
       }
       summaryMessage += `--------------------\n`;
       summaryMessage += `*Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
@@ -832,7 +861,7 @@ export default function EmployeeProfilePage() {
                             </div>
                             {(payrollData.overtimePay || 0) > 0 && (
                                 <div>
-                                    <p className="font-semibold">Overtime Pay ({payrollData.overtimeHours} hrs)</p>
+                                    <p className="font-semibold">Total Overtime Pay</p>
                                     <p className="text-xl font-bold text-primary">+ ETB {(payrollData.overtimePay || 0).toFixed(2)}</p>
                                 </div>
                             )}
@@ -850,7 +879,7 @@ export default function EmployeeProfilePage() {
                             {(payrollData.overtimePay || 0) > 0 && (
                                 <div>
                                     <p className="font-semibold">Overtime Pay ({payrollData.overtimeHours} hrs)</p>
-                                    <p className="text-2xl font-bold">ETB {(payrollData.overtimePay || 0).toFixed(2)}</p>
+                                    <p className="text-2xl font-bold text-primary">+ ETB {(payrollData.overtimePay || 0).toFixed(2)}</p>
                                 </div>
                             )}
                             <div>

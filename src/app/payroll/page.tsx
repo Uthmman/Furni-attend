@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -22,9 +23,9 @@ import {
   startOfDay,
   endOfDay
 } from "date-fns";
-import { Timestamp, getDocs } from "firebase/firestore";
-import type { Employee, AttendanceRecord, PayrollEntry } from "@/lib/types";
-import { useFirestore, useUser, useMemoFirebase } from '@/firebase';
+import { Timestamp, getDocs, doc } from "firebase/firestore";
+import type { Employee, AttendanceRecord, PayrollEntry, PayrollSettings } from "@/lib/types";
+import { useFirestore, useUser, useMemoFirebase, useDoc } from '@/firebase';
 import { collection } from 'firebase/firestore';
 import { ExpenseChart } from './expense-chart';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -100,21 +101,19 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
+    // Saturday counted as 0.5625 because miss afternoon is free, but miss morning is 4.5h deduction
     return weekdays + (saturdays * 0.5625);
 };
 
-const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
+const calculateHoursWorked = (record: AttendanceRecord): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
 
-    if (getDay(recordDate) === 0) { // Is Sunday
-        if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') {
-            return 8;
-        }
+    if (getDay(recordDate) === 0) { // Sunday check
+        if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') return 8;
         return 0;
     }
 
-    // Removed hardcoded Saturday 4.5h cap to support 48h work weeks (session-based logic sums to 8h)
     if (record.morningStatus === 'Absent' && record.afternoonStatus === 'Absent') return 0;
 
     const morningStartTime = parse("08:00", "HH:mm", new Date());
@@ -125,19 +124,23 @@ const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boole
     let totalHours = 0;
 
     if (record.morningStatus !== 'Absent' && record.morningEntry) {
-        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-        if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
-            const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
-            totalHours += morningWorkMs / (1000 * 60 * 60);
-        }
+        try {
+            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+            if(isValid(morningEntryTime) && morningEntryTime < morningEndTime) {
+                const morningWorkMs = morningEndTime.getTime() - Math.max(morningStartTime.getTime(), morningEntryTime.getTime());
+                totalHours += morningWorkMs / (1000 * 60 * 60);
+            }
+        } catch(e){}
     }
     
     if (record.afternoonStatus !== 'Absent' && record.afternoonEntry) {
-        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-        if(isValid(afternoonEntryTime) && afternoonEntryTime < afternoonEndTime) {
-            const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
-            totalHours += afternoonWorkMs / (1000 * 60 * 60);
-        }
+        try {
+            const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+            if(isValid(afternoonEntryTime) && afternoonEntryTime < afternoonEndTime) {
+                const afternoonWorkMs = afternoonEndTime.getTime() - Math.max(afternoonStartTime.getTime(), afternoonEntryTime.getTime());
+                totalHours += afternoonWorkMs / (1000 * 60 * 60);
+            }
+        } catch(e){}
     }
 
     return Math.max(0, totalHours);
@@ -148,17 +151,21 @@ const calculateMinutesLate = (record: AttendanceRecord): number => {
     let minutesLate = 0;
     if (record.morningStatus === 'Late' && record.morningEntry) {
         const morningStartTime = parse("08:00", "HH:mm", new Date());
-        const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
-        if (isValid(morningEntryTime) && morningEntryTime > morningStartTime) {
-            minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / (1000 * 60);
-        }
+        try {
+            const morningEntryTime = parse(record.morningEntry, "HH:mm", new Date());
+            if (isValid(morningEntryTime) && morningEntryTime > morningStartTime) {
+                minutesLate += (morningEntryTime.getTime() - morningStartTime.getTime()) / (1000 * 60);
+            }
+        } catch(e) {}
     }
     if (record.afternoonStatus === 'Late' && record.afternoonEntry) {
         const afternoonStartTime = parse("13:30", "HH:mm", new Date());
-        const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
-        if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) {
-            minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
-        }
+        try {
+            const afternoonEntryTime = parse(record.afternoonEntry, "HH:mm", new Date());
+            if (isValid(afternoonEntryTime) && afternoonEntryTime > afternoonStartTime) {
+                minutesLate += (afternoonEntryTime.getTime() - afternoonStartTime.getTime()) / (1000 * 60);
+            }
+        } catch(e) {}
     }
     return Math.round(minutesLate);
 };
@@ -183,6 +190,12 @@ export default function PayrollPage() {
     return collection(firestore, 'employees');
   }, [firestore, user]);
   const { data: employees, loading: employeesLoading } = useCollection(employeesCollectionRef);
+  
+  const settingsRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, "metadata", "payroll_settings");
+  }, [firestore, user]);
+  const { data: settings } = useDoc<PayrollSettings>(settingsRef);
   
   useEffect(() => {
     const fetchAllAttendance = async () => {
@@ -256,6 +269,8 @@ export default function PayrollPage() {
   const weeklyPayroll = useMemo(() => {
     if (!employees || allAttendance.length === 0 || !selectedWeek) return [];
     
+    const normalOTRate = settings?.normalOvertimeRate || 1.5;
+
     const weekly: PayrollEntry[] = [];
     const weekStart = startOfDay(selectedWeek);
     const weekEnd = endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
@@ -291,13 +306,13 @@ export default function PayrollPage() {
             const dayStr = format(day, 'yyyy-MM-dd');
             if (!recordedDates.has(dayStr)) {
                 if (getDay(day) !== 0) {
-                    hoursAbsent += 8; // Both Saturday and weekdays are 8h absence if unrecorded
+                    hoursAbsent += 8; 
                 }
             }
         });
         
         const baseAmount = totalHours * hourlyRate;
-        const overtimeAmount = overtimeHours * hourlyRate;
+        const overtimeAmount = overtimeHours * hourlyRate * normalOTRate;
         const finalAmount = baseAmount + overtimeAmount;
         
         const daysWorked = new Set(relevantRecords.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
@@ -322,10 +337,13 @@ export default function PayrollPage() {
     });
 
     return weekly;
-  }, [employees, allAttendance, selectedWeek]);
+  }, [employees, allAttendance, selectedWeek, settings]);
   
   const monthlyPayroll = useMemo(() => {
     if (!employees || allAttendance.length === 0 || !selectedMonth) return [];
+
+    const normalOTRate = settings?.normalOvertimeRate || 1.5;
+    const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
 
     const monthly: PayrollEntry[] = [];
     const monthStart = startOfDay(selectedMonth);
@@ -367,6 +385,8 @@ export default function PayrollPage() {
 
         let projectedHoursAbsent = 0;
         let displayMinutesLate = 0;
+        let totalOvertimeAmount = 0;
+        let totalOvertimeHours = 0;
         
         const today = new Date();
         
@@ -374,11 +394,27 @@ export default function PayrollPage() {
             const recordDate = getDateFromRecord(r.date);
             if(recordDate > today) return;
 
+            const isSaturday = getDay(recordDate) === 6;
+            const isSunday = getDay(recordDate) === 0;
+
+            if (isSunday) {
+                if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                    totalOvertimeAmount += 8 * hourlyRate * sundayOTRate;
+                    totalOvertimeHours += 8;
+                }
+                return;
+            }
+
             const recordDateStr = format(recordDate, 'yyyy-MM-dd');
             if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr))) projectedHoursAbsent += 4.5;
-            if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr))) projectedHoursAbsent += 3.5;
+            if ((r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr))) && !isSaturday) projectedHoursAbsent += 3.5;
             
             displayMinutesLate += calculateMinutesLate(r);
+            
+            if (r.overtimeHours) {
+                totalOvertimeAmount += r.overtimeHours * hourlyRate * normalOTRate;
+                totalOvertimeHours += r.overtimeHours;
+            }
         });
         
         const calculationPeriodDays = eachDayOfInterval(calculationPeriod);
@@ -388,7 +424,11 @@ export default function PayrollPage() {
             if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { 
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDatesForMonth.has(dayStr)) {
-                    projectedHoursAbsent += 8; // Saturday is 8h in absence too
+                    if (getDay(day) === 6) {
+                        projectedHoursAbsent += 4.5; // Saturday unrecorded only morning
+                    } else {
+                        projectedHoursAbsent += 8;
+                    }
                 }
             }
         });
@@ -396,10 +436,7 @@ export default function PayrollPage() {
         const projectedAbsenceDeduction = projectedHoursAbsent * hourlyRate;
         const lateDeduction = displayMinutesLate * minuteRate;
         
-        const overtimeHours = allRecordsForMonth.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-        const overtimePay = overtimeHours * hourlyRate;
-        
-        const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction) + overtimePay;
+        const netSalary = baseSalary - (projectedAbsenceDeduction + lateDeduction) + totalOvertimeAmount;
 
         if (netSalary > 0 || allRecordsForMonth.length > 0) {
              monthly.push({
@@ -416,15 +453,15 @@ export default function PayrollPage() {
                 absenceDeduction: projectedAbsenceDeduction,
                 lateDeduction: lateDeduction,
                 permissionDaysUsed: Math.min(15, sortedPermissionDates.length),
-                overtimeHours: overtimeHours,
-                overtimeAmount: overtimePay
+                overtimeHours: totalOvertimeHours,
+                overtimeAmount: totalOvertimeAmount
             });
         }
     });
 
     return monthly;
 
-  }, [employees, allAttendance, selectedMonth]);
+  }, [employees, allAttendance, selectedMonth, settings]);
 
 
   const monthlyExpenseHistoryData = useMemo(() => {
@@ -457,7 +494,7 @@ export default function PayrollPage() {
              );
 
              if (record) {
-                const hoursWorked = calculateHoursWorked(record, true);
+                const hoursWorked = calculateHoursWorked(record);
                 const overtime = record.overtimeHours || 0;
                 dailyMonthlyExpense += (hoursWorked + overtime) * hourlyRate;
              }
@@ -552,7 +589,7 @@ export default function PayrollPage() {
             );
             
             if (record) {
-                const hoursWorked = calculateHoursWorked(record, employee.paymentMethod === 'Monthly');
+                const hoursWorked = calculateHoursWorked(record);
                 const overtime = record.overtimeHours || 0;
                 dailyTotalExpense += (hoursWorked + overtime) * hourlyRate;
             } else if (employee.paymentMethod === 'Weekly' && getDay(day) === 0) { // Unrecorded Sunday for weekly

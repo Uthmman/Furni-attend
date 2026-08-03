@@ -1,12 +1,13 @@
+
 'use client';
 
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins, BarChart3, ShoppingBag, Timer, PackageSearch, ArrowRight } from "lucide-react";
-import type { Employee, AttendanceRecord, Order } from "@/lib/types";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, ChevronLeft, ChevronRight, TrendingUp, HandCoins, ShoppingBag, PackageSearch, ArrowRight } from "lucide-react";
+import type { Employee, AttendanceRecord, Order, PayrollSettings } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, subMonths, isSameDay, startOfDay, endOfDay } from "date-fns";
-import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
 import { collection, getDocs, doc, getDoc, setDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -91,11 +92,11 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
-    // Saturdays are now treated as full 8h workdays (1.0 unit)
-    return weekdays + saturdays;
+    // Saturdays counted as 0.5625 because missing afternoon is not a deduction
+    return weekdays + (saturdays * 0.5625);
 };
 
-const calculateHoursWorked = (record: AttendanceRecord, isMonthlyEmployee: boolean = false): number => {
+const calculateHoursWorked = (record: AttendanceRecord): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
 
@@ -185,6 +186,12 @@ export default function DashboardPage() {
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
   const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
 
+  const settingsRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, "metadata", "payroll_settings");
+  }, [firestore, user]);
+  const { data: settings } = useDoc<PayrollSettings>(settingsRef);
+
   const ordersCollectionRef = useMemoFirebase(() => {
     if (!secondaryDb || !user) return null;
     return collection(secondaryDb, "orders");
@@ -245,6 +252,9 @@ export default function DashboardPage() {
     const now = new Date();
     const todayStr = format(now, "yyyy-MM-dd");
 
+    const normalOTRate = settings?.normalOvertimeRate || 1.5;
+    const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
+
     const onSiteTodayCount = allAttendance.filter(r => 
         format(getDateFromRecord(r.date), "yyyy-MM-dd") === todayStr &&
         (r.morningStatus !== "Absent" || r.afternoonStatus !== "Absent") &&
@@ -265,8 +275,12 @@ export default function DashboardPage() {
         const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
         if (!hourlyRate) return acc;
         const recordsInWeek = allAttendance.filter(r => r.employeeId === emp.id && isValid(getDateFromRecord(r.date)) && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: now }));
-        let hoursWorked = recordsInWeek.reduce((sum, r) => sum + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
-        return acc + (hoursWorked * hourlyRate);
+        let totalPay = recordsInWeek.reduce((sum, r) => {
+             const worked = calculateHoursWorked(r);
+             const ot = (r.overtimeHours || 0) * normalOTRate;
+             return sum + (worked + ot) * hourlyRate;
+        }, 0);
+        return acc + totalPay;
     }, 0);
 
     const actualMonthly = activeEmployees.reduce((acc, emp) => {
@@ -285,30 +299,47 @@ export default function DashboardPage() {
         const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
 
         let totalHoursAbsent = 0;
-        const minutesLate = recordsInMonth.reduce((sum, r) => {
+        let totalOTPay = 0;
+
+        recordsInMonth.forEach(r => {
             const recordDate = getDateFromRecord(r.date);
             const dateStr = format(recordDate, 'yyyy-MM-dd');
+            const isSaturday = getDay(recordDate) === 6;
+            const isSunday = getDay(recordDate) === 0;
+
+            if (isSunday) {
+                if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                    totalOTPay += 8 * hourlyRate * sundayOTRate;
+                }
+                return;
+            }
             
             if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 4.5;
-            if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) totalHoursAbsent += 3.5;
+            if ((r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) && !isSaturday) totalHoursAbsent += 3.5;
             
-            return sum + calculateMinutesLate(r);
-        }, 0);
+            const minutesLate = calculateMinutesLate(r);
+            totalOTPay -= (minutesLate * minuteRate);
 
-        eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
-            if (day >= empStartDate && getDay(day) !== 0 && !recordsInMonth.some(r => isSameDay(getDateFromRecord(r.date), day))) {
-                totalHoursAbsent += 8; // All non-Sunday unrecorded days are 8h absences
+            if (r.overtimeHours) {
+                totalOTPay += r.overtimeHours * hourlyRate * normalOTRate;
             }
         });
 
-        const overtimeHours = recordsInMonth.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-        const overtimePay = overtimeHours * hourlyRate;
+        eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
+            if (day >= empStartDate && getDay(day) !== 0 && !recordsInMonth.some(r => isSameDay(getDateFromRecord(r.date), day))) {
+                if (getDay(day) === 6) {
+                    totalHoursAbsent += 4.5; // Saturday unrecorded only morning
+                } else {
+                    totalHoursAbsent += 8;
+                }
+            }
+        });
 
-        return acc + (baseSalary - (totalHoursAbsent * hourlyRate) - (minutesLate * minuteRate) + overtimePay);
+        return acc + (baseSalary - (totalHoursAbsent * hourlyRate) + totalOTPay);
     }, 0);
 
     return { totalEmployees, onSiteToday: onSiteTodayCount, estWeekly, actualWeekly, estMonthly, actualMonthly };
-  }, [activeEmployees, allAttendance]);
+  }, [activeEmployees, allAttendance, settings]);
 
   useEffect(() => {
     if (loading || !dashboardStats || allAttendance.length === 0 || !firestore) return;
@@ -334,11 +365,13 @@ export default function DashboardPage() {
             let total = 0;
             let count = 0;
             
+            const normalOTRate = settings?.normalOvertimeRate || 1.5;
+
             activeEmployees.filter(e => e.paymentMethod === 'Weekly').forEach(emp => {
                 const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
                 const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: startOfWeek(now, { weekStartsOn: 0 }), end: weekEnd }));
                 const hrs = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
-                const ot = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+                const ot = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0) * normalOTRate;
                 const amt = (hrs + ot) * (hourlyRate || 0);
                 if (amt > 0) {
                     weeklySummary += `• *${emp.name}*: ETB ${amt.toFixed(2)}\n`;
@@ -409,11 +442,14 @@ export default function DashboardPage() {
 
     const timer = setTimeout(checkAutoNotifications, 5000); 
     return () => clearTimeout(timer);
-  }, [dashboardStats, allAttendance, activeEmployees, loading, firestore]);
+  }, [dashboardStats, allAttendance, activeEmployees, loading, firestore, settings]);
 
   const payrollHistory = useMemo(() => {
     if (!employees || allAttendance.length === 0) return [];
     const history = [];
+    const normalOTRate = settings?.normalOvertimeRate || 1.5;
+    const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
+
     for (let i = 5; i >= 0; i--) {
         const monthDate = subMonths(new Date(), i);
         const ethDate = toEthiopian(monthDate);
@@ -438,41 +474,64 @@ export default function DashboardPage() {
                 const allowedPermissionDates = new Set(permissionDates.slice(0, 15));
 
                 let hoursAbsent = 0;
-                let minutesLate = 0;
+                let otPay = 0;
                 records.forEach(r => {
                     const recordDate = getDateFromRecord(r.date);
                     const dateStr = format(recordDate, 'yyyy-MM-dd');
+                    const isSaturday = getDay(recordDate) === 6;
+                    const isSunday = getDay(recordDate) === 0;
+
+                    if (isSunday) {
+                        if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                            otPay += 8 * hourly * sundayOTRate;
+                        }
+                        return;
+                    }
+
                     if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
-                    if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 3.5;
-                    minutesLate += calculateMinutesLate(r);
+                    if ((r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) && !isSaturday) hoursAbsent += 3.5;
+                    
+                    const minutesLate = calculateMinutesLate(r);
+                    otPay -= (minutesLate * minuteRate);
+                    
+                    if (r.overtimeHours) {
+                        otPay += r.overtimeHours * hourly * normalOTRate;
+                    }
                 });
 
                 eachDayOfInterval(monthInterval).forEach(day => {
                     if (day >= empStartDate && getDay(day) !== 0 && !records.some(r => isSameDay(getDateFromRecord(r.date), day))) {
-                        hoursAbsent += 8;
+                        if (getDay(day) === 6) {
+                            hoursAbsent += 4.5;
+                        } else {
+                            hoursAbsent += 8;
+                        }
                     }
                 });
 
-                const overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-                total += (base - (hoursAbsent * hourly) - (minutesLate * minuteRate) + (overtimeHours * hourly));
+                total += (base - (hoursAbsent * hourly) + otPay);
             } else {
                 const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-                let hoursWorked = records.reduce((sum, r) => sum + calculateHoursWorked(r) + (r.overtimeHours || 0), 0);
+                let dailyPay = records.reduce((sum, r) => {
+                    const hrs = calculateHoursWorked(r);
+                    const ot = (r.overtimeHours || 0) * normalOTRate;
+                    return sum + (hrs + ot) * (hourly || 0);
+                }, 0);
                 
                 eachDayOfInterval(monthInterval).forEach(day => {
                     if (getDay(day) === 0 && day >= empStartDate) {
                         const record = records.find(r => isSameDay(getDateFromRecord(r.date), day));
-                        if (!record) hoursWorked += 8;
+                        if (!record) dailyPay += 8 * (hourly || 0);
                     }
                 });
 
-                total += hoursWorked * (hourly || 0);
+                total += dailyPay;
             }
         });
         history.push({ month: format(start, 'MMM'), total });
     }
     return history;
-  }, [employees, allAttendance]);
+  }, [employees, allAttendance, settings]);
 
   const upcomingOrders = useMemo(() => {
     if (!allOrders) return [];
@@ -491,13 +550,14 @@ export default function DashboardPage() {
     const weekStart = startOfDay(new Date(selectedWeekStart));
     const weekEnd = endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
     const today = new Date();
+    const normalOTRate = settings?.normalOvertimeRate || 1.5;
     
     return employees.filter(e => e.paymentMethod === 'Weekly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: weekEnd })))).map(emp => {
         const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
         const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: weekStart, end: weekEnd }));
         const totalHours = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
         const otHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
-        const otPay = otHours * (hourlyRate || 0);
+        const otPay = otHours * (hourlyRate || 0) * normalOTRate;
         const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
         
         let minutesLate = 0;
@@ -521,7 +581,7 @@ export default function DashboardPage() {
             employeeName: emp.name, 
             paymentMethod: emp.paymentMethod, 
             period: "Selected Week",
-            amount: (totalHours + otHours) * (hourlyRate || 0), 
+            amount: (totalHours * (hourlyRate || 0)) + otPay, 
             status: 'Unpaid', 
             totalHours, 
             overtimeHours: otHours, 
@@ -530,7 +590,7 @@ export default function DashboardPage() {
             hoursAbsent
         };
     });
-  }, [employees, allAttendance, selectedWeekStart]);
+  }, [employees, allAttendance, selectedWeekStart, settings]);
 
   const monthlyPayroll = useMemo(() => {
     if (!employees || !selectedMonthStart) return [];
@@ -540,6 +600,8 @@ export default function DashboardPage() {
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
     const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
     const today = new Date();
+    const normalOTRate = settings?.normalOvertimeRate || 1.5;
+    const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
     
     return employees.filter(e => e.paymentMethod === 'Monthly' && (e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd })))).map(emp => {
         const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
@@ -548,7 +610,8 @@ export default function DashboardPage() {
         let finalAmount = 0;
         let hoursAbsent = 0;
         let minutesLate = 0;
-        let overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
+        let otHoursCount = 0;
+        let otPay = 0;
 
         const base = emp.monthlyRate || 0;
         const hourly = base / workingUnits / 8;
@@ -566,21 +629,39 @@ export default function DashboardPage() {
             if(recordDate > today) return;
 
             const dateStr = format(recordDate, 'yyyy-MM-dd');
+            const isSaturday = getDay(recordDate) === 6;
+            const isSunday = getDay(recordDate) === 0;
+
+            if (isSunday) {
+                if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                    otPay += 8 * hourly * sundayOTRate;
+                    otHoursCount += 8;
+                }
+                return;
+            }
+
             if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
-            if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 3.5;
+            if ((r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) && !isSaturday) hoursAbsent += 3.5;
             
             minutesLate += calculateMinutesLate(r);
+            if (r.overtimeHours) {
+                otPay += r.overtimeHours * hourly * normalOTRate;
+                otHoursCount += r.overtimeHours;
+            }
         });
 
         eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
             if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
-                hoursAbsent += 8;
+                if (getDay(day) === 6) {
+                    hoursAbsent += 4.5;
+                } else {
+                    hoursAbsent += 8;
+                }
             }
         });
 
-        const overtimeAmount = overtimeHours * hourly;
         const deductions = (hoursAbsent * hourly) + (minutesLate * minuteRate);
-        finalAmount = (base - deductions) + overtimeAmount;
+        finalAmount = (base - deductions) + otPay;
 
         return {
             employeeId: emp.id, 
@@ -589,13 +670,13 @@ export default function DashboardPage() {
             period: "Selected Month",
             amount: finalAmount, 
             status: 'Unpaid', 
-            overtimeHours, 
-            overtimeAmount,
+            overtimeHours: otHoursCount, 
+            overtimeAmount: otPay,
             hoursAbsent,
             minutesLate
         };
     });
-  }, [employees, allAttendance, selectedMonthStart]);
+  }, [employees, allAttendance, selectedMonthStart, settings]);
 
   const unifiedMonthlyPayroll = useMemo(() => {
     if (!employees || !selectedUnifiedMonth) return [];
@@ -605,13 +686,14 @@ export default function DashboardPage() {
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
     const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
     const today = new Date();
+    const normalOTRate = settings?.normalOvertimeRate || 1.5;
+    const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
     
     return employees.filter(e => e.status !== 'Inactive' || allAttendance.some(r => r.employeeId === e.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }))).map(emp => {
         const records = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(getDateFromRecord(r.date), { start: monthStart, end: monthEnd }));
         const empStartDate = emp.attendanceStartDate ? startOfDay(new Date(emp.attendanceStartDate)) : new Date(0);
         
         let finalAmount = 0;
-        let overtimeHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
 
         if (emp.paymentMethod === 'Monthly') {
             const base = emp.monthlyRate || 0;
@@ -624,31 +706,53 @@ export default function DashboardPage() {
 
             let hoursAbsent = 0;
             let minutesLate = 0;
+            let otPay = 0;
             records.forEach(r => {
                 const recordDate = getDateFromRecord(r.date);
                 if(recordDate > today) return;
                 const dateStr = format(recordDate, 'yyyy-MM-dd');
+                const isSaturday = getDay(recordDate) === 6;
+                const isSunday = getDay(recordDate) === 0;
+
+                if (isSunday) {
+                    if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                        otPay += 8 * hourly * sundayOTRate;
+                    }
+                    return;
+                }
+
                 if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 4.5;
-                if (r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) hoursAbsent += 3.5;
+                if ((r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dateStr))) && !isSaturday) hoursAbsent += 3.5;
+                
                 minutesLate += calculateMinutesLate(r);
+                if (r.overtimeHours) {
+                    otPay += r.overtimeHours * hourly * normalOTRate;
+                }
             });
             eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
-                if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) hoursAbsent += 8;
+                if (day >= empStartDate && getDay(day) !== 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) {
+                    if (getDay(day) === 6) {
+                        hoursAbsent += 4.5;
+                    } else {
+                        hoursAbsent += 8;
+                    }
+                }
             });
-            finalAmount = (base - ((hoursAbsent * hourly) + (minutesLate * minuteRate))) + (overtimeHours * hourly);
+            finalAmount = (base - ((hoursAbsent * hourly) + (minutesLate * minuteRate))) + otPay;
         } else {
             const hourlyRate = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
             let hoursWorked = records.reduce((sum, r) => sum + calculateHoursWorked(r), 0);
+            let otHours = records.reduce((sum, r) => sum + (r.overtimeHours || 0), 0);
             const recordedDates = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
             eachDayOfInterval({ start: monthStart, end: monthEnd > today ? today : monthEnd }).forEach(day => {
                 if (day >= empStartDate && getDay(day) === 0 && !recordedDates.has(format(day, 'yyyy-MM-dd'))) hoursWorked += 8;
             });
-            finalAmount = (hoursWorked + overtimeHours) * (hourlyRate || 0);
+            finalAmount = (hoursWorked * (hourlyRate || 0)) + (otHours * (hourlyRate || 0) * normalOTRate);
         }
 
         return { employeeId: emp.id, amount: finalAmount };
     });
-  }, [employees, allAttendance, selectedUnifiedMonth]);
+  }, [employees, allAttendance, selectedUnifiedMonth, settings]);
 
   const totalUnifiedMonthly = useMemo(() => unifiedMonthlyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [unifiedMonthlyPayroll]);
 
@@ -714,12 +818,14 @@ export default function DashboardPage() {
   const dailyEarnings = useMemo(() => {
     if (!employees || !selectedDay) return [];
     
+    const normalOTRate = settings?.normalOvertimeRate || 1.5;
+
     return employees.filter(e => e.status !== 'Inactive' || todayAttendance?.some(r => r.employeeId === e.id)).map(emp => {
         const record = todayAttendance?.find(r => r.employeeId === emp.id);
         let amount = 0;
         if (emp.paymentMethod === 'Weekly') {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            amount = record ? (calculateHoursWorked(record) + (record.overtimeHours || 0)) * (hourly || 0) : (getDay(new Date(selectedDay)) === 0 ? (hourly || 0) * 8 : 0);
+            amount = record ? (calculateHoursWorked(record) * (hourly || 0)) + ((record.overtimeHours || 0) * (hourly || 0) * normalOTRate) : (getDay(new Date(selectedDay)) === 0 ? (hourly || 0) * 8 : 0);
         } else {
             const daily = (emp.monthlyRate || 0) / (getMonthlyWorkingUnits(new Date(selectedDay), 30));
             amount = record ? daily : 0; 
@@ -729,7 +835,7 @@ export default function DashboardPage() {
             status: record?.morningStatus || "Absent", amount, overtimeHours: record?.overtimeHours || 0
         };
     });
-  }, [employees, todayAttendance, selectedDay]);
+  }, [employees, todayAttendance, selectedDay, settings]);
 
   const totalDailyEarnings = useMemo(() => dailyEarnings.reduce((acc, curr) => acc + curr.amount, 0), [dailyEarnings]);
   const totalWeeklyPayroll = useMemo(() => weeklyPayroll.reduce((acc, curr) => acc + curr.amount, 0), [weeklyPayroll]);

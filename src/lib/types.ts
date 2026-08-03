@@ -119,3 +119,8 @@ export interface StockAdjustment {
     employeeId?: string;
     employeeName?: string;
 }
+
+export interface PayrollSettings {
+    normalOvertimeRate: number;
+    sundayOvertimeRate: number;
+}

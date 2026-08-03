@@ -11,19 +11,21 @@ import {
 } from "@/components/ui/sidebar";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
-import { User, LogOut } from "lucide-react";
+import { User, LogOut, Settings } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { PageTitleProvider, usePageTitle } from "@/components/page-title-provider";
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import { FirebaseClientProvider, useUser, useAuth } from "@/firebase";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { PayrollSettingsDialog } from "./payroll/payroll-settings-dialog";
 
 function AppHeader() {
   const { title } = usePageTitle();
   const { user } = useUser();
   const auth = useAuth();
   const router = useRouter();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const handleSignOut = async () => {
     if (auth) {
@@ -40,15 +42,25 @@ function AppHeader() {
           <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
         </div>
         <div className="flex items-center gap-2 md:gap-4">
+             <PayrollSettingsDialog isOpen={isSettingsOpen} setIsOpen={setIsSettingsOpen} />
              <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full h-10 w-10">
                     <Avatar className="h-10 w-10">
-                      <AvatarFallback>{userName?.[0].toUpperCase()}</AvatarFallback>
+                      <AvatarFallback className="flex h-full w-full items-center justify-center rounded-full bg-muted">
+                        {userName?.[0].toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Payroll Settings</span>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
                   <LogOut className="mr-2 h-4 w-4" />
                   <span>Log out</span>
