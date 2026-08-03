@@ -5,7 +5,7 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { AttendanceRecord, Employee, AttendanceStatus, PayrollSettings } from "@/lib/types";
@@ -15,7 +15,7 @@ import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
-import { Plus, Wallet, Sunrise, Sun, CheckSquare, Square, Check, Clock, UserCheck, UserX } from "lucide-react";
+import { Plus, Wallet, Sunrise, Sun, CheckSquare, Square, Check, Clock, UserCheck, UserX, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -84,7 +84,11 @@ export default function AttendancePage() {
   const [attendance, setAttendance] = useState<DailyAttendance[]>([]);
   const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
   const [isOvertimeDialogOpen, setIsOvertimeDialogOpen] = useState(false);
+  const [isLateTimeDialogOpen, setIsLateTimeDialogOpen] = useState(false);
+  
   const [selectedEmployeeAttendance, setSelectedEmployeeAttendance] = useState<DailyAttendance | null>(null);
+  const [lateSession, setLateSession] = useState<'morning' | 'afternoon' | null>(null);
+  const [lateTimeValue, setLateTimeValue] = useState("08:30");
   
   // Bulk actions state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -137,19 +141,44 @@ export default function AttendancePage() {
 
   const handleStatusClick = async (session: 'morning' | 'afternoon', status: AttendanceStatus) => {
       if (!selectedEmployeeAttendance || !firestore) return;
+
+      if (status === 'Late') {
+          setLateSession(session);
+          setLateTimeValue(session === 'morning' ? "08:30" : "14:00");
+          setIsLateTimeDialogOpen(true);
+          return;
+      }
+
       const updated = { ...selectedEmployeeAttendance };
       const time = session === 'morning' ? "08:00" : "13:30";
       
       if (session === 'morning') { 
           updated.morningStatus = status; 
-          updated.morningEntry = (status === 'Present' || status === 'Late') ? time : ""; 
+          updated.morningEntry = (status === 'Present') ? time : ""; 
       } else { 
           updated.afternoonStatus = status; 
-          updated.afternoonEntry = (status === 'Present' || status === 'Late') ? time : ""; 
+          updated.afternoonEntry = (status === 'Present') ? time : ""; 
       }
       
       setSelectedEmployeeAttendance(updated);
       saveAttendanceBatch([updated]);
+  };
+
+  const handleSaveLateTime = () => {
+    if (!selectedEmployeeAttendance || !lateSession || !firestore) return;
+
+    const updated = { ...selectedEmployeeAttendance };
+    if (lateSession === 'morning') {
+        updated.morningStatus = 'Late';
+        updated.morningEntry = lateTimeValue;
+    } else {
+        updated.afternoonStatus = 'Late';
+        updated.afternoonEntry = lateTimeValue;
+    }
+
+    setSelectedEmployeeAttendance(updated);
+    saveAttendanceBatch([updated]);
+    setIsLateTimeDialogOpen(false);
   };
 
   const handleBulkStatus = async (session: 'morning' | 'afternoon', status: AttendanceStatus) => {
@@ -328,6 +357,29 @@ export default function AttendancePage() {
           </DialogContent>
       </Dialog>
       
+      <Dialog open={isLateTimeDialogOpen} onOpenChange={setIsLateTimeDialogOpen}>
+          <DialogContent className="sm:max-w-xs">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                    <Timer className="h-5 w-5 text-amber-500" /> Late Arrival Time
+                </DialogTitle>
+                <DialogDescription>Entering {lateSession === 'morning' ? 'Morning' : 'Afternoon'} time for {selectedEmployeeAttendance?.employeeName}</DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <Input 
+                    type="time" 
+                    value={lateTimeValue} 
+                    onChange={(e) => setLateTimeValue(e.target.value)} 
+                    className="h-12 text-lg font-bold text-center"
+                />
+              </div>
+              <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setIsLateTimeDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={handleSaveLateTime} className="bg-amber-600 hover:bg-amber-700">Confirm Time</Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
       <Dialog open={isAttendanceDialogOpen} onOpenChange={setIsAttendanceDialogOpen}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-3xl border-none shadow-2xl">
             <DialogHeader className="p-0">
