@@ -194,10 +194,12 @@ export default function AttendancePage() {
       
       <Dialog open={isAttendanceDialogOpen} onOpenChange={setIsAttendanceDialogOpen}>
         <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-3xl border-none shadow-2xl">
-            <div className="bg-[#f8faff] p-6 text-center border-b border-blue-50">
-               <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{selectedEmployeeAttendance?.employeeName}</h2>
-               <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Log attendance for {format(selectedDate, "eeee, MMMM do")}</p>
-            </div>
+            <DialogHeader className="p-0">
+                <div className="bg-[#f8faff] p-6 text-center border-b border-blue-50">
+                   <DialogTitle className="text-2xl font-black text-[#1e293b] tracking-tight">{selectedEmployeeAttendance?.employeeName}</DialogTitle>
+                   <DialogDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Log attendance for {format(selectedDate, "eeee, MMMM do")}</DialogDescription>
+                </div>
+            </DialogHeader>
             
             {selectedEmployeeAttendance && (
                 <div className="p-6 space-y-8 bg-white">
@@ -306,4 +308,3 @@ function AttendanceMarkButton({ status, color, active, onClick }: { status: Atte
         </Button>
     );
 }
-

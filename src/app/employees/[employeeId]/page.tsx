@@ -2,7 +2,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -14,14 +14,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Employee, PayrollSettings, AttendanceRecord } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone, Trash2, Edit, Calendar, UserMinus, Send, Loader2, XCircle, ChevronDown, ChevronUp, CopyIcon, CalendarDays } from "lucide-react";
+import { Copy, Phone, Trash2, Edit, Calendar, Send, Loader2, CopyIcon, CalendarDays } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
 import { EmployeeForm } from "../employee-form";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -248,8 +247,8 @@ export default function EmployeeProfilePage() {
             id: dateStr, 
             employeeId: employee.id, 
             date: day.toISOString(), 
-            morningStatus: isSun ? '—' : (day >= employeeStartDate ? 'Absent' : 'Present'), 
-            afternoonStatus: isSun ? '—' : (day >= employeeStartDate ? 'Absent' : 'Present'), 
+            morningStatus: isSun ? '(-, -)' : (day >= employeeStartDate ? 'Absent' : 'Present'), 
+            afternoonStatus: isSun ? '(-, -)' : (day >= employeeStartDate ? 'Absent' : 'Present'), 
             isVirtual: true,
             isSunday: isSun
         } as any;
