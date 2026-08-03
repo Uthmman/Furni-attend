@@ -101,7 +101,7 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
-    // Saturday counted as 0.5625 because miss afternoon is free, but miss morning is 4.5h deduction
+    // Saturdays counted as 0.5625 units for Monthly staff payout logic
     return weekdays + (saturdays * 0.5625);
 };
 
@@ -294,7 +294,7 @@ export default function PayrollPage() {
         let minutesLate = 0;
         let hoursAbsent = 0;
         const periodDays = eachDayOfInterval(period);
-        const recordedDates = new Set(relevantRecords.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        const recordedDates = new Set(relevantRecords.map(r => r.id));
 
         relevantRecords.forEach(r => {
             minutesLate += calculateMinutesLate(r);
@@ -315,7 +315,7 @@ export default function PayrollPage() {
         const overtimeAmount = overtimeHours * hourlyRate * normalOTRate;
         const finalAmount = baseAmount + overtimeAmount;
         
-        const daysWorked = new Set(relevantRecords.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
+        const daysWorked = new Set(relevantRecords.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => r.id)).size;
         
         if (finalAmount > 0 || daysWorked > 0 || relevantRecords.length > 0) {
             weekly.push({
@@ -360,10 +360,10 @@ export default function PayrollPage() {
         const allEmployeeRecords = allAttendance.filter(r => r.employeeId === employee.id);
         const permissionDatesInYear = new Set<string>();
         allEmployeeRecords.forEach(rec => {
-            const recDate = getDateFromRecord(rec.date);
-            if (toEthiopian(recDate).year === ethYearForPeriod) {
+            const dStr = rec.id;
+            if (dStr && parse(dStr, "yyyy-MM-dd", new Date()).getFullYear() === ethYearForPeriod) {
                 if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
-                    permissionDatesInYear.add(format(recDate, 'yyyy-MM-dd'));
+                    permissionDatesInYear.add(dStr);
                 }
             }
         });
@@ -381,7 +381,7 @@ export default function PayrollPage() {
             isValid(getDateFromRecord(r.date)) && 
             isWithinInterval(getDateFromRecord(r.date), calculationPeriod)
         );
-        const recordedDatesForMonth = new Set(allRecordsForMonth.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        const recordedDatesForMonth = new Set(allRecordsForMonth.map(r => r.id));
 
         let projectedHoursAbsent = 0;
         let displayMinutesLate = 0;
@@ -391,25 +391,30 @@ export default function PayrollPage() {
         const today = new Date();
         
         allRecordsForMonth.forEach(r => {
-            const recordDate = getDateFromRecord(r.date);
+            const dStr = r.id;
+            if(!dStr) return;
+            const recordDate = parse(dStr, "yyyy-MM-dd", new Date());
             if(recordDate > today) return;
 
             const isSaturday = getDay(recordDate) === 6;
             const isSunday = getDay(recordDate) === 0;
 
             if (isSunday) {
-                if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                const isWorking = r.morningStatus === 'Present' || r.morningStatus === 'Late' || r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late';
+                if (isWorking) {
                     totalOvertimeAmount += 8 * hourlyRate * sundayOTRate;
                     totalOvertimeHours += 8;
                 }
-                return;
-            }
+            } else {
+                let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dStr));
+                let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dStr));
 
-            const recordDateStr = format(recordDate, 'yyyy-MM-dd');
-            if (r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr))) projectedHoursAbsent += 4.5;
-            if ((r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr))) && !isSaturday) projectedHoursAbsent += 3.5;
-            
-            displayMinutesLate += calculateMinutesLate(r);
+                if (morningIsUnpaidAbsence) projectedHoursAbsent += 4.5;
+                // POLICY: Saturday afternoon no deduction
+                if (afternoonIsUnpaidAbsence && !isSaturday) projectedHoursAbsent += 3.5;
+                
+                displayMinutesLate += calculateMinutesLate(r);
+            }
             
             if (r.overtimeHours) {
                 totalOvertimeAmount += r.overtimeHours * hourlyRate * normalOTRate;
@@ -421,11 +426,11 @@ export default function PayrollPage() {
         const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
 
         calculationPeriodDays.forEach(day => {
+            const dayStr = format(day, 'yyyy-MM-dd');
             if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { 
-                const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDatesForMonth.has(dayStr)) {
                     if (getDay(day) === 6) {
-                        projectedHoursAbsent += 4.5; // Saturday unrecorded only morning
+                        projectedHoursAbsent += 4.5; // Saturday unrecorded is only morning deduction
                     } else {
                         projectedHoursAbsent += 8;
                     }
@@ -489,8 +494,7 @@ export default function PayrollPage() {
              if (!hourlyRate) return;
 
              const record = allAttendance.find(r => 
-                r.employeeId === employee.id && 
-                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr
+                r.employeeId === employee.id && r.id === dayStr
              );
 
              if (record) {
@@ -530,8 +534,7 @@ export default function PayrollPage() {
             if (!hourlyRate) return;
 
             const record = allAttendance.find(r => 
-                r.employeeId === employee.id && 
-                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr
+                r.employeeId === employee.id && r.id === dayStr
             );
             
             if (record) {
@@ -584,8 +587,7 @@ export default function PayrollPage() {
             if (!hourlyRate) return;
 
             const record = allAttendance.find(r => 
-                r.employeeId === employee.id && 
-                format(getDateFromRecord(r.date), 'yyyy-MM-dd') === dayStr
+                r.employeeId === employee.id && r.id === dayStr
             );
             
             if (record) {

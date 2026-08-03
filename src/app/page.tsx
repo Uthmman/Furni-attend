@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useMemo, useEffect, useState } from 'react';
@@ -74,6 +75,7 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
+    // Saturdays counted as 0.5625 units for Monthly staff (4.5h morning deduction policy)
     return weekdays + (saturdays * 0.5625);
 };
 
@@ -289,7 +291,7 @@ export default function DashboardPage() {
                     where('date', '<=', end.toISOString())
                 );
                 const snap = await getDocs(q);
-                snap.forEach(d => records.push({ ...d.data(), employeeId: emp.id } as AttendanceRecord));
+                snap.forEach(d => records.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
             });
             await Promise.all(fetchPromises);
             setLazyAttendance(records);
@@ -319,7 +321,7 @@ export default function DashboardPage() {
                     where('date', '<=', end.toISOString())
                 );
                 const snap = await getDocs(q);
-                snap.forEach(d => records.push({ ...d.data(), employeeId: emp.id } as AttendanceRecord));
+                snap.forEach(d => records.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
             });
             await Promise.all(fetchPromises);
             setUnifiedAttendance(records);
@@ -344,6 +346,10 @@ export default function DashboardPage() {
     if (!activeEmployees || !selectedDay) return [];
     return activeEmployees.map(emp => {
         const record = todayRecords?.find(r => r.employeeId === emp.id);
+        const recordDayDate = new Date(selectedDay);
+        const isSunday = getDay(recordDayDate) === 0;
+        const isSaturday = getDay(recordDayDate) === 6;
+
         let amount = 0;
         let lateMins = record ? calculateMinutesLate(record) : 0;
         let absentHours = 0;
@@ -357,36 +363,37 @@ export default function DashboardPage() {
                 otAmount = otHours * (hourly || 0) * normalOTRate;
                 if (record.morningStatus === 'Absent') absentHours += 4.5;
                 if (record.afternoonStatus === 'Absent') absentHours += 3.5;
-            } else if (getDay(new Date(selectedDay)) === 0) {
+            } else if (isSunday) {
                 amount = (hourly || 0) * 8;
             } else {
                 absentHours = 8;
             }
         } else {
-            const units = getMonthlyWorkingUnits(new Date(selectedDay), 30);
+            const units = getMonthlyWorkingUnits(recordDayDate, 30);
             const hourly = (emp.monthlyRate || 0) / units / 8;
             const daily = (emp.monthlyRate || 0) / units;
             const minuteRate = hourly / 60;
 
             if (record) {
-                const isSunday = getDay(new Date(selectedDay)) === 0;
-                const isSaturday = getDay(new Date(selectedDay)) === 6;
-                
                 let absenceDeduction = 0;
                 if (record.morningStatus === 'Absent') { absenceDeduction += 4.5 * hourly; absentHours += 4.5; }
+                // POLICY: Monthly staff no Saturday afternoon deduction
                 if (record.afternoonStatus === 'Absent' && !isSaturday) { absenceDeduction += 3.5 * hourly; absentHours += 3.5; }
                 
                 let lateDeduction = lateMins * minuteRate;
                 otAmount = otHours * hourly * normalOTRate;
 
-                if (isSunday && (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent')) {
-                    otAmount += 8 * hourly * sundayOTRate;
-                    otHours += 8;
+                if (isSunday) {
+                    const isWorking = record.morningStatus === 'Present' || record.morningStatus === 'Late' || record.afternoonStatus === 'Present' || record.afternoonStatus === 'Late';
+                    if (isWorking) {
+                        otAmount += 8 * hourly * sundayOTRate;
+                        otHours += 8;
+                    }
                 }
 
                 amount = daily - absenceDeduction - lateDeduction + otAmount;
             } else {
-                if (getDay(new Date(selectedDay)) !== 0) absentHours = getDay(new Date(selectedDay)) === 6 ? 4.5 : 8;
+                if (!isSunday) absentHours = isSaturday ? 4.5 : 8;
             }
         }
 
@@ -435,7 +442,7 @@ export default function DashboardPage() {
         const start = startOfDay(new Date(selectedWeekStart));
         const end = endOfDay(endOfWeek(start, { weekStartsOn: 0 }));
         const interval = eachDayOfInterval({ start, end });
-        const recordedDays = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        const recordedDays = new Set(records.map(r => r.id));
 
         records.forEach(r => {
             if (r.morningStatus === 'Absent') absentHours += 4.5;
@@ -468,40 +475,67 @@ export default function DashboardPage() {
         const minuteRate = hourly / 60;
         const daily = (emp.monthlyRate || 0) / units;
 
-        let lateMins = records.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
-        let otHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-        let otAmount = otHours * hourly * normalOTRate;
+        // Correct Permission Policy Logic (15 free days per year)
+        const ethYearForPeriod = eth.year;
+        const permissionDatesInYear = new Set<string>();
+        lazyAttendance.filter(r => r.employeeId === emp.id).forEach(rec => {
+            const dStr = rec.id;
+            if (dStr && parse(dStr, "yyyy-MM-dd", new Date()).getFullYear() === ethYearForPeriod) {
+                if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
+                    permissionDatesInYear.add(dStr);
+                }
+            }
+        });
+        const allowedPermissionDates = new Set(Array.from(permissionDatesInYear).sort().slice(0, 15));
+
+        let lateMins = 0;
+        let otHours = 0;
+        let otAmount = 0;
         let absentHours = 0;
         let totalDeduction = 0;
 
-        const interval = eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) });
-        const recordedDays = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        const recordedDates = new Set(records.map(r => r.id));
+        const today = new Date();
 
         records.forEach(r => {
-            const d = getDateFromRecord(r.date);
+            const dStr = r.id;
+            if (!dStr) return;
+            const d = parse(dStr, "yyyy-MM-dd", new Date());
             const isSunday = getDay(d) === 0;
             const isSaturday = getDay(d) === 6;
 
-            if (isSunday && (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')) {
-                otAmount += 8 * hourly * sundayOTRate;
-                otHours += 8;
-            } else if (!isSunday) {
-                if (r.morningStatus === 'Absent') { totalDeduction += 4.5 * hourly; absentHours += 4.5; }
-                if (r.afternoonStatus === 'Absent' && !isSaturday) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
+            if (isSunday) {
+                const isWorking = r.morningStatus === 'Present' || r.morningStatus === 'Late' || r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late';
+                if (isWorking) {
+                    otAmount += 8 * hourly * sundayOTRate;
+                    otHours += 8;
+                }
+            } else {
+                let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dStr));
+                let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dStr));
+
+                if (morningIsUnpaidAbsence) { totalDeduction += 4.5 * hourly; absentHours += 4.5; }
+                // POLICY: Saturday afternoon no deduction
+                if (afternoonIsUnpaidAbsence && !isSaturday) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
+                
+                lateMins += calculateMinutesLate(r);
+            }
+            if (r.overtimeHours) {
+                otHours += r.overtimeHours;
+                otAmount += r.overtimeHours * hourly * normalOTRate;
             }
         });
 
-        const today = new Date();
-        interval.forEach(day => {
-            if (day <= today && getDay(day) !== 0 && !recordedDays.has(format(day, 'yyyy-MM-dd'))) {
+        eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
+            const dayStr = format(day, 'yyyy-MM-dd');
+            if (day <= today && getDay(day) !== 0 && !recordedDates.has(dayStr)) {
                 const abs = getDay(day) === 6 ? 4.5 : 8;
                 absentHours += abs;
                 totalDeduction += abs * hourly;
             }
         });
 
-        const lateDeduction = lateMins * minuteRate;
-        const netSalary = (emp.monthlyRate || 0) - totalDeduction - lateDeduction + otAmount;
+        const netSalary = (emp.monthlyRate || 0) - totalDeduction - (lateMins * minuteRate) + otAmount;
         grandTotal += netSalary;
 
         return { emp, lateMins, total: netSalary, absentHours, overtimeHours: otHours, overtimeAmount: otAmount };
@@ -522,7 +556,7 @@ export default function DashboardPage() {
 
     activeEmployees.forEach(emp => {
         const records = unifiedAttendance.filter(r => r.employeeId === emp.id);
-        const recordedDays = new Set(records.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        const recordedDates = new Set(records.map(r => r.id));
         
         if (emp.paymentMethod === 'Monthly') {
             const baseSalary = emp.monthlyRate || 0;
@@ -533,23 +567,42 @@ export default function DashboardPage() {
             let totalDeduction = 0;
             let lateMins = 0;
 
+            // Permission logic for Unified Audit
+            const permissionDatesInYear = new Set<string>();
+            unifiedAttendance.filter(r => r.employeeId === emp.id).forEach(rec => {
+                const dStr = rec.id;
+                if (dStr && parse(dStr, "yyyy-MM-dd", new Date()).getFullYear() === eth.year) {
+                    if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
+                        permissionDatesInYear.add(dStr);
+                    }
+                }
+            });
+            const allowedPermissionDates = new Set(Array.from(permissionDatesInYear).sort().slice(0, 15));
+
             records.forEach(r => {
-                const d = getDateFromRecord(r.date);
+                const dStr = r.id;
+                if (!dStr) return;
+                const d = parse(dStr, "yyyy-MM-dd", new Date());
                 const isSunday = getDay(d) === 0;
                 const isSaturday = getDay(d) === 6;
 
-                if (isSunday && (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')) {
-                    otAmount += 8 * hourly * sundayOTRate;
-                } else if (!isSunday) {
-                    if (r.morningStatus === 'Absent') totalDeduction += 4.5 * hourly;
-                    if (r.afternoonStatus === 'Absent' && !isSaturday) totalDeduction += 3.5 * hourly;
+                if (isSunday) {
+                    const isWorking = r.morningStatus === 'Present' || r.morningStatus === 'Late' || r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late';
+                    if (isWorking) otAmount += 8 * hourly * sundayOTRate;
+                } else {
+                    let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dStr));
+                    let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dStr));
+
+                    if (morningIsUnpaidAbsence) totalDeduction += 4.5 * hourly;
+                    if (afternoonIsUnpaidAbsence && !isSaturday) totalDeduction += 3.5 * hourly;
                     lateMins += calculateMinutesLate(r);
                 }
                 if (r.overtimeHours) otAmount += r.overtimeHours * hourly * normalOTRate;
             });
 
             eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
-                if (day <= today && getDay(day) !== 0 && !recordedDays.has(format(day, 'yyyy-MM-dd'))) {
+                const dayStr = format(day, 'yyyy-MM-dd');
+                if (day <= today && getDay(day) !== 0 && !recordedDates.has(dayStr)) {
                     totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
                 }
             });

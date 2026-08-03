@@ -187,8 +187,7 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
-    // Saturdays counted as 1.0 unit because missing them is 8h absence for morning but user said afternoon not deducted
-    // Actually if missing afternoon is free, then Saturday is only 4.5h work for the monthly salary
+    // Saturdays counted as 0.5625 units because missing afternoon is not deducted (4.5h work)
     return weekdays + (saturdays * 0.5625);
 };
 
@@ -377,35 +376,40 @@ export default function EmployeeProfilePage() {
         let sundayOTHours = 0;
 
         const minutesLate = filteredAttendance.reduce((acc, r) => {
-            const recordDate = getDateFromRecord(r.date);
+            const recordDateStr = r.id; // Using the ID which is the "yyyy-MM-dd" string for robust day-of-week
+            if (!recordDateStr) return acc;
+            
+            const recordDate = parse(recordDateStr, "yyyy-MM-dd", new Date());
             const formattedDate = format(recordDate, 'MMM d');
             const isSaturday = getDay(recordDate) === 6;
             const isSunday = getDay(recordDate) === 0;
 
             if (isSunday) {
-                if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                const isWorking = r.morningStatus === 'Present' || r.morningStatus === 'Late' || r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late';
+                if (isWorking) {
                     sundayOTAmount += 8 * hourlyRateCalc * sundayOTRate;
                     sundayOTHours += 8;
                 }
                 return acc;
             }
 
-            let isAbsent = false;
-            const recordDateStr = format(recordDate, 'yyyy-MM-dd');
+            let isUnpaidAbsenceDetected = false;
 
             let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
             let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
 
             if (morningIsUnpaidAbsence) {
                 totalHoursAbsent += 4.5;
-                isAbsent = true;
+                isUnpaidAbsenceDetected = true;
             }
+            
+            // POLICY: Monthly staff afternoon absence on Saturday is NOT deducted
             if (afternoonIsUnpaidAbsence && !isSaturday) {
                 totalHoursAbsent += 3.5;
-                isAbsent = true;
+                isUnpaidAbsenceDetected = true;
             }
 
-            if(isAbsent && !absentDates.includes(formattedDate)) {
+            if(isUnpaidAbsenceDetected && !absentDates.includes(formattedDate)) {
                 absentDates.push(formattedDate);
             }
             
@@ -419,7 +423,7 @@ export default function EmployeeProfilePage() {
         const interval = { start: startDate, end: addDays(startDate, daysInMonthCount - 1) };
         const periodDays = eachDayOfInterval(interval);
         const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
-        const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+        const recordedDates = new Set(filteredAttendance.map(r => r.id));
 
         const today = new Date();
         periodDays.forEach(day => {
@@ -428,7 +432,7 @@ export default function EmployeeProfilePage() {
                 if (!recordedDates.has(dayStr)) {
                     const formattedDate = format(day, 'MMM d');
                     if (getDay(day) === 6) {
-                        totalHoursAbsent += 4.5; // Only morning for Saturday unrecorded
+                        totalHoursAbsent += 4.5; // Saturday unrecorded is only 4.5h deduction
                     } else {
                         totalHoursAbsent += 8;
                     }
@@ -483,7 +487,7 @@ export default function EmployeeProfilePage() {
           const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
           const interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
           const periodDays = eachDayOfInterval(interval);
-          const recordedDates = new Set(filteredAttendance.map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd')));
+          const recordedDates = new Set(filteredAttendance.map(r => r.id));
           const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
           const today = new Date();
 
@@ -492,7 +496,7 @@ export default function EmployeeProfilePage() {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
                     if (getDay(day) !== 0) {
-                        totalHoursAbsent += 8; // Weekly unrecorded Saturday is 8h for work tracking
+                        totalHoursAbsent += 8; // Weekly staff unrecorded is full day
                     }
                 }
               }
@@ -508,7 +512,7 @@ export default function EmployeeProfilePage() {
       const baseAmount = totalHours * (currentHourlyRate || 0);
       const totalAmount = baseAmount + overtimePay;
       
-      const daysWorked = new Set(filteredAttendance.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => format(getDateFromRecord(r.date), 'yyyy-MM-dd'))).size;
+      const daysWorked = new Set(filteredAttendance.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => r.id)).size;
 
       return {
         hours: totalHours,
