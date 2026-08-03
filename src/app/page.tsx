@@ -139,6 +139,89 @@ const getOverallStatus = (morning: string, afternoon: string): string => {
     return 'Absent';
 };
 
+const EmployeeCard = ({ 
+    employeeId,
+    name, 
+    paymentMethod, 
+    lateMins, 
+    absentHours, 
+    overtimeHours, 
+    overtimeAmount, 
+    total, 
+    amountLabel, 
+    morning, 
+    afternoon, 
+    status,
+    isToday 
+  }: any) => (
+    <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors">
+        <CardContent className="p-4 space-y-4">
+            <div className="flex justify-between items-start">
+                <Link href={`/employees/${employeeId}`} className="hover:underline decoration-primary/40 underline-offset-4">
+                    <h3 className="font-bold text-[#1e293b] text-base">{name}</h3>
+                </Link>
+                {isToday ? (
+                  <Badge 
+                    className={cn(
+                        "text-[10px] font-bold h-6 px-3 rounded-full border-none shadow-none",
+                        status === 'Present' && "bg-secondary text-secondary-foreground",
+                        status === 'Late' && "bg-amber-100 text-amber-700",
+                        status === 'Absent' && "bg-destructive/10 text-destructive",
+                        status === 'Permission' && "bg-blue-100 text-blue-700"
+                    )}
+                  >
+                    {status}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60">
+                      {paymentMethod}
+                  </Badge>
+                )}
+            </div>
+            
+            {isToday ? (
+                <div className="bg-muted/20 rounded-full py-2 px-4 flex justify-between items-center text-[10px] sm:text-[11px]">
+                    <div className="flex gap-1.5 items-center">
+                        <span className="text-muted-foreground font-black uppercase tracking-tighter opacity-60">Morning:</span>
+                        <span className="font-bold text-foreground/80">{morning || "—"}</span>
+                    </div>
+                    <div className="flex gap-1.5 items-center">
+                        <span className="text-muted-foreground font-black uppercase tracking-tighter opacity-60">Afternoon:</span>
+                        <span className="font-bold text-foreground/80">{afternoon || "—"}</span>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex gap-2">
+                    <div className="flex-1 bg-muted/20 rounded-full h-8 flex items-center px-4 justify-between">
+                        <span className={cn("text-[11px] font-medium", lateMins > 0 ? "text-amber-600" : "text-muted-foreground/60")}>
+                            {lateMins > 0 ? `Late: ${lateMins}m` : "No late mins"}
+                        </span>
+                        <span className={cn("text-[11px] font-bold", absentHours > 0 ? "text-destructive" : "text-muted-foreground/60")}>
+                            {absentHours > 0 ? `Absent: ${absentHours.toFixed(1)}h` : "Full attendance"}
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            {overtimeHours > 0 && (
+                <div className="bg-primary/5 rounded-full h-8 flex items-center px-4 justify-between">
+                    <span className="text-[11px] font-medium text-primary/80">Overtime:</span>
+                    <span className="text-[11px] font-bold text-primary">
+                        +{overtimeHours} hrs (ETB {overtimeAmount.toFixed(2)})
+                    </span>
+                </div>
+            )}
+
+            <div className={cn("flex items-center", isToday ? "justify-end pt-1" : "pt-2 justify-between border-t border-dashed")}>
+                {!isToday && <span className="text-[11px] font-bold text-[#1e293b]">{amountLabel}:</span>}
+                <span className={cn("font-black text-primary", isToday ? "text-lg" : "text-xl")}>
+                    ETB {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+            </div>
+        </CardContent>
+    </Card>
+  );
+
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
@@ -406,86 +489,6 @@ export default function DashboardPage() {
 
   const attendancePercentage = dashboardStats.totalEmployees > 0 ? (dashboardStats.onSiteToday / dashboardStats.totalEmployees) * 100 : 0;
 
-  const EmployeeCard = ({ 
-    name, 
-    paymentMethod, 
-    lateMins, 
-    absentHours, 
-    overtimeHours, 
-    overtimeAmount, 
-    total, 
-    amountLabel, 
-    morning, 
-    afternoon, 
-    status,
-    isToday 
-  }: any) => (
-    <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors">
-        <CardContent className="p-4 space-y-4">
-            <div className="flex justify-between items-start">
-                <h3 className="font-bold text-[#1e293b] text-base">{name}</h3>
-                {isToday ? (
-                  <Badge 
-                    className={cn(
-                        "text-[10px] font-bold h-6 px-3 rounded-full border-none shadow-none",
-                        status === 'Present' && "bg-secondary text-secondary-foreground",
-                        status === 'Late' && "bg-amber-100 text-amber-700",
-                        status === 'Absent' && "bg-destructive/10 text-destructive",
-                        status === 'Permission' && "bg-blue-100 text-blue-700"
-                    )}
-                  >
-                    {status}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60">
-                      {paymentMethod}
-                  </Badge>
-                )}
-            </div>
-            
-            {isToday ? (
-                <div className="bg-muted/20 rounded-full py-2 px-4 flex justify-between items-center text-[10px] sm:text-[11px]">
-                    <div className="flex gap-1.5 items-center">
-                        <span className="text-muted-foreground font-black uppercase tracking-tighter opacity-60">Morning:</span>
-                        <span className="font-bold text-foreground/80">{morning || "—"}</span>
-                    </div>
-                    <div className="flex gap-1.5 items-center">
-                        <span className="text-muted-foreground font-black uppercase tracking-tighter opacity-60">Afternoon:</span>
-                        <span className="font-bold text-foreground/80">{afternoon || "—"}</span>
-                    </div>
-                </div>
-            ) : (
-                <div className="flex gap-2">
-                    <div className="flex-1 bg-muted/20 rounded-full h-8 flex items-center px-4 justify-between">
-                        <span className={cn("text-[11px] font-medium", lateMins > 0 ? "text-amber-600" : "text-muted-foreground/60")}>
-                            {lateMins > 0 ? `Late: ${lateMins}m` : "No late mins"}
-                        </span>
-                        <span className={cn("text-[11px] font-bold", absentHours > 0 ? "text-destructive" : "text-muted-foreground/60")}>
-                            {absentHours > 0 ? `Absent: ${absentHours.toFixed(1)}h` : "Full attendance"}
-                        </span>
-                    </div>
-                </div>
-            )}
-
-            {overtimeHours > 0 && (
-                <div className="bg-primary/5 rounded-full h-8 flex items-center px-4 justify-between">
-                    <span className="text-[11px] font-medium text-primary/80">Overtime:</span>
-                    <span className="text-[11px] font-bold text-primary">
-                        +{overtimeHours} hrs (ETB {overtimeAmount.toFixed(2)})
-                    </span>
-                </div>
-            )}
-
-            <div className={cn("flex items-center", isToday ? "justify-end pt-1" : "pt-2 justify-between border-t border-dashed")}>
-                {!isToday && <span className="text-[11px] font-bold text-[#1e293b]">{amountLabel}:</span>}
-                <span className={cn("font-black text-primary", isToday ? "text-lg" : "text-xl")}>
-                    ETB {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-            </div>
-        </CardContent>
-    </Card>
-  );
-
   if (employeesLoading || isUserLoading) return <div className="flex h-screen w-full items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" /></div>;
 
   return (
@@ -586,7 +589,7 @@ export default function DashboardPage() {
                         {lazyLoading ? <div className="h-40 flex items-center justify-center"><Clock className="animate-spin h-6 w-6 text-primary" /></div> : (
                             <div className="flex flex-col gap-4">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                    {weeklySummary.data.map(({ emp, baseHours, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
+                                    {weeklySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
                                         <EmployeeCard 
                                             key={emp.id}
                                             employeeId={emp.id}
