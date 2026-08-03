@@ -320,8 +320,7 @@ export default function EmployeeProfilePage() {
     return options;
   }, [employee, firstAttendanceDate]);
 
-  
-  const filteredAttendance = useMemo(() => {
+  const displayedHistory = useMemo(() => {
     if (!selectedPeriod || !employee) return [];
     
     const startDate = startOfDay(new Date(selectedPeriod));
@@ -334,7 +333,31 @@ export default function EmployeeProfilePage() {
       const daysInMonthCount = getEthiopianMonthDays(ethDate.year, ethDate.month);
       interval = { start: startOfDay(startDate), end: endOfDay(addDays(startDate, daysInMonthCount - 1)) };
     }
-    return employeeAttendance.filter(r => isWithinInterval(new Date(r.date), interval));
+
+    const days = eachDayOfInterval(interval);
+    const today = new Date();
+    const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
+
+    return days.map(day => {
+        const dateStr = format(day, 'yyyy-MM-dd');
+        const existingRecord = employeeAttendance.find(r => r.id === dateStr);
+        
+        if (existingRecord) return existingRecord;
+
+        // Create a virtual record for missing days in the past
+        const isPast = day <= today;
+        const hasStarted = day >= employeeStartDate;
+        const isSunday = getDay(day) === 0;
+
+        return {
+            id: dateStr,
+            employeeId: employee.id,
+            date: day.toISOString(),
+            morningStatus: (isPast && hasStarted && !isSunday) ? 'Absent' : 'Present',
+            afternoonStatus: (isPast && hasStarted && !isSunday) ? 'Absent' : 'Present',
+            isVirtual: true,
+        } as any;
+    }).reverse(); // Latest dates at the top
   }, [employeeAttendance, selectedPeriod, employee]);
 
   const payrollData = useMemo(() => {
@@ -375,8 +398,16 @@ export default function EmployeeProfilePage() {
         let sundayOTAmount = 0;
         let sundayOTHours = 0;
 
-        const minutesLate = filteredAttendance.reduce((acc, r) => {
-            const recordDateStr = r.id; // Using the ID which is the "yyyy-MM-dd" string for robust day-of-week
+        const filteredAttendanceRecords = employeeAttendance.filter(r => {
+             const startDate = startOfDay(new Date(selectedPeriod));
+             const ethDate = toEthiopian(startDate);
+             const daysInMonthCount = getEthiopianMonthDays(ethDate.year, ethDate.month);
+             const interval = { start: startOfDay(startDate), end: endOfDay(addDays(startDate, daysInMonthCount - 1)) };
+             return isWithinInterval(new Date(r.date), interval);
+        });
+
+        const minutesLate = filteredAttendanceRecords.reduce((acc, r) => {
+            const recordDateStr = r.id; 
             if (!recordDateStr) return acc;
             
             const recordDate = parse(recordDateStr, "yyyy-MM-dd", new Date());
@@ -393,51 +424,36 @@ export default function EmployeeProfilePage() {
                 return acc;
             }
 
-            let isUnpaidAbsenceDetected = false;
-
             let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
             let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(recordDateStr));
 
             if (morningIsUnpaidAbsence) {
                 totalHoursAbsent += 4.5;
-                isUnpaidAbsenceDetected = true;
             }
             
             // POLICY: Monthly staff afternoon absence on Saturday is NOT deducted
             if (afternoonIsUnpaidAbsence && !isSaturday) {
                 totalHoursAbsent += 3.5;
-                isUnpaidAbsenceDetected = true;
             }
 
-            if(isUnpaidAbsenceDetected && !absentDates.includes(formattedDate)) {
-                absentDates.push(formattedDate);
-            }
-            
             const currentMinutesLate = calculateMinutesLate(r);
-            if (currentMinutesLate > 0 && !lateDates.includes(formattedDate)) {
-                lateDates.push(formattedDate);
-            }
             return acc + currentMinutesLate;
         }, 0);
 
         const interval = { start: startDate, end: addDays(startDate, daysInMonthCount - 1) };
         const periodDays = eachDayOfInterval(interval);
         const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
-        const recordedDates = new Set(filteredAttendance.map(r => r.id));
+        const recordedDates = new Set(filteredAttendanceRecords.map(r => r.id));
 
         const today = new Date();
         periodDays.forEach(day => {
             if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 if (!recordedDates.has(dayStr)) {
-                    const formattedDate = format(day, 'MMM d');
                     if (getDay(day) === 6) {
                         totalHoursAbsent += 4.5; // Saturday unrecorded is only 4.5h deduction
                     } else {
                         totalHoursAbsent += 8;
-                    }
-                     if(!absentDates.includes(formattedDate)) {
-                        absentDates.push(formattedDate);
                     }
                 }
             }
@@ -446,7 +462,7 @@ export default function EmployeeProfilePage() {
       const absenceDeduction = totalHoursAbsent * hourlyRateCalc;
       const lateDeduction = minutesLate * minuteRate;
 
-      const manualOTHours = filteredAttendance.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+      const manualOTHours = filteredAttendanceRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
       const manualOTPay = manualOTHours * hourlyRateCalc * normalOTRate;
       
       const totalOTPay = manualOTPay + sundayOTAmount;
@@ -460,8 +476,6 @@ export default function EmployeeProfilePage() {
           hoursAbsent: totalHoursAbsent,
           minutesLate: minutesLate,
           periodLabel: selectedPeriodLabel,
-          absentDates: absentDates,
-          lateDates: lateDates,
           overtimePay: totalOTPay,
           overtimeHours: manualOTHours + sundayOTHours,
           hourlyRate: hourlyRateCalc
@@ -469,11 +483,18 @@ export default function EmployeeProfilePage() {
 
     } else { // Weekly logic
       const currentHourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
-      const totalOTHours = filteredAttendance.reduce((acc, record) => {
+      
+      const startDate = startOfDay(new Date(selectedPeriod));
+      const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
+      const interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
+      
+      const relevantAttendance = employeeAttendance.filter(r => isWithinInterval(new Date(r.date), interval));
+
+      const totalOTHours = relevantAttendance.reduce((acc, record) => {
           return acc + (record.overtimeHours || 0);
       }, 0);
       
-      let totalHours = filteredAttendance.reduce((acc, record) => {
+      let totalHours = relevantAttendance.reduce((acc, record) => {
           return acc + calculateHoursWorked(record);
       }, 0);
 
@@ -482,28 +503,23 @@ export default function EmployeeProfilePage() {
       let totalMinutesLate = 0;
       let totalHoursAbsent = 0;
 
-      if (selectedPeriod) {
-          const startDate = startOfDay(new Date(selectedPeriod));
-          const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
-          const interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
-          const periodDays = eachDayOfInterval(interval);
-          const recordedDates = new Set(filteredAttendance.map(r => r.id));
-          const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
-          const today = new Date();
+      const periodDays = eachDayOfInterval(interval);
+      const recordedDates = new Set(relevantAttendance.map(r => r.id));
+      const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
+      const today = new Date();
 
-          periodDays.forEach(day => {
-              if (day >= employeeStartDate && day <= today) {
-                const dayStr = format(day, 'yyyy-MM-dd');
-                if (!recordedDates.has(dayStr)) {
-                    if (getDay(day) !== 0) {
-                        totalHoursAbsent += 8; // Weekly staff unrecorded is full day
-                    }
+      periodDays.forEach(day => {
+          if (day >= employeeStartDate && day <= today) {
+            const dayStr = format(day, 'yyyy-MM-dd');
+            if (!recordedDates.has(dayStr)) {
+                if (getDay(day) !== 0) {
+                    totalHoursAbsent += 8; 
                 }
-              }
-          });
-      }
+            }
+          }
+      });
 
-      filteredAttendance.forEach(record => {
+      relevantAttendance.forEach(record => {
           totalMinutesLate += calculateMinutesLate(record);
           if (record.morningStatus === 'Absent') totalHoursAbsent += 4.5;
           if (record.afternoonStatus === 'Absent') totalHoursAbsent += 3.5;
@@ -512,7 +528,7 @@ export default function EmployeeProfilePage() {
       const baseAmount = totalHours * (currentHourlyRate || 0);
       const totalAmount = baseAmount + overtimePay;
       
-      const daysWorked = new Set(filteredAttendance.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => r.id)).size;
+      const daysWorked = new Set(relevantAttendance.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => r.id)).size;
 
       return {
         hours: totalHours,
@@ -526,7 +542,7 @@ export default function EmployeeProfilePage() {
         hourlyRate: currentHourlyRate
       };
     }
-  }, [employee, allAttendance, filteredAttendance, periodOptions, selectedPeriod, settings]);
+  }, [employee, employeeAttendance, periodOptions, selectedPeriod, settings, allAttendance]);
 
   const handleViewSummary = () => {
     if (!employee || !payrollData) return;
@@ -638,7 +654,7 @@ export default function EmployeeProfilePage() {
     };
   }, []);
   
-  const renderAttendanceBadge = (status: string) => {
+  const renderAttendanceBadge = (status: string, isVirtual?: boolean) => {
     return (
       <Badge 
         variant={status === 'Absent' ? 'destructive' : 'outline'}
@@ -646,7 +662,8 @@ export default function EmployeeProfilePage() {
           "shadow-none px-1.5 h-5 text-[10px]",
           status === 'Present' && "bg-secondary text-secondary-foreground border-transparent",
           status === 'Late' && "bg-amber-100 text-amber-700 border-amber-200",
-          status === 'Permission' && "bg-blue-100 text-blue-700 border-blue-200"
+          status === 'Permission' && "bg-blue-100 text-blue-700 border-blue-200",
+          isVirtual && status === 'Absent' && "opacity-50"
         )}
       >
         {status}
@@ -917,24 +934,26 @@ export default function EmployeeProfilePage() {
                     </TableRow>
                     </TableHeader>
                     <TableBody>
-                    {filteredAttendance.length > 0 ? (
-                        filteredAttendance.map((record) => (
-                        <TableRow key={record.id}>
+                    {displayedHistory.length > 0 ? (
+                        displayedHistory.map((record) => (
+                        <TableRow key={record.id} className={cn(record.isVirtual && "bg-muted/10")}>
                             <TableCell>
                                 <div className="flex flex-col min-w-[80px]">
                                     <span className="font-medium whitespace-nowrap">{format(getDateFromRecord(record.date), 'EEE, MMM d')}</span>
-                                    <span className="text-[10px] text-muted-foreground uppercase whitespace-nowrap">{ethiopianDateFormatter(getDateFromRecord(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}</span>
+                                    <span className="text-[10px] text-muted-foreground uppercase whitespace-nowrap">
+                                        {ethiopianDateFormatter(getDateFromRecord(record.date), { weekday: 'short', day: 'numeric', month: 'short' })}
+                                    </span>
                                 </div>
                             </TableCell>
                             <TableCell>
                                 <div className="flex flex-col gap-1">
-                                  {renderAttendanceBadge(record.morningStatus)}
+                                  {renderAttendanceBadge(record.morningStatus, record.isVirtual)}
                                   {record.morningEntry && <p className="text-[10px] font-mono text-muted-foreground">{record.morningEntry}</p>}
                                 </div>
                             </TableCell>
                             <TableCell>
                                 <div className="flex flex-col gap-1">
-                                  {renderAttendanceBadge(record.afternoonStatus)}
+                                  {renderAttendanceBadge(record.afternoonStatus, record.isVirtual)}
                                   <div className="flex flex-col">
                                     {record.afternoonEntry && <p className="text-[10px] font-mono text-muted-foreground">{record.afternoonEntry}</p>}
                                     {record.overtimeHours ? (
