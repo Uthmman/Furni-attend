@@ -38,6 +38,14 @@
       },
       "required": ["employeeId", "date", "morningStatus", "afternoonStatus"]
     },
+    "PayrollSettings": {
+        "title": "PayrollSettings",
+        "type": "object",
+        "properties": {
+            "normalOvertimeRate": { "type": "number" },
+            "sundayOvertimeRate": { "type": "number" }
+        }
+    },
     "Item": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Item",
@@ -136,6 +144,10 @@
     "/stockAdjustments/{adjustmentId}": {
       "schema": { "$ref": "#/backend/entities/StockAdjustment" },
       "description": "Inventory movement and cost history audit log."
+    },
+    "/metadata/{docId}": {
+      "schema": { "type": "object" },
+      "description": "Application settings and automation tracking."
     }
   }
 }

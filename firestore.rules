@@ -7,7 +7,11 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Employees and their nested attendance logs
+    // Collection group helper for efficient attendance querying
+    match /{path=**}/attendance/{docId} {
+      allow read, write: if isAuthenticated();
+    }
+
     match /employees/{employeeId} {
       allow read, write: if isAuthenticated();
       
@@ -16,35 +20,28 @@ service cloud.firestore {
       }
     }
 
-    // Direct access to daily attendance records (top-level collection)
     match /attendance/{date}/records/{employeeId} {
       allow read, write: if isAuthenticated();
     }
 
-    // Supplies registry management
     match /items/{itemId} {
       allow read, write: if isAuthenticated();
     }
     
-    // Categories management
     match /categories/{categoryId} {
       allow read, write: if isAuthenticated();
     }
 
-    // Inventory movement and financial tracking audit log
     match /stockAdjustments/{adjustmentId} {
       allow read, write: if isAuthenticated();
     }
 
-    // Metadata for automated notifications
     match /metadata/{docId} {
       allow read, write: if isAuthenticated();
     }
 
-    // Orders management
     match /orders/{orderId} {
       allow read, write: if isAuthenticated();
     }
   }
 }
-// Deployment Trigger Comment: Forced redeploy to ensure orders collection rules are active on the primary database.

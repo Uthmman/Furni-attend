@@ -1,17 +1,13 @@
-
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
-import {
-  SidebarProvider,
-  Sidebar,
-} from "@/components/ui/sidebar";
+import { SidebarProvider, Sidebar } from "@/components/ui/sidebar";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { Button } from "@/components/ui/button";
-import { User, LogOut, Settings } from "lucide-react";
+import { LogOut, Settings } from "lucide-react";
 import { MobileNav } from "@/components/mobile-nav";
 import { PageTitleProvider, usePageTitle } from "@/components/page-title-provider";
 import React, { useEffect, useState } from "react";
@@ -28,13 +24,11 @@ function AppHeader() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   const handleSignOut = async () => {
-    if (auth) {
-      await auth.signOut();
-    }
+    if (auth) await auth.signOut();
     router.push('/login');
   }
 
-  const userName = user?.email ? user.email.split('@')[0] : 'there';
+  const userName = user?.email ? user.email.split('@')[0] : 'Admin';
 
   return (
       <header className="flex h-16 shrink-0 items-center gap-4 px-4 md:px-6">
@@ -47,18 +41,18 @@ function AppHeader() {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="icon" className="rounded-full h-10 w-10">
                     <Avatar className="h-10 w-10">
-                      <AvatarFallback className="flex h-full w-full items-center justify-center rounded-full bg-muted">
-                        {userName?.[0].toUpperCase()}
+                      <AvatarFallback className="flex h-full w-full items-center justify-center rounded-full bg-muted font-bold">
+                        {userName?.[0].toUpperCase() || "Z"}
                       </AvatarFallback>
                     </Avatar>
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                <DropdownMenuLabel>Workshop Settings</DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={() => setIsSettingsOpen(true)}>
                   <Settings className="mr-2 h-4 w-4" />
-                  <span>Payroll Settings</span>
+                  <span>Payroll Multipliers</span>
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleSignOut}>
@@ -76,14 +70,10 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full">
-        <Sidebar className="hidden md:flex border-r">
-          <SidebarNav />
-        </Sidebar>
+        <Sidebar className="hidden md:flex border-r"><SidebarNav /></Sidebar>
         <div className="flex flex-col w-full">
           <AppHeader />
-          <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">
-              {children}
-          </main>
+          <main className="flex-1 p-4 md:p-6 pb-24 md:pb-8">{children}</main>
         </div>
       </div>
       <MobileNav />
@@ -91,33 +81,19 @@ function AppLayout({ children }: { children: React.ReactNode }) {
   );
 }
 
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link
-          rel="preconnect"
-          href="https://fonts.gstatic.com"
-          crossOrigin="anonymous"
-        />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=PT+Sans:wght@400;700&display=swap"
-          rel="stylesheet"
-        />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=PT+Sans:wght@400;700&display=swap" rel="stylesheet" />
       </head>
       <body className={cn("font-body", "min-h-screen w-full bg-background text-foreground")}>
         <FirebaseClientProvider>
           <PageTitleProvider>
-            <AuthGuard>
-              {children}
-            </AuthGuard>
+            <AuthGuard>{children}</AuthGuard>
           </PageTitleProvider>
         </FirebaseClientProvider>
         <Toaster />
@@ -126,38 +102,17 @@ export default function RootLayout({
   );
 }
 
-
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const pathname = usePathname();
 
   useEffect(() => {
-    if (!isUserLoading && !user && pathname !== '/login' && pathname !== '/demo') {
-      router.replace('/login');
-    }
+    if (!isUserLoading && !user && pathname !== '/login' && pathname !== '/demo') router.replace('/login');
   }, [user, isUserLoading, router, pathname]);
 
-  if (isUserLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center">
-        <div
-            className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent"
-            role="status"
-        >
-            <span className="sr-only">Loading...</span>
-        </div>
-      </div>
-    );
-  }
-
-  if (pathname === '/login' || pathname === '/demo') {
-    return <>{children}</>;
-  }
-
-  if (!user) {
-    return null;
-  }
-
+  if (isUserLoading) return <div className="flex h-screen w-full items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" /></div>;
+  if (pathname === '/login' || pathname === '/demo') return <>{children}</>;
+  if (!user) return null;
   return <AppLayout>{children}</AppLayout>;
 }
