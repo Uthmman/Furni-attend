@@ -131,6 +131,14 @@ const calculateMinutesLate = (record: AttendanceRecord): number => {
     return Math.round(minutesLate);
 };
 
+const getOverallStatus = (morning: string, afternoon: string): string => {
+    if (morning === 'Permission' || afternoon === 'Permission') return 'Permission';
+    if (morning === 'Absent' && (afternoon === 'Absent' || !afternoon)) return 'Absent';
+    if (morning === 'Late' || afternoon === 'Late') return 'Late';
+    if (morning === 'Present' || afternoon === 'Present') return 'Present';
+    return 'Absent';
+};
+
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
@@ -267,9 +275,12 @@ export default function DashboardPage() {
                 if (getDay(new Date(selectedDay)) !== 0) absentHours = getDay(new Date(selectedDay)) === 6 ? 4.5 : 8;
             }
         }
+
+        const visualStatus = record ? getOverallStatus(record.morningStatus, record.afternoonStatus) : "Absent";
+
         return { 
             employeeId: emp.id, name: emp.name, morning: record?.morningEntry || "—", afternoon: record?.afternoonEntry || "—",
-            status: record?.morningStatus || "Absent", amount, overtimeHours: otHours, overtimeAmount: otAmount, lateMins, absentHours, paymentMethod: emp.paymentMethod
+            status: visualStatus, amount, overtimeHours: otHours, overtimeAmount: otAmount, lateMins, absentHours, paymentMethod: emp.paymentMethod
         };
     });
   }, [activeEmployees, todayRecords, selectedDay, normalOTRate, sundayOTRate]);
@@ -395,37 +406,81 @@ export default function DashboardPage() {
 
   const attendancePercentage = dashboardStats.totalEmployees > 0 ? (dashboardStats.onSiteToday / dashboardStats.totalEmployees) * 100 : 0;
 
-  const EmployeeCard = ({ name, paymentMethod, lateMins, absentHours, overtimeHours, overtimeAmount, total, amountLabel, employeeId }: any) => (
+  const EmployeeCard = ({ 
+    name, 
+    paymentMethod, 
+    lateMins, 
+    absentHours, 
+    overtimeHours, 
+    overtimeAmount, 
+    total, 
+    amountLabel, 
+    morning, 
+    afternoon, 
+    status,
+    isToday 
+  }: any) => (
     <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors">
         <CardContent className="p-4 space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-start">
                 <h3 className="font-bold text-[#1e293b] text-base">{name}</h3>
-                <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60">
-                    {paymentMethod}
-                </Badge>
+                {isToday ? (
+                  <Badge 
+                    className={cn(
+                        "text-[10px] font-bold h-6 px-3 rounded-full border-none shadow-none",
+                        status === 'Present' && "bg-secondary text-secondary-foreground",
+                        status === 'Late' && "bg-amber-100 text-amber-700",
+                        status === 'Absent' && "bg-destructive/10 text-destructive",
+                        status === 'Permission' && "bg-blue-100 text-blue-700"
+                    )}
+                  >
+                    {status}
+                  </Badge>
+                ) : (
+                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60">
+                      {paymentMethod}
+                  </Badge>
+                )}
             </div>
             
-            <div className="flex gap-2">
-                <div className="flex-1 bg-muted/20 rounded-full h-8 flex items-center px-4 justify-between">
-                    <span className={cn("text-[11px] font-medium", lateMins > 0 ? "text-amber-600" : "text-muted-foreground/60")}>
-                        {lateMins > 0 ? `Late: ${lateMins}m` : "No late mins"}
-                    </span>
-                    <span className={cn("text-[11px] font-bold", absentHours > 0 ? "text-destructive" : "text-muted-foreground/60")}>
-                        {absentHours > 0 ? `Absent: ${absentHours.toFixed(1)}h` : "Full attendance"}
+            {isToday ? (
+                <div className="bg-muted/20 rounded-full py-2 px-4 flex justify-between items-center text-[10px] sm:text-[11px]">
+                    <div className="flex gap-1.5 items-center">
+                        <span className="text-muted-foreground font-black uppercase tracking-tighter opacity-60">Morning:</span>
+                        <span className="font-bold text-foreground/80">{morning || "—"}</span>
+                    </div>
+                    <div className="flex gap-1.5 items-center">
+                        <span className="text-muted-foreground font-black uppercase tracking-tighter opacity-60">Afternoon:</span>
+                        <span className="font-bold text-foreground/80">{afternoon || "—"}</span>
+                    </div>
+                </div>
+            ) : (
+                <div className="flex gap-2">
+                    <div className="flex-1 bg-muted/20 rounded-full h-8 flex items-center px-4 justify-between">
+                        <span className={cn("text-[11px] font-medium", lateMins > 0 ? "text-amber-600" : "text-muted-foreground/60")}>
+                            {lateMins > 0 ? `Late: ${lateMins}m` : "No late mins"}
+                        </span>
+                        <span className={cn("text-[11px] font-bold", absentHours > 0 ? "text-destructive" : "text-muted-foreground/60")}>
+                            {absentHours > 0 ? `Absent: ${absentHours.toFixed(1)}h` : "Full attendance"}
+                        </span>
+                    </div>
+                </div>
+            )}
+
+            {overtimeHours > 0 && (
+                <div className="bg-primary/5 rounded-full h-8 flex items-center px-4 justify-between">
+                    <span className="text-[11px] font-medium text-primary/80">Overtime:</span>
+                    <span className="text-[11px] font-bold text-primary">
+                        +{overtimeHours} hrs (ETB {overtimeAmount.toFixed(2)})
                     </span>
                 </div>
-            </div>
+            )}
 
-            <div className="bg-primary/5 rounded-full h-8 flex items-center px-4 justify-between">
-                <span className="text-[11px] font-medium text-primary/80">Overtime:</span>
-                <span className="text-[11px] font-bold text-primary">
-                    +{overtimeHours} hrs (ETB {overtimeAmount.toFixed(2)})
+            <div className={cn("flex items-center", isToday ? "justify-end pt-1" : "pt-2 justify-between border-t border-dashed")}>
+                {!isToday && <span className="text-[11px] font-bold text-[#1e293b]">{amountLabel}:</span>}
+                <span className={cn("font-black text-primary", isToday ? "text-lg" : "text-xl")}>
+                    ETB {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
-            </div>
-
-            <div className="pt-2 flex justify-between items-center border-t border-dashed">
-                <span className="text-[11px] font-bold text-[#1e293b]">{amountLabel}:</span>
-                <span className="text-xl font-black text-primary">ETB {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
             </div>
         </CardContent>
     </Card>
@@ -506,6 +561,10 @@ export default function DashboardPage() {
                                     overtimeAmount={item.overtimeAmount}
                                     total={item.amount}
                                     amountLabel="Daily Earn"
+                                    morning={item.morning}
+                                    afternoon={item.afternoon}
+                                    status={item.status}
+                                    isToday={true}
                                 />
                             ))}
                         </div>
@@ -539,6 +598,7 @@ export default function DashboardPage() {
                                             overtimeAmount={overtimeAmount}
                                             total={total}
                                             amountLabel="Weekly Total"
+                                            isToday={false}
                                         />
                                     ))}
                                 </div>
@@ -572,6 +632,7 @@ export default function DashboardPage() {
                                             overtimeAmount={overtimeAmount}
                                             total={total}
                                             amountLabel="Month To-Date"
+                                            isToday={false}
                                         />
                                     ))}
                                 </div>
