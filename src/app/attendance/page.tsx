@@ -21,10 +21,10 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import type { AttendanceRecord, Employee, AttendanceStatus } from "@/lib/types";
+import type { AttendanceRecord, Employee, AttendanceStatus, PayrollSettings } from "@/lib/types";
 import { format, isValid, getDay } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser, useDoc } from "@/firebase";
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
@@ -154,6 +154,12 @@ export default function AttendancePage() {
   const [lateDialogData, setLateDialogData] = useState<{ session: 'morning' | 'afternoon', time: string } | null>(null);
   const [bulkLateData, setBulkLateData] = useState<{ session: 'morning' | 'afternoon' | 'both', time: string } | null>(null);
 
+  const settingsRef = useMemoFirebase(() => {
+    if (!firestore || !user) return null;
+    return doc(firestore, 'metadata', 'payroll_settings');
+  }, [firestore, user]);
+  const { data: settings } = useDoc<PayrollSettings>(settingsRef);
+
   useEffect(() => {
     setTitle("Log Attendance");
   }, [setTitle]);
@@ -211,17 +217,13 @@ export default function AttendancePage() {
       batch.set(employeeAttendanceRef, record, { merge: true });
     });
 
-    try {
-        // SDK handles local optimistic state via real-time listeners.
-        // batch.commit() is non-blocking to the UI flow.
-        await batch.commit();
-      } catch(e) {
+    batch.commit().catch(e => {
         toast({ 
           variant: 'destructive', 
           title: "Save failed", 
           description: "Database write error. Check your connection and permissions." 
         });
-      };
+      });
   };
 
   const toggleSelect = (id: string) => {
@@ -280,12 +282,9 @@ export default function AttendancePage() {
       return;
     }
 
-    // Reset UI immediately for snappy feel
     setSelectedIds(new Set());
     setIsBulkLateDialogOpen(false);
     setBulkLateData(null);
-
-    // Save in background
     saveAttendanceBatch(toUpdate);
   };
 
@@ -341,7 +340,6 @@ export default function AttendancePage() {
           updatedAttendance.overtimeHours = 0;
       }
 
-      // Snappy UI: Close dialog first
       setIsAttendanceDialogOpen(false);
       saveAttendanceBatch([updatedAttendance]);
   };
@@ -358,11 +356,9 @@ export default function AttendancePage() {
         updatedAttendance.afternoonEntry = lateDialogData.time;
     }
     
-    // Snappy UI: Close dialogs first
     setIsLateDialogOpen(false);
     setIsAttendanceDialogOpen(false);
     setLateDialogData(null);
-    
     saveAttendanceBatch([updatedAttendance]);
     setSelectedEmployeeAttendance(null);
   };
@@ -376,11 +372,8 @@ export default function AttendancePage() {
   const handleSaveOvertime = async () => {
     if (!selectedEmployeeAttendance || !firestore) return;
     const data = { ...selectedEmployeeAttendance };
-    
-    // Snappy UI: Close immediately
     setIsOvertimeDialogOpen(false);
     setSelectedEmployeeAttendance(null);
-    
     saveAttendanceBatch([data]);
   };
 
@@ -391,9 +384,6 @@ export default function AttendancePage() {
       return undefined;
   }, [selectedEmployeeAttendance, employees, isUserLoading]);
 
-  const isSundayAndShouldBeDisabled = getDay(selectedDate) === 0 && selectedEmployeeDetails?.paymentMethod === 'Monthly';
-
-  // Overtime payment preview calculation
   const calculatedHourlyRate = useMemo(() => {
     if (!selectedEmployeeDetails) return 0;
     if (selectedEmployeeDetails.hourlyRate) return selectedEmployeeDetails.hourlyRate;
@@ -401,12 +391,16 @@ export default function AttendancePage() {
       return selectedEmployeeDetails.dailyRate / 8;
     }
     if (selectedEmployeeDetails.paymentMethod === 'Monthly' && selectedEmployeeDetails.monthlyRate) {
+      // Approximate 23.625 working units per month for base calculation
       return (selectedEmployeeDetails.monthlyRate / 23.625) / 8;
     }
     return 0;
   }, [selectedEmployeeDetails]);
 
-  const overtimeAmount = (selectedEmployeeAttendance?.overtimeHours || 0) * calculatedHourlyRate;
+  const overtimeMultiplier = settings?.normalOvertimeRate || 1.5;
+  const overtimeAmount = (selectedEmployeeAttendance?.overtimeHours || 0) * calculatedHourlyRate * overtimeMultiplier;
+
+  const isSundayAndShouldBeDisabled = getDay(selectedDate) === 0 && selectedEmployeeDetails?.paymentMethod === 'Monthly';
 
   if (employeesLoading || isUserLoading) {
       return <div>Loading...</div>
@@ -783,7 +777,7 @@ export default function AttendancePage() {
                   />
                   {calculatedHourlyRate > 0 && (
                     <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tighter opacity-60">
-                      Rate: ETB {calculatedHourlyRate.toFixed(2)} / hour
+                      Rate: ETB {calculatedHourlyRate.toFixed(2)} / hour (x{overtimeMultiplier})
                     </p>
                   )}
               </div>
