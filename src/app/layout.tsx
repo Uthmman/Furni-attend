@@ -1,3 +1,4 @@
+
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
@@ -106,12 +107,31 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading } = useUser();
   const router = useRouter();
   const pathname = usePathname();
+  const [hasMounted, setHasMounted] = useState(false);
 
   useEffect(() => {
-    if (!isUserLoading && !user && pathname !== '/login' && pathname !== '/demo') router.replace('/login');
-  }, [user, isUserLoading, router, pathname]);
+    setHasMounted(true);
+  }, []);
 
-  if (isUserLoading) return <div className="flex h-screen w-full items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" /></div>;
+  useEffect(() => {
+    if (hasMounted && !isUserLoading && !user && pathname !== '/login' && pathname !== '/demo') {
+      router.replace('/login');
+    }
+  }, [user, isUserLoading, router, pathname, hasMounted]);
+
+  if (!hasMounted || isUserLoading) {
+    return (
+      <div className="flex h-screen w-full items-center justify-center">
+        <div
+          className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent"
+          role="status"
+        >
+          <span className="sr-only">Loading...</span>
+        </div>
+      </div>
+    );
+  }
+
   if (pathname === '/login' || pathname === '/demo') return <>{children}</>;
   if (!user) return null;
   return <AppLayout>{children}</AppLayout>;

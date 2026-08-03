@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { format, isWithinInterval, parse, isValid, addDays, startOfWeek, endOfWeek, getDay, eachDayOfInterval, startOfDay, endOfDay } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Employee, PayrollSettings, AttendanceRecord } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Copy, Phone, Trash2, Edit, Calendar, UserMinus, Send, Loader2, XCircle } from "lucide-react";
