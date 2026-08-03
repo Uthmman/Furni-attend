@@ -75,7 +75,6 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
-    // Saturdays counted as 0.5625 units for Monthly staff (4.5h morning deduction policy)
     return weekdays + (saturdays * 0.5625);
 };
 
@@ -208,7 +207,7 @@ const EmployeeCard = ({
                 <div className="bg-primary/5 rounded-full h-8 flex items-center px-4 justify-between">
                     <span className="text-[11px] font-medium text-primary/80">Overtime:</span>
                     <span className="text-[11px] font-bold text-primary">
-                        +{overtimeHours} hrs (ETB {overtimeAmount.toFixed(2)})
+                        +{overtimeHours.toFixed(1)} hrs (ETB {overtimeAmount.toFixed(2)})
                     </span>
                 </div>
             )}
@@ -262,7 +261,7 @@ export default function DashboardPage() {
     if (!firestore || !user) return null;
     return collection(firestore, 'attendance', selectedDay, 'records');
   }, [firestore, user, selectedDay]);
-  const { data: todayRecords, loading: todayLoading } = useCollection<AttendanceRecord>(todayAttendanceRef);
+  const { data: todayRecords } = useCollection<AttendanceRecord>(todayAttendanceRef);
 
   useEffect(() => {
     const fetchLazyData = async () => {
@@ -295,11 +294,7 @@ export default function DashboardPage() {
             });
             await Promise.all(fetchPromises);
             setLazyAttendance(records);
-        } catch (e) {
-            console.error("Lazy fetch failed:", e);
-        } finally { 
-            setLazyLoading(false); 
-        }
+        } catch (e) {} finally { setLazyLoading(false); }
     };
     if (activeEmployees.length > 0 && activeTab !== 'today') fetchLazyData();
   }, [activeTab, selectedWeekStart, selectedMonthStart, activeEmployees, firestore, user]);
@@ -312,35 +307,18 @@ export default function DashboardPage() {
             const start = startOfDay(new Date(selectedUnifiedMonth));
             const eth = toEthiopian(start);
             const end = endOfDay(addDays(start, getEthiopianMonthDays(eth.year, eth.month) - 1));
-            
             const records: AttendanceRecord[] = [];
             const fetchPromises = activeEmployees.map(async (emp) => {
-                const q = query(
-                    collection(firestore, 'employees', emp.id, 'attendance'), 
-                    where('date', '>=', start.toISOString()), 
-                    where('date', '<=', end.toISOString())
-                );
+                const q = query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', start.toISOString()), where('date', '<=', end.toISOString()));
                 const snap = await getDocs(q);
                 snap.forEach(d => records.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
             });
             await Promise.all(fetchPromises);
             setUnifiedAttendance(records);
-        } catch (e) {
-            console.error("Unified fetch failed:", e);
-        } finally { 
-            setUnifiedLoading(false); 
-        }
+        } catch (e) {} finally { setUnifiedLoading(false); }
     };
     if (activeEmployees.length > 0) fetchUnifiedData();
   }, [selectedUnifiedMonth, activeEmployees, firestore, user]);
-
-  const dashboardStats = useMemo(() => {
-    const totalEmployees = activeEmployees.length;
-    const onSiteTodayCount = todayRecords?.filter(r => (r.morningStatus !== "Absent" || r.afternoonStatus !== "Absent")).length || 0;
-    const estWeekly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Weekly' && emp.dailyRate ? emp.dailyRate * 6 : 0), 0);
-    const estMonthly = activeEmployees.reduce((acc, emp) => acc + (emp.paymentMethod === 'Monthly' && emp.monthlyRate ? emp.monthlyRate : 0), 0);
-    return { totalEmployees, onSiteToday: onSiteTodayCount, estWeekly, estMonthly };
-  }, [activeEmployees, todayRecords]);
 
   const dailyEarnings = useMemo(() => {
     if (!activeEmployees || !selectedDay) return [];
@@ -377,28 +355,33 @@ export default function DashboardPage() {
             if (record) {
                 let absenceDeduction = 0;
                 if (record.morningStatus === 'Absent') { absenceDeduction += 4.5 * hourly; absentHours += 4.5; }
-                // POLICY: Monthly staff no Saturday afternoon deduction
                 if (record.afternoonStatus === 'Absent' && !isSaturday) { absenceDeduction += 3.5 * hourly; absentHours += 3.5; }
                 
                 let lateDeduction = lateMins * minuteRate;
                 otAmount = otHours * hourly * normalOTRate;
 
                 if (isSunday) {
-                    const isWorking = record.morningStatus === 'Present' || record.morningStatus === 'Late' || record.afternoonStatus === 'Present' || record.afternoonStatus === 'Late';
+                    const isWorking = record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent';
                     if (isWorking) {
-                        otAmount += 8 * hourly * sundayOTRate;
-                        otHours += 8;
+                        let sundHours = 0;
+                        if (record.morningStatus !== 'Absent') sundHours += 4.5;
+                        if (record.afternoonStatus !== 'Absent') sundHours += 3.5;
+                        otAmount += sundHours * hourly * sundayOTRate;
+                        otHours += sundHours;
+                    }
+                } else if (isSaturday) {
+                    const workingPM = record.afternoonStatus === 'Present' || record.afternoonStatus === 'Late';
+                    if (workingPM) {
+                        otAmount += 3.5 * hourly * normalOTRate;
+                        otHours += 3.5;
                     }
                 }
 
                 amount = daily - absenceDeduction - lateDeduction + otAmount;
-            } else {
-                if (!isSunday) absentHours = isSaturday ? 4.5 : 8;
-            }
+            } else if (!isSunday) absentHours = isSaturday ? 4.5 : 8;
         }
 
         const visualStatus = record ? getOverallStatus(record.morningStatus, record.afternoonStatus) : "Absent";
-
         return { 
             employeeId: emp.id, name: emp.name, morning: record?.morningEntry || "—", afternoon: record?.afternoonEntry || "—",
             status: visualStatus, amount, overtimeHours: otHours, overtimeAmount: otAmount, lateMins, absentHours, paymentMethod: emp.paymentMethod
@@ -406,38 +389,15 @@ export default function DashboardPage() {
     });
   }, [activeEmployees, todayRecords, selectedDay, normalOTRate, sundayOTRate]);
 
-  const periodOptions = useMemo(() => {
-    const now = new Date();
-    const w = [];
-    let ws = startOfWeek(now, { weekStartsOn: 0 });
-    for(let i=0; i<12; i++){
-        const we = endOfWeek(ws, { weekStartsOn: 0 });
-        w.push({ value: format(ws, "yyyy-MM-dd"), label: `Week: ${ethiopianDateFormatter(ws, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(we, { day: 'numeric', month: 'short', year: 'numeric' })}` });
-        ws = addDays(ws, -7);
-    }
-    const m = [];
-    let ms = toGregorian(toEthiopian(now).year, toEthiopian(now).month, 1);
-    for(let i=0; i<12; i++){
-        const eth = toEthiopian(ms);
-        m.push({ value: format(ms, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(ms, { month: 'long' })} ${eth.year}` });
-        ms = toGregorian(eth.month === 1 ? eth.year - 1 : eth.year, eth.month === 1 ? 12 : eth.month - 1, 1);
-    }
-    return { weeks: w, months: m };
-  }, []);
-
-  const totalDailyEarnings = useMemo(() => dailyEarnings.reduce((acc, curr) => acc + curr.amount, 0), [dailyEarnings]);
-
   const weeklySummary = useMemo(() => {
     const weeklyEmps = activeEmployees.filter(e => e.paymentMethod === 'Weekly');
     let grandTotal = 0;
     const data = weeklyEmps.map(emp => {
         const records = lazyAttendance.filter(r => r.employeeId === emp.id);
         const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-        
         let totalOTHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
         let baseHours = records.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
         let lateMins = records.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
-        
         let absentHours = 0;
         const start = startOfDay(new Date(selectedWeekStart));
         const end = endOfDay(endOfWeek(start, { weekStartsOn: 0 }));
@@ -448,16 +408,12 @@ export default function DashboardPage() {
             if (r.morningStatus === 'Absent') absentHours += 4.5;
             if (r.afternoonStatus === 'Absent') absentHours += 3.5;
         });
-
-        interval.forEach(day => {
-            if (getDay(day) !== 0 && !recordedDays.has(format(day, 'yyyy-MM-dd'))) absentHours += 8;
-        });
+        interval.forEach(day => { if (getDay(day) !== 0 && !recordedDays.has(format(day, 'yyyy-MM-dd'))) absentHours += 8; });
 
         const total = (baseHours * (hourly || 0)) + (totalOTHours * (hourly || 0) * normalOTRate);
         const otAmount = totalOTHours * (hourly || 0) * normalOTRate;
         grandTotal += total;
-        
-        return { emp, baseHours, lateMins, total, absentHours, overtimeHours: totalOTHours, overtimeAmount: otAmount };
+        return { emp, total, lateMins, absentHours, overtimeHours: totalOTHours, overtimeAmount: otAmount };
     });
     return { data, grandTotal };
   }, [activeEmployees, lazyAttendance, selectedWeekStart, normalOTRate]);
@@ -473,71 +429,56 @@ export default function DashboardPage() {
         const units = getMonthlyWorkingUnits(start, daysInMonth);
         const hourly = (emp.monthlyRate || 0) / units / 8;
         const minuteRate = hourly / 60;
-        const daily = (emp.monthlyRate || 0) / units;
 
-        // Correct Permission Policy Logic (15 free days per year)
         const ethYearForPeriod = eth.year;
         const permissionDatesInYear = new Set<string>();
         lazyAttendance.filter(r => r.employeeId === emp.id).forEach(rec => {
-            const dStr = rec.id;
-            if (dStr && parse(dStr, "yyyy-MM-dd", new Date()).getFullYear() === ethYearForPeriod) {
-                if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
-                    permissionDatesInYear.add(dStr);
-                }
+            if (rec.id && parse(rec.id, "yyyy-MM-dd", new Date()).getFullYear() === ethYearForPeriod) {
+                if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') permissionDatesInYear.add(rec.id);
             }
         });
         const allowedPermissionDates = new Set(Array.from(permissionDatesInYear).sort().slice(0, 15));
 
-        let lateMins = 0;
-        let otHours = 0;
-        let otAmount = 0;
-        let absentHours = 0;
-        let totalDeduction = 0;
-
+        let lateMins = 0, otHours = 0, otAmount = 0, absentHours = 0, totalDeduction = 0;
         const recordedDates = new Set(records.map(r => r.id));
         const today = new Date();
 
         records.forEach(r => {
-            const dStr = r.id;
-            if (!dStr) return;
-            const d = parse(dStr, "yyyy-MM-dd", new Date());
-            const isSunday = getDay(d) === 0;
-            const isSaturday = getDay(d) === 6;
+            if (!r.id) return;
+            const d = parse(r.id, "yyyy-MM-dd", new Date());
+            const isSun = getDay(d) === 0, isSat = getDay(d) === 6;
 
-            if (isSunday) {
-                const isWorking = r.morningStatus === 'Present' || r.morningStatus === 'Late' || r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late';
-                if (isWorking) {
-                    otAmount += 8 * hourly * sundayOTRate;
-                    otHours += 8;
+            if (isSun) {
+                const working = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
+                if (working) {
+                    let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
+                    otAmount += sH * hourly * sundayOTRate;
+                    otHours += sH;
                 }
             } else {
-                let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dStr));
-                let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dStr));
-
-                if (morningIsUnpaidAbsence) { totalDeduction += 4.5 * hourly; absentHours += 4.5; }
-                // POLICY: Saturday afternoon no deduction
-                if (afternoonIsUnpaidAbsence && !isSaturday) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
-                
+                let mAbs = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(r.id));
+                let pAbs = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(r.id));
+                if (mAbs) { totalDeduction += 4.5 * hourly; absentHours += 4.5; }
+                if (pAbs && !isSat) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
+                if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
+                    otAmount += 3.5 * hourly * normalOTRate;
+                    otHours += 3.5;
+                }
                 lateMins += calculateMinutesLate(r);
             }
-            if (r.overtimeHours) {
-                otHours += r.overtimeHours;
-                otAmount += r.overtimeHours * hourly * normalOTRate;
-            }
+            if (r.overtimeHours) { otHours += r.overtimeHours; otAmount += r.overtimeHours * hourly * normalOTRate; }
         });
 
         eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
             if (day <= today && getDay(day) !== 0 && !recordedDates.has(dayStr)) {
                 const abs = getDay(day) === 6 ? 4.5 : 8;
-                absentHours += abs;
-                totalDeduction += abs * hourly;
+                absentHours += abs; totalDeduction += abs * hourly;
             }
         });
 
         const netSalary = (emp.monthlyRate || 0) - totalDeduction - (lateMins * minuteRate) + otAmount;
         grandTotal += netSalary;
-
         return { emp, lateMins, total: netSalary, absentHours, overtimeHours: otHours, overtimeAmount: otAmount };
     });
     return { data, grandTotal };
@@ -545,128 +486,100 @@ export default function DashboardPage() {
 
   const unifiedMonthTotal = useMemo(() => {
     if (!selectedUnifiedMonth || activeEmployees.length === 0) return 0;
-    
     const start = startOfDay(new Date(selectedUnifiedMonth));
     const eth = toEthiopian(start);
     const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
     const units = getMonthlyWorkingUnits(start, daysInMonth);
     const today = new Date();
-    
     let totalExpenditure = 0;
 
     activeEmployees.forEach(emp => {
         const records = unifiedAttendance.filter(r => r.employeeId === emp.id);
         const recordedDates = new Set(records.map(r => r.id));
-        
         if (emp.paymentMethod === 'Monthly') {
             const baseSalary = emp.monthlyRate || 0;
             const hourly = baseSalary / units / 8;
             const minuteRate = hourly / 60;
-            
-            let otAmount = 0;
-            let totalDeduction = 0;
-            let lateMins = 0;
+            let otAmount = 0, totalDeduction = 0, lateMins = 0;
 
-            // Permission logic for Unified Audit
             const permissionDatesInYear = new Set<string>();
             unifiedAttendance.filter(r => r.employeeId === emp.id).forEach(rec => {
-                const dStr = rec.id;
-                if (dStr && parse(dStr, "yyyy-MM-dd", new Date()).getFullYear() === eth.year) {
-                    if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') {
-                        permissionDatesInYear.add(dStr);
-                    }
+                if (rec.id && parse(rec.id, "yyyy-MM-dd", new Date()).getFullYear() === eth.year) {
+                    if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') permissionDatesInYear.add(rec.id);
                 }
             });
             const allowedPermissionDates = new Set(Array.from(permissionDatesInYear).sort().slice(0, 15));
 
             records.forEach(r => {
-                const dStr = r.id;
-                if (!dStr) return;
-                const d = parse(dStr, "yyyy-MM-dd", new Date());
-                const isSunday = getDay(d) === 0;
-                const isSaturday = getDay(d) === 6;
-
-                if (isSunday) {
-                    const isWorking = r.morningStatus === 'Present' || r.morningStatus === 'Late' || r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late';
-                    if (isWorking) otAmount += 8 * hourly * sundayOTRate;
+                if (!r.id) return;
+                const d = parse(r.id, "yyyy-MM-dd", new Date());
+                const isSun = getDay(d) === 0, isSat = getDay(d) === 6;
+                if (isSun) {
+                    const working = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
+                    if (working) {
+                        let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
+                        otAmount += sH * hourly * sundayOTRate;
+                    }
                 } else {
-                    let morningIsUnpaidAbsence = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dStr));
-                    let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dStr));
-
-                    if (morningIsUnpaidAbsence) totalDeduction += 4.5 * hourly;
-                    if (afternoonIsUnpaidAbsence && !isSaturday) totalDeduction += 3.5 * hourly;
+                    let mAbs = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(r.id));
+                    let pAbs = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(r.id));
+                    if (mAbs) totalDeduction += 4.5 * hourly;
+                    if (pAbs && !isSat) totalDeduction += 3.5 * hourly;
+                    if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) otAmount += 3.5 * hourly * normalOTRate;
                     lateMins += calculateMinutesLate(r);
                 }
                 if (r.overtimeHours) otAmount += r.overtimeHours * hourly * normalOTRate;
             });
-
             eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
                 const dayStr = format(day, 'yyyy-MM-dd');
-                if (day <= today && getDay(day) !== 0 && !recordedDates.has(dayStr)) {
-                    totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
-                }
+                if (day <= today && getDay(day) !== 0 && !recordedDates.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
             });
-
             totalExpenditure += baseSalary - totalDeduction - (lateMins * minuteRate) + otAmount;
-
         } else {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
             let empTotal = 0;
-
-            records.forEach(r => {
-                empTotal += (calculateHoursWorked(r) * (hourly || 0)) + ((r.overtimeHours || 0) * (hourly || 0) * normalOTRate);
-            });
+            records.forEach(r => { empTotal += (calculateHoursWorked(r) * (hourly || 0)) + ((r.overtimeHours || 0) * (hourly || 0) * normalOTRate); });
             totalExpenditure += empTotal;
         }
     });
-
     return totalExpenditure;
   }, [activeEmployees, unifiedAttendance, selectedUnifiedMonth, normalOTRate, sundayOTRate]);
 
-  const handleGlobalDateSelect = (date: Date | undefined) => {
-      if (date) {
-          setSelectedDay(format(date, "yyyy-MM-dd"));
-          setSelectedWeekStart(format(startOfWeek(date, { weekStartsOn: 0 }), "yyyy-MM-dd"));
-          const eth = toEthiopian(date);
-          setSelectedMonthStart(format(toGregorian(eth.year, eth.month, 1), "yyyy-MM-dd"));
-      }
-  };
+  const periodOptions = useMemo(() => {
+    const now = new Date();
+    const w = []; let ws = startOfWeek(now, { weekStartsOn: 0 });
+    for(let i=0; i<12; i++){
+        const we = endOfWeek(ws, { weekStartsOn: 0 });
+        w.push({ value: format(ws, "yyyy-MM-dd"), label: `Week: ${ethiopianDateFormatter(ws, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(we, { day: 'numeric', month: 'short', year: 'numeric' })}` });
+        ws = addDays(ws, -7);
+    }
+    const m = []; let ms = toGregorian(toEthiopian(now).year, toEthiopian(now).month, 1);
+    for(let i=0; i<12; i++){
+        const eth = toEthiopian(ms);
+        m.push({ value: format(ms, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(ms, { month: 'long' })} ${eth.year}` });
+        ms = toGregorian(eth.month === 1 ? eth.year - 1 : eth.year, eth.month === 1 ? 12 : eth.month - 1, 1);
+    }
+    return { weeks: w, months: m };
+  }, []);
 
-  const attendancePercentage = dashboardStats.totalEmployees > 0 ? (dashboardStats.onSiteToday / dashboardStats.totalEmployees) * 100 : 0;
-
-  if (employeesLoading || isUserLoading) return <div className="flex h-screen w-full items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-4 border-solid border-primary border-t-transparent" /></div>;
+  const totalDailyEarnings = useMemo(() => dailyEarnings.reduce((acc, curr) => acc + curr.amount, 0), [dailyEarnings]);
 
   return (
     <div className="flex flex-col gap-8 pb-10">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 p-6 bg-gradient-to-r from-primary/10 to-transparent rounded-2xl border">
-        <div>
-          <h2 className="text-3xl font-bold tracking-tight">Workshop Monitor</h2>
-          <p className="text-muted-foreground mt-1">Real-time status of staff and production units.</p>
-        </div>
-        <div className="flex items-center gap-4 bg-background/50 p-4 rounded-xl border shadow-sm">
-           <div className="flex flex-col items-end">
-              <span className="text-sm font-semibold text-primary uppercase tracking-wider">{ethiopianDateFormatter(new Date(), { month: 'long' })} {toEthiopian(new Date()).year}</span>
-              <span className="text-2xl font-bold">{ethiopianDateFormatter(new Date(), { weekday: 'long', day: 'numeric' })}</span>
-           </div>
-           <div className="h-12 w-[1px] bg-border mx-2" />
-           <div className="bg-primary/20 p-3 rounded-full"><CalendarDays className="h-6 w-6 text-primary" /></div>
-        </div>
-      </div>
-
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard title="Active Team" value={dashboardStats.totalEmployees} icon={<Users className="h-5 w-5 text-blue-600" />} />
+        <StatCard title="Active Team" value={activeEmployees.length} icon={<Users className="h-5 w-5 text-blue-600" />} />
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">On-site Today</CardTitle>
             <UserCheck className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="text-2xl font-bold">{dashboardStats.onSiteToday} / {dashboardStats.totalEmployees}</div>
-            <Progress value={attendancePercentage} className="h-2" />
+            <div className="text-2xl font-bold">{dailyEarnings.filter(e => e.status !== 'Absent').length} / {activeEmployees.length}</div>
+            <Progress value={activeEmployees.length > 0 ? (dailyEarnings.filter(e => e.status !== 'Absent').length / activeEmployees.length) * 100 : 0} className="h-2" />
           </CardContent>
         </Card>
-        <StatCard title="Est. Weekly" value={`ETB ${dashboardStats.estWeekly.toLocaleString()}`} icon={<HandCoins className="h-5 w-5 text-amber-600" />} />
-        <StatCard title="Est. Monthly" value={`ETB ${dashboardStats.estMonthly.toLocaleString()}`} icon={<Wallet className="h-5 w-5 text-purple-600" />} />
+        <StatCard title="Total Daily Cost" value={`ETB ${totalDailyEarnings.toLocaleString()}`} icon={<Wallet2 className="h-5 w-5 text-amber-600" />} />
+        <StatCard title="Unified Expenditure" value={`ETB ${unifiedMonthTotal.toLocaleString()}`} icon={<Wallet className="h-5 w-5 text-purple-600" />} />
       </div>
 
        <Card className="shadow-lg">
@@ -683,7 +596,7 @@ export default function DashboardPage() {
                         </Button>
                     </PopoverTrigger>
                     <PopoverContent className="w-auto p-0" align="end">
-                      <Calendar mode="single" selected={new Date(selectedDay)} onSelect={handleGlobalDateSelect} initialFocus />
+                      <Calendar mode="single" selected={new Date(selectedDay)} onSelect={(d) => d && setSelectedDay(format(d, "yyyy-MM-dd"))} initialFocus />
                     </PopoverContent>
                 </Popover>
             </CardHeader>
@@ -716,12 +629,6 @@ export default function DashboardPage() {
                                 />
                             ))}
                         </div>
-                        <div className="flex justify-center pt-4">
-                            <div className="bg-primary/5 border rounded-2xl p-6 w-full max-w-md text-center">
-                                <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">Total Daily Production Cost</p>
-                                <p className="text-4xl font-black text-primary">ETB {totalDailyEarnings.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                            </div>
-                        </div>
                     </TabsContent>
 
                     <TabsContent value="week" className="space-y-6">
@@ -751,7 +658,7 @@ export default function DashboardPage() {
                                     ))}
                                 </div>
                                 <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-2xl p-8 text-center shadow-sm">
-                                    <p className="text-[10px] font-black text-[#9d174d] uppercase tracking-widest mb-1">TOTAL WEEKLY PAYROLL (WEEKLY-PAID)</p>
+                                    <p className="text-[10px] font-black text-[#9d174d] uppercase tracking-widest mb-1">TOTAL WEEKLY PAYROLL</p>
                                     <p className="text-4xl font-black text-[#be185d]">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
@@ -785,7 +692,7 @@ export default function DashboardPage() {
                                     ))}
                                 </div>
                                 <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-2xl p-8 text-center shadow-sm">
-                                    <p className="text-[10px] font-black text-[#9d174d] uppercase tracking-widest mb-1">TOTAL MONTHLY PAYROLL (MONTHLY-PAID)</p>
+                                    <p className="text-[10px] font-black text-[#9d174d] uppercase tracking-widest mb-1">TOTAL MONTHLY PAYROLL</p>
                                     <p className="text-4xl font-black text-[#be185d]">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
@@ -800,8 +707,8 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-3">
                   <div className="bg-primary p-2.5 rounded-lg text-primary-foreground"><Wallet className="h-6 w-6" /></div>
                   <div>
-                      <CardTitle className="text-xl">Unified Workshop Expense</CardTitle>
-                      <CardDescription>Historical monthly payout audit</CardDescription>
+                      <CardTitle className="text-xl">Historical Workshop Audit</CardTitle>
+                      <CardDescription>Consolidated monthly expense summary</CardDescription>
                   </div>
                 </div>
                 <div className="w-full sm:w-[240px]">
@@ -819,9 +726,7 @@ export default function DashboardPage() {
                     </div>
                 ) : (
                     <div className="text-center">
-                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3 flex items-center justify-center gap-2">
-                            <Wallet2 className="h-3.5 w-3.5" /> Total Expenditure Audit
-                        </p>
+                        <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-3">Expenditure Total</p>
                         <p className="text-5xl font-black text-primary tracking-tighter">
                             ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
@@ -832,3 +737,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

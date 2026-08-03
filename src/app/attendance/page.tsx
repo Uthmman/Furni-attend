@@ -4,21 +4,19 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { usePageTitle } from "@/components/page-title-provider";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from "@/components/ui/dialog";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { AttendanceRecord, Employee, AttendanceStatus, PayrollSettings } from "@/lib/types";
-import { format, isValid, getDay } from "date-fns";
+import { format, isValid } from "date-fns";
 import { Badge } from "@/components/ui/badge";
-import { useCollection, useFirestore, useMemoFirebase, errorEmitter, FirestorePermissionError, useUser, useDoc } from "@/firebase";
+import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
-import { Plus, Sunrise, Sun, CheckCircle2, XCircle, Clock, Square, CheckSquare, MoreHorizontal, Wallet } from "lucide-react";
+import { Plus, Wallet, Sunrise, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Checkbox } from "@/components/ui/checkbox";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuSub, DropdownMenuSubTrigger, DropdownMenuSubContent, DropdownMenuPortal } from "@/components/ui/dropdown-menu";
 
 type DailyAttendance = {
   employeeId: string;
@@ -64,23 +62,18 @@ export default function AttendancePage() {
   const employees = useMemo(() => allEmployees?.filter(e => e.status !== 'Inactive') || [], [allEmployees]);
 
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const formattedDate = useMemo(() => format(selectedDate, "yyyy-MM-dd"), [selectedDate]);
   
   const attendanceColRef: Query<AttendanceRecord> | null = useMemoFirebase(() => {
     if (!firestore || !user) return null;
     return collection(firestore, 'attendance', formattedDate, 'records') as Query<AttendanceRecord>;
   }, [firestore, user, formattedDate]);
-  const { data: attendanceRecords, loading: attendanceLoading } = useCollection(attendanceColRef);
+  const { data: attendanceRecords } = useCollection(attendanceColRef);
 
   const [attendance, setAttendance] = useState<DailyAttendance[]>([]);
   const [isAttendanceDialogOpen, setIsAttendanceDialogOpen] = useState(false);
-  const [isLateDialogOpen, setIsLateDialogOpen] = useState(false);
-  const [isBulkLateDialogOpen, setIsBulkLateDialogOpen] = useState(false);
   const [isOvertimeDialogOpen, setIsOvertimeDialogOpen] = useState(false);
   const [selectedEmployeeAttendance, setSelectedEmployeeAttendance] = useState<DailyAttendance | null>(null);
-  const [lateDialogData, setLateDialogData] = useState<{ session: 'morning' | 'afternoon', time: string } | null>(null);
-  const [bulkLateData, setBulkLateData] = useState<{ session: 'morning' | 'afternoon' | 'both', time: string } | null>(null);
 
   const settingsRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -124,16 +117,18 @@ export default function AttendancePage() {
 
   const handleStatusClick = async (session: 'morning' | 'afternoon', status: AttendanceStatus) => {
       if (!selectedEmployeeAttendance || !firestore) return;
-      if (status === 'Late') {
-          setLateDialogData({ session, time: session === 'morning' ? '08:00' : '13:30' });
-          setIsLateDialogOpen(true);
-          return;
-      }
       const updated = { ...selectedEmployeeAttendance };
       const time = session === 'morning' ? "08:00" : "13:30";
-      if (session === 'morning') { updated.morningStatus = status; updated.morningEntry = status !== 'Absent' ? time : ""; }
-      else { updated.afternoonStatus = status; updated.afternoonEntry = status !== 'Absent' ? time : ""; }
-      setIsAttendanceDialogOpen(false);
+      
+      if (session === 'morning') { 
+          updated.morningStatus = status; 
+          updated.morningEntry = (status === 'Present' || status === 'Late') ? time : ""; 
+      } else { 
+          updated.afternoonStatus = status; 
+          updated.afternoonEntry = (status === 'Present' || status === 'Late') ? time : ""; 
+      }
+      
+      setSelectedEmployeeAttendance(updated);
       saveAttendanceBatch([updated]);
   };
 
@@ -143,7 +138,6 @@ export default function AttendancePage() {
     if (!selectedEmployeeDetails) return 0;
     if (selectedEmployeeDetails.hourlyRate) return selectedEmployeeDetails.hourlyRate;
     if (selectedEmployeeDetails.paymentMethod === 'Weekly') return (selectedEmployeeDetails.dailyRate || 0) / 8;
-    // Approximating working units for monthly staff
     return (selectedEmployeeDetails.monthlyRate || 0) / (23.625 * 8);
   }, [selectedEmployeeDetails]);
 
@@ -198,28 +192,118 @@ export default function AttendancePage() {
           </DialogContent>
       </Dialog>
       
-      {/* Existing Attendance Status Dialog Content omitted for brevity but preserved in full logic */}
       <Dialog open={isAttendanceDialogOpen} onOpenChange={setIsAttendanceDialogOpen}>
-        <DialogContent className="sm:max-w-md">
-            <DialogHeader><DialogTitle>{selectedEmployeeAttendance?.employeeName}</DialogTitle></DialogHeader>
+        <DialogContent className="sm:max-w-md p-0 overflow-hidden rounded-3xl border-none shadow-2xl">
+            <div className="bg-[#f8faff] p-6 text-center border-b border-blue-50">
+               <h2 className="text-2xl font-black text-[#1e293b] tracking-tight">{selectedEmployeeAttendance?.employeeName}</h2>
+               <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Log attendance for {format(selectedDate, "eeee, MMMM do")}</p>
+            </div>
+            
             {selectedEmployeeAttendance && (
-                <div className="p-4 space-y-6">
-                    <div className="space-y-2">
-                        <Label className="uppercase text-[10px] font-bold text-muted-foreground">Morning Session</Label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {["Present", "Late", "Absent"].map(s => <Button key={s} variant="outline" size="sm" onClick={() => handleStatusClick('morning', s as AttendanceStatus)}>{s}</Button>)}
+                <div className="p-6 space-y-8 bg-white">
+                    {/* Morning Session */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-[#64748b]">
+                                <Sunrise className="h-4 w-4 text-orange-400" />
+                                <span className="text-[11px] font-black uppercase tracking-widest">Morning Session</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="bg-[#f1f5f9] text-[#1e293b] font-bold h-6 px-3">{selectedEmployeeAttendance.morningStatus}</Badge>
+                                {selectedEmployeeAttendance.morningEntry && <span className="text-[10px] font-bold text-muted-foreground bg-muted/30 px-2 py-0.5 rounded">{selectedEmployeeAttendance.morningEntry}</span>}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <AttendanceMarkButton 
+                                status="Present" 
+                                color="bg-blue-600" 
+                                active={selectedEmployeeAttendance.morningStatus === 'Present'} 
+                                onClick={() => handleStatusClick('morning', 'Present')} 
+                            />
+                            <AttendanceMarkButton 
+                                status="Late" 
+                                color="bg-amber-500" 
+                                active={selectedEmployeeAttendance.morningStatus === 'Late'} 
+                                onClick={() => handleStatusClick('morning', 'Late')} 
+                            />
+                            <AttendanceMarkButton 
+                                status="Absent" 
+                                color="bg-red-500" 
+                                active={selectedEmployeeAttendance.morningStatus === 'Absent'} 
+                                onClick={() => handleStatusClick('morning', 'Absent')} 
+                            />
+                            <AttendanceMarkButton 
+                                status="Permission" 
+                                color="bg-blue-400" 
+                                active={selectedEmployeeAttendance.morningStatus === 'Permission'} 
+                                onClick={() => handleStatusClick('morning', 'Permission')} 
+                            />
                         </div>
                     </div>
-                    <div className="space-y-2">
-                        <Label className="uppercase text-[10px] font-bold text-muted-foreground">Afternoon Session</Label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {["Present", "Late", "Absent"].map(s => <Button key={s} variant="outline" size="sm" onClick={() => handleStatusClick('afternoon', s as AttendanceStatus)}>{s}</Button>)}
+
+                    {/* Afternoon Session */}
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-[#64748b]">
+                                <Sun className="h-4 w-4 text-yellow-500" />
+                                <span className="text-[11px] font-black uppercase tracking-widest">Afternoon Session</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="bg-[#f1f5f9] text-[#1e293b] font-bold h-6 px-3">{selectedEmployeeAttendance.afternoonStatus}</Badge>
+                                {selectedEmployeeAttendance.afternoonEntry && <span className="text-[10px] font-bold text-muted-foreground bg-muted/30 px-2 py-0.5 rounded">{selectedEmployeeAttendance.afternoonEntry}</span>}
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                            <AttendanceMarkButton 
+                                status="Present" 
+                                color="bg-blue-600" 
+                                active={selectedEmployeeAttendance.afternoonStatus === 'Present'} 
+                                onClick={() => handleStatusClick('afternoon', 'Present')} 
+                            />
+                            <AttendanceMarkButton 
+                                status="Late" 
+                                color="bg-amber-500" 
+                                active={selectedEmployeeAttendance.afternoonStatus === 'Late'} 
+                                onClick={() => handleStatusClick('afternoon', 'Late')} 
+                            />
+                            <AttendanceMarkButton 
+                                status="Absent" 
+                                color="bg-red-500" 
+                                active={selectedEmployeeAttendance.afternoonStatus === 'Absent'} 
+                                onClick={() => handleStatusClick('afternoon', 'Absent')} 
+                            />
+                            <AttendanceMarkButton 
+                                status="Permission" 
+                                color="bg-blue-400" 
+                                active={selectedEmployeeAttendance.afternoonStatus === 'Permission'} 
+                                onClick={() => handleStatusClick('afternoon', 'Permission')} 
+                            />
                         </div>
                     </div>
                 </div>
             )}
+            <div className="p-4 bg-[#f8faff] flex justify-end">
+                <Button onClick={() => setIsAttendanceDialogOpen(false)} className="bg-[#1e293b] hover:bg-[#0f172a] font-bold px-8">Close</Button>
+            </div>
         </DialogContent>
       </Dialog>
     </div>
   );
 }
+
+function AttendanceMarkButton({ status, color, active, onClick }: { status: AttendanceStatus, color: string, active: boolean, onClick: () => void }) {
+    return (
+        <Button 
+            variant="outline" 
+            className={cn(
+                "h-14 justify-start px-4 rounded-2xl border-2 transition-all duration-200 group",
+                active ? "bg-blue-600 border-blue-600 text-white hover:bg-blue-700 hover:border-blue-700" : "bg-white border-[#f1f5f9] text-[#475569] hover:bg-[#f8faff] hover:border-blue-200"
+            )}
+            onClick={onClick}
+        >
+            <div className={cn("h-2 w-2 rounded-full mr-3 shrink-0", active ? "bg-white" : color)} />
+            <span className="font-bold text-[14px]">{status}</span>
+        </Button>
+    );
+}
+
