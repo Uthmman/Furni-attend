@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { format, isWithinInterval, parse, isValid, addDays, startOfWeek, endOfWeek, getDay, eachDayOfInterval, startOfDay, endOfDay } from "date-fns";
+import { format, isWithinInterval, parse, isValid, addDays, startOfWeek, endOfWeek, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -139,6 +139,12 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
     return weekdays + (saturdays * 0.5625);
 };
 
+type OvertimeDetail = {
+    label: string;
+    hours: number;
+    amount: number;
+};
+
 export default function EmployeeProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -255,6 +261,7 @@ export default function EmployeeProfilePage() {
     const normalOTRate = settings?.normalOvertimeRate || 1.5;
     const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
     const selectedPeriodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || "";
+    let overtimeDetails: OvertimeDetail[] = [];
 
     if (employee.paymentMethod === 'Monthly') {
         const baseSalary = employee.monthlyRate || 0;
@@ -286,8 +293,10 @@ export default function EmployeeProfilePage() {
             if (isSun) {
                 const isWorking = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
                 if (isWorking) {
-                    otPayTotal += 8 * hourlyRateCalc * sundayOTRate;
+                    const amt = 8 * hourlyRateCalc * sundayOTRate;
+                    otPayTotal += amt;
                     otHoursTotal += 8;
+                    overtimeDetails.push({ label: `Sunday (${format(r.date, 'MMM d')})`, hours: 8, amount: amt });
                 }
             } else {
                 let mAbs = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dStr));
@@ -297,11 +306,18 @@ export default function EmployeeProfilePage() {
                 
                 // Bonus for Saturday Afternoon
                 if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
-                    otPayTotal += 3.5 * hourlyRateCalc * normalOTRate;
+                    const amt = 3.5 * hourlyRateCalc * normalOTRate;
+                    otPayTotal += amt;
                     otHoursTotal += 3.5;
+                    overtimeDetails.push({ label: `Sat Afternoon (${format(r.date, 'MMM d')})`, hours: 3.5, amount: amt });
                 }
             }
-            if (r.overtimeHours) { otPayTotal += r.overtimeHours * hourlyRateCalc * normalOTRate; otHoursTotal += r.overtimeHours; }
+            if (r.overtimeHours) {
+                const amt = r.overtimeHours * hourlyRateCalc * normalOTRate;
+                otPayTotal += amt;
+                otHoursTotal += r.overtimeHours;
+                overtimeDetails.push({ label: `OT Log (${format(r.date, 'MMM d')})`, hours: r.overtimeHours, amount: amt });
+            }
         });
 
         const today = new Date();
@@ -325,17 +341,50 @@ export default function EmployeeProfilePage() {
         periodLabel: selectedPeriodLabel, 
         overtimePay: otPayTotal, 
         overtimeHours: otHoursTotal, 
-        hourlyRate: hourlyRateCalc 
+        hourlyRate: hourlyRateCalc,
+        overtimeDetails
       };
     } else {
       const hourly = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
       const weekStart = startOfWeek(new Date(selectedPeriod), { weekStartsOn: 0 });
       const interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
       const records = employeeAttendance.filter(r => isWithinInterval(r.date, interval));
-      const totalHours = records.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
-      const otHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-      const otPay = otHours * (hourly || 0) * normalOTRate;
-      return { hours: totalHours, overtimePay: otPay, totalAmount: (totalHours * (hourly || 0)) + otPay, periodLabel: selectedPeriodLabel, overtimeHours: otHours, hourlyRate: hourly };
+      
+      let baseHours = 0;
+      let totalOTPay = 0;
+      let totalOTHours = 0;
+
+      records.forEach(r => {
+          const isSun = getDay(r.date) === 0;
+          if (isSun) {
+              const working = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
+              if (working) {
+                  const amt = 8 * (hourly || 0) * sundayOTRate;
+                  totalOTPay += amt;
+                  totalOTHours += 8;
+                  overtimeDetails.push({ label: `Sunday (${format(r.date, 'MMM d')})`, hours: 8, amount: amt });
+              }
+          } else {
+              baseHours += calculateHoursWorked(r);
+          }
+          
+          if (r.overtimeHours) {
+              const amt = r.overtimeHours * (hourly || 0) * normalOTRate;
+              totalOTPay += amt;
+              totalOTHours += r.overtimeHours;
+              overtimeDetails.push({ label: `OT Log (${format(r.date, 'MMM d')})`, hours: r.overtimeHours, amount: amt });
+          }
+      });
+
+      return { 
+        hours: baseHours, 
+        overtimePay: totalOTPay, 
+        totalAmount: (baseHours * (hourly || 0)) + totalOTPay, 
+        periodLabel: selectedPeriodLabel, 
+        overtimeHours: totalOTHours, 
+        hourlyRate: hourly,
+        overtimeDetails
+      };
     }
   }, [employee, employeeAttendance, periodOptions, selectedPeriod, settings, allAttendance]);
 
@@ -346,11 +395,21 @@ export default function EmployeeProfilePage() {
       msg += `Base Salary: ETB ${(payrollData.baseSalary || 0).toFixed(2)}\n`;
       if ((payrollData.lateDeduction || 0) > 0) msg += `Late Deduction (${payrollData.minutesLate} mins): - ETB ${(payrollData.lateDeduction || 0).toFixed(2)}\n`;
       if ((payrollData.absenceDeduction || 0) > 0) msg += `Absence Deduction (${payrollData.hoursAbsent?.toFixed(1)} hrs): - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
-      if ((payrollData.overtimePay || 0) > 0) msg += `Overtime Pay (${payrollData.overtimeHours?.toFixed(1)} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+      if ((payrollData.overtimePay || 0) > 0) {
+        msg += `Overtime Pay (${payrollData.overtimeHours?.toFixed(1)} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+        payrollData.overtimeDetails?.forEach((d: any) => {
+            msg += `  - ${d.label}: + ETB ${d.amount.toFixed(2)}\n`;
+        });
+      }
       msg += `--------------------\n*Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     } else {
       msg += `Base Pay (${payrollData.hours?.toFixed(1)} hrs): ETB ${( (payrollData.hours || 0) * (payrollData.hourlyRate || 0)).toFixed(2)}\n`;
-      if ((payrollData.overtimePay || 0) > 0) msg += `Overtime Pay (${payrollData.overtimeHours} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+      if ((payrollData.overtimePay || 0) > 0) {
+        msg += `Overtime Pay (${payrollData.overtimeHours?.toFixed(1)} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+        payrollData.overtimeDetails?.forEach((d: any) => {
+            msg += `  - ${d.label}: + ETB ${d.amount.toFixed(2)}\n`;
+        });
+      }
       msg += `--------------------\n*Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     }
     setSummaryText(msg); setIsSummaryDialogOpen(true);
@@ -368,7 +427,7 @@ export default function EmployeeProfilePage() {
        <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
         <DialogContent>
           <DialogHeader><DialogTitle>Payroll Summary</DialogTitle><DialogDescription>For {employee.name} covering {payrollData.periodLabel}</DialogDescription></DialogHeader>
-          <Textarea readOnly value={summaryText} rows={10} className="text-sm font-mono" />
+          <Textarea readOnly value={summaryText} rows={12} className="text-sm font-mono" />
           <DialogFooter className="gap-2">
              <Button variant="outline" onClick={async () => { setIsSending(true); const r = await sendAdminPayrollSummary(summaryText); setIsSending(false); if(r.success) toast({ title: "Sent!" }); }} disabled={isSending}>
                 {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />} Send to Admin
@@ -496,9 +555,23 @@ export default function EmployeeProfilePage() {
                 </div>
 
                 {payrollData.overtimePay > 0 && (
-                    <div className="space-y-1">
-                        <p className="text-[13px] font-bold text-[#64748b]">Overtime Pay ({payrollData.overtimeHours?.toFixed(1)} hrs)</p>
-                        <p className="text-xl font-black text-blue-500">+ ETB {payrollData.overtimePay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    <div className="space-y-4">
+                        <div className="space-y-1">
+                            <p className="text-[13px] font-bold text-[#64748b]">Total Overtime Pay ({payrollData.overtimeHours?.toFixed(1)} hrs)</p>
+                            <p className="text-xl font-black text-blue-500">+ ETB {payrollData.overtimePay.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        </div>
+                        <div className="bg-[#f8faff] rounded-2xl p-4 space-y-2.5 border border-blue-100/50 shadow-inner">
+                            <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Overtime Breakdown</p>
+                            {payrollData.overtimeDetails?.map((detail: any, idx: number) => (
+                                <div key={idx} className="flex justify-between items-center text-xs">
+                                    <span className="text-[#64748b] font-medium">{detail.label}</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-[10px] font-bold text-muted-foreground/60">{detail.hours.toFixed(1)}h</span>
+                                        <span className="font-black text-blue-600">ETB {detail.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 )}
 
