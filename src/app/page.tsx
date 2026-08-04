@@ -213,7 +213,7 @@ const EmployeeCard = ({
 
             <div className={cn("flex items-center font-headline", isToday ? "justify-end pt-1" : "pt-2 justify-between border-t border-dashed")}>
                 {!isToday && <span className="text-[11px] font-bold text-[#1e293b]">{amountLabel}:</span>}
-                <span className={cn("font-black text-primary", isToday ? "text-lg" : "text-xl")}>
+                <span className={cn("font-bold text-primary", isToday ? "text-lg" : "text-xl")}>
                     ETB {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
             </div>
@@ -671,7 +671,7 @@ export default function DashboardPage() {
                 <Wallet2 className="h-5 w-5 text-amber-600" />
             </CardHeader>
             <CardContent>
-                <div className="text-xl sm:text-2xl font-black text-[#1e293b] tracking-tighter font-headline">ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div className="text-xl sm:text-2xl font-bold text-[#1e293b] tracking-tighter font-headline">ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </CardContent>
         </Card>
 
@@ -681,7 +681,7 @@ export default function DashboardPage() {
             <UserCheck className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="text-xl sm:text-2xl font-black text-[#1e293b] tracking-tighter font-headline">{liveTotals.onSite} / {activeEmployees.length}</div>
+            <div className="text-xl sm:text-2xl font-bold text-[#1e293b] tracking-tighter font-headline">{liveTotals.onSite} / {activeEmployees.length}</div>
             <Progress value={activeEmployees.length > 0 ? (liveTotals.onSite / activeEmployees.length) * 100 : 0} className="h-1.5" />
           </CardContent>
         </Card>
@@ -692,7 +692,7 @@ export default function DashboardPage() {
                 <HandCoins className="h-5 w-5 text-blue-600" />
             </CardHeader>
             <CardContent>
-                <div className="text-xl sm:text-2xl font-black text-[#1e293b] tracking-tighter font-headline">ETB {liveTotals.week.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div className="text-xl sm:text-2xl font-bold text-[#1e293b] tracking-tighter font-headline">ETB {liveTotals.week.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </CardContent>
         </Card>
 
@@ -702,7 +702,7 @@ export default function DashboardPage() {
                 <BarChart3 className="h-5 w-5 text-purple-600" />
             </CardHeader>
             <CardContent>
-                <div className="text-xl sm:text-2xl font-black text-[#1e293b] tracking-tighter font-headline">ETB {liveTotals.month.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+                <div className="text-xl sm:text-2xl font-bold text-[#1e293b] tracking-tighter font-headline">ETB {liveTotals.month.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
             </CardContent>
         </Card>
       </div>
@@ -784,7 +784,7 @@ export default function DashboardPage() {
                                 </div>
                                 <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-3xl p-10 text-center shadow-sm">
                                     <p className="text-[11px] font-black text-[#9d174d] uppercase tracking-[0.2em] mb-2 font-headline">TOTAL WEEKLY PAYROLL</p>
-                                    <p className="text-5xl font-black text-[#be185d] tracking-tighter font-headline">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    <p className="text-5xl font-bold text-[#be185d] tracking-tighter font-headline">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
                         )}
@@ -818,7 +818,7 @@ export default function DashboardPage() {
                                 </div>
                                 <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-3xl p-10 text-center shadow-sm">
                                     <p className="text-[11px] font-black text-[#9d174d] uppercase tracking-[0.2em] mb-2 font-headline">TOTAL MONTHLY PAYROLL</p>
-                                    <p className="text-5xl font-black text-[#be185d] tracking-tighter font-headline">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    <p className="text-5xl font-bold text-[#be185d] tracking-tighter font-headline">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
                         )}
@@ -852,7 +852,7 @@ export default function DashboardPage() {
                 ) : (
                     <div className="text-center group font-headline">
                         <p className="text-[11px] font-black text-muted-foreground/60 uppercase tracking-[0.4em] mb-4 group-hover:text-primary transition-colors">Expenditure Total</p>
-                        <p className="text-6xl sm:text-7xl font-black text-primary tracking-tighter drop-shadow-sm">
+                        <p className="text-6xl sm:text-7xl font-bold text-primary tracking-tighter drop-shadow-sm">
                             ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                         <div className="flex items-center justify-center gap-4 mt-8 opacity-20">
