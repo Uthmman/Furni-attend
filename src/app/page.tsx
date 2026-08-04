@@ -154,7 +154,7 @@ const EmployeeCard = ({
     status,
     isToday 
   }: any) => (
-    <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors">
+    <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors font-headline">
         <CardContent className="p-4 space-y-4">
             <div className="flex justify-between items-start">
                 <Link href={`/employees/${employeeId}`} className="group inline-flex items-center gap-1">
@@ -163,7 +163,7 @@ const EmployeeCard = ({
                 {isToday ? (
                   <Badge 
                     className={cn(
-                        "text-[10px] font-bold h-6 px-3 rounded-full border-none shadow-none",
+                        "text-[10px] font-bold h-6 px-3 rounded-full border-none shadow-none font-sans",
                         status === 'Present' && "bg-secondary text-secondary-foreground",
                         status === 'Late' && "bg-amber-100 text-amber-700",
                         status === 'Absent' && "bg-destructive/10 text-destructive",
@@ -173,14 +173,14 @@ const EmployeeCard = ({
                     {status}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60">
+                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60 font-sans">
                       {paymentMethod}
                   </Badge>
                 )}
             </div>
             
             {isToday ? (
-                <div className="bg-muted/20 rounded-full py-2 px-4 flex justify-between items-center text-[10px] sm:text-[11px]">
+                <div className="bg-muted/20 rounded-full py-2 px-4 flex justify-between items-center text-[10px] sm:text-[11px] font-headline">
                     <div className="flex gap-1.5 items-center">
                         <span className="text-muted-foreground font-black uppercase tracking-tighter opacity-60">Morning:</span>
                         <span className="font-bold text-foreground/80">{morning || "—"}</span>
@@ -191,7 +191,7 @@ const EmployeeCard = ({
                     </div>
                 </div>
             ) : (
-                <div className="flex gap-2">
+                <div className="flex gap-2 font-headline">
                     <div className="flex-1 bg-muted/20 rounded-full h-8 flex items-center px-4 justify-between">
                         <span className={cn("text-[11px] font-medium", lateMins > 0 ? "text-amber-600" : "text-muted-foreground/60")}>
                             {lateMins > 0 ? `Late: ${lateMins}m` : "No late mins"}
@@ -204,7 +204,7 @@ const EmployeeCard = ({
             )}
 
             {overtimeHours > 0 && (
-                <div className="bg-primary/5 rounded-full h-8 flex items-center px-4 justify-between">
+                <div className="bg-primary/5 rounded-full h-8 flex items-center px-4 justify-between font-headline">
                     <span className="text-[11px] font-medium text-primary/80">Overtime:</span>
                     <span className="text-[11px] font-bold text-primary">
                         +{overtimeHours.toFixed(1)} hrs (ETB {overtimeAmount.toFixed(2)})
@@ -212,7 +212,7 @@ const EmployeeCard = ({
                 </div>
             )}
 
-            <div className={cn("flex items-center", isToday ? "justify-end pt-1" : "pt-2 justify-between border-t border-dashed")}>
+            <div className={cn("flex items-center font-headline", isToday ? "justify-end pt-1" : "pt-2 justify-between border-t border-dashed")}>
                 {!isToday && <span className="text-[11px] font-bold text-[#1e293b]">{amountLabel}:</span>}
                 <span className={cn("font-black text-primary", isToday ? "text-lg" : "text-xl")}>
                     ETB {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
@@ -664,7 +664,7 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-8 pb-10">
+    <div className="flex flex-col gap-8 pb-10 font-headline">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="shadow-sm border-primary/5">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -711,8 +711,8 @@ export default function DashboardPage() {
        <Card className="shadow-lg border-none rounded-3xl overflow-hidden">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b bg-[#f8faff] py-6 px-8">
                 <div>
-                    <CardTitle className="text-2xl font-black text-[#1e293b] tracking-tight font-headline">Detailed Overview</CardTitle>
-                    <CardDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Track payments and performance across periods</CardDescription>
+                    <CardTitle className="text-2xl font-black text-[#1e293b] tracking-tight">Detailed Overview</CardTitle>
+                    <CardDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1 font-sans">Track payments and performance across periods</CardDescription>
                 </div>
                 <Popover>
                     <PopoverTrigger asChild>
@@ -833,8 +833,8 @@ export default function DashboardPage() {
                 <div className="flex items-center gap-4">
                   <div className="bg-primary p-3.5 rounded-2xl text-primary-foreground shadow-lg shadow-primary/20"><Wallet className="h-7 w-7" /></div>
                   <div>
-                      <CardTitle className="text-2xl font-black text-[#1e293b] tracking-tight font-headline">Historical Workshop Audit</CardTitle>
-                      <CardDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Consolidated monthly expense summary</CardDescription>
+                      <CardTitle className="text-2xl font-black text-[#1e293b] tracking-tight">Historical Workshop Audit</CardTitle>
+                      <CardDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1 font-sans">Consolidated monthly expense summary</CardDescription>
                   </div>
                 </div>
                 <div className="w-full sm:w-[280px]">
