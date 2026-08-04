@@ -1,4 +1,3 @@
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -100,6 +99,6 @@ body {
     font-family: 'Inter', sans-serif;
   }
   .font-headline {
-    font-family: 'Outfit', sans-serif;
+    font-family: 'Montserrat', sans-serif;
   }
 }
