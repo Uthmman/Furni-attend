@@ -6,7 +6,7 @@ import { usePageTitle } from "@/components/page-title-provider";
 import { StatCard } from "@/components/stat-card";
 import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3 } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
 import { collection, query, where, getDocs, doc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -237,8 +237,11 @@ export default function DashboardPage() {
 
   const [lazyAttendance, setLazyAttendance] = useState<AttendanceRecord[]>([]);
   const [unifiedAttendance, setUnifiedAttendance] = useState<AttendanceRecord[]>([]);
+  const [currentMonthAttendance, setCurrentMonthAttendance] = useState<AttendanceRecord[]>([]);
+  
   const [lazyLoading, setLazyLoading] = useState(false);
   const [unifiedLoading, setUnifiedLoading] = useState(false);
+  const [realTimeLoading, setRealTimeLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("today");
 
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -262,6 +265,33 @@ export default function DashboardPage() {
     return collection(firestore, 'attendance', selectedDay, 'records');
   }, [firestore, user, selectedDay]);
   const { data: todayRecords } = useCollection<AttendanceRecord>(todayAttendanceRef);
+
+  // Fetch current month attendance for top cards on load
+  useEffect(() => {
+    const fetchCurrentMonthData = async () => {
+        if (!firestore || !user || activeEmployees.length === 0) return;
+        setRealTimeLoading(true);
+        try {
+            const now = new Date();
+            const start = startOfDay(toGregorian(toEthiopian(now).year, toEthiopian(now).month, 1));
+            const end = endOfDay(now);
+            
+            const records: AttendanceRecord[] = [];
+            const fetchPromises = activeEmployees.map(async (emp) => {
+                const q = query(
+                    collection(firestore, 'employees', emp.id, 'attendance'), 
+                    where('date', '>=', start.toISOString()), 
+                    where('date', '<=', end.toISOString())
+                );
+                const snap = await getDocs(q);
+                snap.forEach(d => records.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
+            });
+            await Promise.all(fetchPromises);
+            setCurrentMonthAttendance(records);
+        } catch (e) {} finally { setRealTimeLoading(false); }
+    };
+    fetchCurrentMonthData();
+  }, [activeEmployees, firestore, user]);
 
   useEffect(() => {
     const fetchLazyData = async () => {
@@ -319,6 +349,77 @@ export default function DashboardPage() {
     };
     if (activeEmployees.length > 0) fetchUnifiedData();
   }, [selectedUnifiedMonth, activeEmployees, firestore, user]);
+
+  const liveTotals = useMemo(() => {
+    if (activeEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0 };
+    
+    const now = new Date();
+    const todayStr = format(now, "yyyy-MM-dd");
+    const weekStart = startOfDay(startOfWeek(now, { weekStartsOn: 0 }));
+    const monthStart = startOfDay(toGregorian(toEthiopian(now).year, toEthiopian(now).month, 1));
+    const ethNow = toEthiopian(now);
+    const units = getMonthlyWorkingUnits(monthStart, getEthiopianMonthDays(ethNow.year, ethNow.month));
+
+    let todayCost = 0;
+    let weekCost = 0;
+    let monthCost = 0;
+    let onSite = 0;
+
+    activeEmployees.forEach(emp => {
+        const empRecords = currentMonthAttendance.filter(r => r.employeeId === emp.id);
+        const todayRec = empRecords.find(r => r.id === todayStr);
+        if (todayRec && (todayRec.morningStatus !== 'Absent' || todayRec.afternoonStatus !== 'Absent')) onSite++;
+
+        // Helper for one record cost
+        const calcRecCost = (r: AttendanceRecord, date: Date) => {
+            const isSun = getDay(date) === 0;
+            const isSat = getDay(date) === 6;
+            let cost = 0;
+            if (emp.paymentMethod === 'Weekly') {
+                const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+                cost = (calculateHoursWorked(r) * (hourly || 0)) + ((r.overtimeHours || 0) * (hourly || 0) * normalOTRate);
+                if (isSun && r.morningStatus !== 'Absent') cost += 8 * (hourly || 0) * (sundayOTRate - 1);
+            } else {
+                const hourly = (emp.monthlyRate || 0) / units / 8;
+                const daily = (emp.monthlyRate || 0) / units;
+                let deduction = 0;
+                if (r.morningStatus === 'Absent') deduction += 4.5 * hourly;
+                if (r.afternoonStatus === 'Absent' && !isSat) deduction += 3.5 * hourly;
+                deduction += calculateMinutesLate(r) * (hourly / 60);
+
+                let ot = (r.overtimeHours || 0) * hourly * normalOTRate;
+                if (isSun && (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')) ot += 8 * hourly * sundayOTRate;
+                else if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) ot += 3.5 * hourly * normalOTRate;
+
+                cost = daily - deduction + ot;
+            }
+            return cost;
+        };
+
+        empRecords.forEach(r => {
+            const d = parse(r.id!, "yyyy-MM-dd", new Date());
+            const cost = calcRecCost(r, d);
+            if (isSameDay(d, now)) todayCost += cost;
+            if (d >= weekStart) weekCost += cost;
+            monthCost += cost;
+        });
+
+        // Add projected basic pay for unrecorded days in current month to avoid showing 0
+        const recordedDays = new Set(empRecords.map(r => r.id));
+        eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
+            const ds = format(day, "yyyy-MM-dd");
+            if (!recordedDays.has(ds)) {
+                if (getDay(day) === 0) {
+                     if (emp.paymentMethod === 'Weekly') weekCost += (emp.dailyRate || 0); // Sunday project
+                } else {
+                    // We don't add projected cost for absences on unrecorded days
+                }
+            }
+        });
+    });
+
+    return { today: todayCost, week: weekCost, month: monthCost, onSite };
+  }, [activeEmployees, currentMonthAttendance, realTimeLoading, normalOTRate, sundayOTRate]);
 
   const dailyEarnings = useMemo(() => {
     if (!activeEmployees || !selectedDay) return [];
@@ -562,24 +663,49 @@ export default function DashboardPage() {
     return { weeks: w, months: m };
   }, []);
 
-  const totalDailyEarnings = useMemo(() => dailyEarnings.reduce((acc, curr) => acc + curr.amount, 0), [dailyEarnings]);
-
   return (
     <div className="flex flex-col gap-8 pb-10">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Total Daily Cost" value={`ETB ${totalDailyEarnings.toLocaleString()}`} icon={<Wallet2 className="h-5 w-5 text-amber-600" />} />
+        <Card className="shadow-sm border-primary/5">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Today&apos;s Total Cost</CardTitle>
+                <Wallet2 className="h-5 w-5 text-amber-600" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-xl sm:text-2xl font-black text-[#1e293b] tracking-tighter">ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            </CardContent>
+        </Card>
+
         <Card className="shadow-sm border-primary/5">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-bold text-muted-foreground uppercase tracking-wider">On-site Today</CardTitle>
+            <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">On-site Today</CardTitle>
             <UserCheck className="h-5 w-5 text-green-600" />
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="text-2xl font-black text-[#1e293b]">{dailyEarnings.filter(e => e.status !== 'Absent').length} / {activeEmployees.length}</div>
-            <Progress value={activeEmployees.length > 0 ? (dailyEarnings.filter(e => e.status !== 'Absent').length / activeEmployees.length) * 100 : 0} className="h-1.5" />
+            <div className="text-xl sm:text-2xl font-black text-[#1e293b] tracking-tighter">{liveTotals.onSite} / {activeEmployees.length}</div>
+            <Progress value={activeEmployees.length > 0 ? (liveTotals.onSite / activeEmployees.length) * 100 : 0} className="h-1.5" />
           </CardContent>
         </Card>
-        <StatCard title="Weekly Est" value={`ETB ${weeklySummary.grandTotal.toLocaleString()}`} icon={<HandCoins className="h-5 w-5 text-blue-600" />} />
-        <StatCard title="Monthly Est" value={`ETB ${unifiedMonthTotal.toLocaleString()}`} icon={<BarChart3 className="h-5 w-5 text-purple-600" />} />
+
+        <Card className="shadow-sm border-primary/5">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Current Week Est</CardTitle>
+                <HandCoins className="h-5 w-5 text-blue-600" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-xl sm:text-2xl font-black text-[#1e293b] tracking-tighter">ETB {liveTotals.week.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            </CardContent>
+        </Card>
+
+        <Card className="shadow-sm border-primary/5">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Current Month Est</CardTitle>
+                <BarChart3 className="h-5 w-5 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-xl sm:text-2xl font-black text-[#1e293b] tracking-tighter">ETB {liveTotals.month.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+            </CardContent>
+        </Card>
       </div>
 
        <Card className="shadow-lg border-none rounded-3xl overflow-hidden">
