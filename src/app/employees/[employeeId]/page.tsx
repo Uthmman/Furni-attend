@@ -118,7 +118,7 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
     let date = new Date(ethYear + 7, ethMonth + 7, ethDay, 12, 0, 0);
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 200; i++) {
         const eth = toEthiopian(date);
         if (eth.year === ethYear && eth.month === ethMonth && eth.day === ethDay) return startOfDay(date);
         if (eth.year < ethYear || (eth.year === ethYear && eth.month < ethMonth) || (eth.year === ethYear && eth.month === ethMonth && eth.day < ethDay)) date.setDate(date.getDate() + 1);
@@ -243,12 +243,13 @@ export default function EmployeeProfilePage() {
         if (existingRecord) return existingRecord;
         
         const isSun = getDay(day) === 0;
+        // Fix: Days before start date are now visually "Absent" to match salary proration logic
         return { 
             id: dateStr, 
             employeeId: employee.id, 
             date: day.toISOString(), 
-            morningStatus: isSun ? '(-, -)' : (day >= employeeStartDate ? 'Absent' : 'Present'), 
-            afternoonStatus: isSun ? '(-, -)' : (day >= employeeStartDate ? 'Absent' : 'Present'), 
+            morningStatus: isSun ? '(-, -)' : 'Absent', 
+            afternoonStatus: isSun ? '(-, -)' : 'Absent', 
             isVirtual: true,
             isSunday: isSun
         } as any;
@@ -320,10 +321,11 @@ export default function EmployeeProfilePage() {
         });
 
         const today = new Date();
-        const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
+        // Fix: Count ALL working days in the month as absences if unrecorded up to today, 
+        // including those before start date, to correctly prorate the full monthly base salary.
         eachDayOfInterval(interval).forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
-            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today && !recordedDates.has(dayStr)) {
+            if (getDay(day) !== 0 && day <= today && !recordedDates.has(dayStr)) {
                 totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
             }
         });
