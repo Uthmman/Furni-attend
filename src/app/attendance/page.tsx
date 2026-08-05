@@ -39,6 +39,15 @@ const getStatusInitial = (s: AttendanceStatus) => {
   }
 };
 
+const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
+  if (!isValid(date)) return "Invalid Date";
+  try {
+      return new Intl.DateTimeFormat("en-US-u-ca-ethiopic", options).format(date);
+  } catch (e) {
+      return "Invalid Date";
+  }
+};
+
 const StatusBadge = ({ status, session }: { status: AttendanceStatus, session?: string }) => {
   const getColors = (s: AttendanceStatus) => {
     switch (s) {
@@ -246,7 +255,7 @@ export default function AttendancePage() {
         <div className="lg:col-span-2">
           <Card className="border-none shadow-sm overflow-hidden">
             <CardHeader className="flex flex-row items-center justify-between border-b bg-muted/20">
-                <CardTitle className="text-lg">Attendance for {format(selectedDate, "PPP")}</CardTitle>
+                <CardTitle className="text-lg">Attendance for {ethiopianDateFormatter(selectedDate, { day: 'numeric', month: 'long', year: 'numeric' })}</CardTitle>
                 <div className="flex items-center gap-2">
                     <Button variant="ghost" size="sm" onClick={toggleSelectAll} className="text-[10px] font-black uppercase tracking-widest h-8 px-3">
                         {selectedIds.size === attendance.length ? "Deselect All" : "Select All"}
@@ -421,7 +430,7 @@ export default function AttendancePage() {
             <DialogHeader className="p-0">
                 <div className="bg-[#f8faff] p-6 text-center border-b border-blue-50">
                    <DialogTitle className="text-2xl font-black text-[#1e293b] tracking-tight">{selectedEmployeeAttendance?.employeeName}</DialogTitle>
-                   <DialogDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Log attendance for {format(selectedDate, "eeee, MMMM do")}</DialogDescription>
+                   <DialogDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Log attendance for {ethiopianDateFormatter(selectedDate, { weekday: 'long', month: 'long', day: 'numeric' })}</DialogDescription>
                 </div>
             </DialogHeader>
             
