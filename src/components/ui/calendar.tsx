@@ -1,5 +1,3 @@
-
-
 "use client"
 
 import * as React from "react"
@@ -10,10 +8,7 @@ import { isValid } from "date-fns"
 import { cn } from "@/lib/utils"
 import { buttonVariants } from "@/components/ui/button"
 
-export type CalendarProps = React.ComponentProps<typeof DayPicker> & {
-  renderDay?: (props: DayContentProps) => React.ReactNode;
-}
-
+export type CalendarProps = React.ComponentProps<typeof DayPicker>
 
 const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions): string => {
   if (!isValid(date)) return "";
@@ -25,15 +20,19 @@ const ethiopianDateFormatter = (date: Date, options: Intl.DateTimeFormatOptions)
   }
 };
 
-const EthiopicDay = (props: DayContentProps) => {
+/**
+ * Renders the content inside a calendar day button.
+ * Shows the Ethiopian day prominently with a tiny Gregorian reference in the corner.
+ */
+const EthiopicDayContent = (props: DayContentProps) => {
     const { date } = props;
     const gregorianDay = date.getDate();
     const ethiopianDay = ethiopianDateFormatter(date, { day: 'numeric' });
 
     return (
-        <div className="relative flex flex-col items-center justify-center h-full w-full">
-            <span className="absolute top-0.5 left-0.5 text-[9px] text-muted-foreground/70">{gregorianDay}</span>
-            <span className="text-base font-medium">{ethiopianDay}</span>
+        <div className="relative flex flex-col items-center justify-center h-full w-full pointer-events-none">
+            <span className="absolute -top-1 -left-1 text-[8px] text-muted-foreground/60">{gregorianDay}</span>
+            <span className="text-sm font-semibold">{ethiopianDay}</span>
         </div>
     );
 };
@@ -43,19 +42,8 @@ function Calendar({
   className,
   classNames,
   showOutsideDays = true,
-  renderDay,
   ...props
 }: CalendarProps) {
-  const components = {
-    IconLeft: ({ ...props }) => (
-      <ChevronLeft className="h-4 w-4" {...props} />
-    ),
-    IconRight: ({ ...props }) => (
-      <ChevronRight className="h-4 w-4" {...props} />
-    ),
-    Day: renderDay || EthiopicDay,
-  };
-  
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
@@ -77,10 +65,10 @@ function Calendar({
         head_cell:
           "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
         row: "flex w-full mt-2",
-        cell: "h-14 w-14 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
+        cell: "h-11 w-11 text-center text-sm p-0 relative [&:has([aria-selected].day-range-end)]:rounded-r-md [&:has([aria-selected].day-outside)]:bg-accent/50 [&:has([aria-selected])]:bg-accent first:[&:has([aria-selected])]:rounded-l-md last:[&:has([aria-selected])]:rounded-r-md focus-within:relative focus-within:z-20",
         day: cn(
           buttonVariants({ variant: "ghost" }),
-          "h-14 w-14 p-0 font-normal aria-selected:opacity-100"
+          "h-11 w-11 p-0 font-normal aria-selected:opacity-100"
         ),
         day_range_end: "day-range-end",
         day_selected:
@@ -94,7 +82,15 @@ function Calendar({
         day_hidden: "invisible",
         ...classNames,
       }}
-      components={{...components, ...props.components}}
+      components={{
+        IconLeft: ({ ...props }) => (
+          <ChevronLeft className="h-4 w-4" {...props} />
+        ),
+        IconRight: ({ ...props }) => (
+          <ChevronRight className="h-4 w-4" {...props} />
+        ),
+        DayContent: EthiopicDayContent,
+      }}
       {...props}
     />
   )
