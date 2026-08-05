@@ -237,21 +237,27 @@ export default function EmployeeProfilePage() {
 
     const days = eachDayOfInterval(interval);
     const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
+    const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
+
     return days.map(day => {
         const dateStr = format(day, 'yyyy-MM-dd');
         const existingRecord = employeeAttendance.find(r => format(r.date, 'yyyy-MM-dd') === dateStr);
         if (existingRecord) return existingRecord;
         
         const isSun = getDay(day) === 0;
-        // Fix: Days before start date are now visually "Absent" to match salary proration logic
+        const isInactive = empInactiveDate && day >= empInactiveDate;
+        const isBeforeStart = day < employeeStartDate;
+
         return { 
             id: dateStr, 
             employeeId: employee.id, 
             date: day.toISOString(), 
-            morningStatus: isSun ? '(-, -)' : 'Absent', 
-            afternoonStatus: isSun ? '(-, -)' : 'Absent', 
+            morningStatus: isSun ? '(-, -)' : (isInactive ? 'Inactive' : 'Absent'), 
+            afternoonStatus: isSun ? '(-, -)' : (isInactive ? 'Inactive' : 'Absent'), 
             isVirtual: true,
-            isSunday: isSun
+            isSunday: isSun,
+            isInactive: isInactive,
+            isBeforeStart: isBeforeStart
         } as any;
     }).reverse();
   }, [employeeAttendance, selectedPeriod, employee]);
@@ -262,6 +268,8 @@ export default function EmployeeProfilePage() {
     const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
     const selectedPeriodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || "";
     let overtimeDetails: OvertimeDetail[] = [];
+
+    const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
 
     if (employee.paymentMethod === 'Monthly') {
         const baseSalary = employee.monthlyRate || 0;
@@ -289,6 +297,12 @@ export default function EmployeeProfilePage() {
         recordsInPeriod.forEach(r => {
             const dStr = format(r.date, 'yyyy-MM-dd');
             const isSat = getDay(r.date) === 6; const isSun = getDay(r.date) === 0;
+            const isInactiveDay = empInactiveDate && r.date >= empInactiveDate;
+
+            if (isInactiveDay) {
+                if (!isSun) totalHoursAbsent += isSat ? 4.5 : 8;
+                return; // No OT if inactive
+            }
 
             if (isSun) {
                 const isWorking = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
@@ -321,12 +335,18 @@ export default function EmployeeProfilePage() {
         });
 
         const today = new Date();
-        // Fix: Count ALL working days in the month as absences if unrecorded up to today, 
-        // including those before start date, to correctly prorate the full monthly base salary.
+        const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
+
         eachDayOfInterval(interval).forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
-            if (getDay(day) !== 0 && day <= today && !recordedDates.has(dayStr)) {
-                totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+            const isInactive = empInactiveDate && day >= empInactiveDate;
+            const isBeforeStart = day < employeeStartDate;
+
+            if (getDay(day) !== 0 && !recordedDates.has(dayStr)) {
+                // If it's before they started, after they became inactive, or missing before today
+                if (isBeforeStart || isInactive || day <= today) {
+                    totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                }
             }
         });
 
@@ -357,6 +377,10 @@ export default function EmployeeProfilePage() {
 
       records.forEach(r => {
           const isSun = getDay(r.date) === 0;
+          const isInactiveDay = empInactiveDate && r.date >= empInactiveDate;
+          
+          if (isInactiveDay) return;
+
           if (isSun) {
               const working = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
               if (working) {
@@ -619,7 +643,9 @@ export default function EmployeeProfilePage() {
                                         "px-2.5 h-6 text-[10px] font-black border-none rounded-md", 
                                         record.morningStatus === 'Present' ? "bg-[#dcfce7] text-[#166534]" : 
                                         record.morningStatus === 'Late' ? "bg-[#fef3c7] text-[#92400e]" : 
-                                        record.morningStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : "bg-muted text-muted-foreground/60"
+                                        record.morningStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : 
+                                        record.morningStatus === 'Inactive' ? "bg-amber-50 text-amber-600" :
+                                        "bg-muted text-muted-foreground/60"
                                     )}
                                 >
                                     {record.morningStatus}
@@ -634,7 +660,9 @@ export default function EmployeeProfilePage() {
                                         "px-2.5 h-6 text-[10px] font-black border-none rounded-md", 
                                         record.afternoonStatus === 'Present' ? "bg-[#dcfce7] text-[#166534]" : 
                                         record.afternoonStatus === 'Late' ? "bg-[#fef3c7] text-[#92400e]" : 
-                                        record.afternoonStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : "bg-muted text-muted-foreground/60"
+                                        record.afternoonStatus === 'Absent' ? "bg-[#fee2e2] text-[#991b1b]" : 
+                                        record.afternoonStatus === 'Inactive' ? "bg-amber-50 text-amber-600" :
+                                        "bg-muted text-muted-foreground/60"
                                     )}
                                 >
                                     {record.afternoonStatus}

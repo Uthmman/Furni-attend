@@ -274,7 +274,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     const fetchCurrentMonthData = async () => {
-        if (!firestore || !user || activeEmployees.length === 0) return;
+        if (!firestore || !user || !allEmployees || allEmployees.length === 0) return;
         setRealTimeLoading(true);
         try {
             const now = new Date();
@@ -282,7 +282,7 @@ export default function DashboardPage() {
             const end = endOfDay(now);
             
             const records: AttendanceRecord[] = [];
-            const fetchPromises = activeEmployees.map(async (emp) => {
+            const fetchPromises = allEmployees.map(async (emp) => {
                 const q = query(
                     collection(firestore, 'employees', emp.id, 'attendance'), 
                     where('date', '>=', start.toISOString()), 
@@ -296,11 +296,11 @@ export default function DashboardPage() {
         } catch (e) {} finally { setRealTimeLoading(false); }
     };
     fetchCurrentMonthData();
-  }, [activeEmployees, firestore, user]);
+  }, [allEmployees, firestore, user]);
 
   useEffect(() => {
     const fetchLazyData = async () => {
-        if (!firestore || !user || activeTab === 'today') return;
+        if (!firestore || !user || activeTab === 'today' || !allEmployees) return;
         setLazyLoading(true);
         try {
             let start, end;
@@ -314,7 +314,7 @@ export default function DashboardPage() {
             }
             
             const records: AttendanceRecord[] = [];
-            const targetEmployees = activeEmployees.filter(e => 
+            const targetEmployees = allEmployees.filter(e => 
                 activeTab === 'week' ? e.paymentMethod === 'Weekly' : e.paymentMethod === 'Monthly'
             );
 
@@ -331,19 +331,19 @@ export default function DashboardPage() {
             setLazyAttendance(records);
         } catch (e) {} finally { setLazyLoading(false); }
     };
-    if (activeEmployees.length > 0 && activeTab !== 'today') fetchLazyData();
-  }, [activeTab, selectedWeekStart, selectedMonthStart, activeEmployees, firestore, user]);
+    if (allEmployees && allEmployees.length > 0 && activeTab !== 'today') fetchLazyData();
+  }, [activeTab, selectedWeekStart, selectedMonthStart, allEmployees, firestore, user]);
 
   useEffect(() => {
     const fetchUnifiedData = async () => {
-        if (!firestore || !user || !selectedUnifiedMonth) return;
+        if (!firestore || !user || !selectedUnifiedMonth || !allEmployees) return;
         setUnifiedLoading(true);
         try {
             const start = startOfDay(new Date(selectedUnifiedMonth));
             const eth = toEthiopian(start);
             const end = endOfDay(addDays(start, getEthiopianMonthDays(eth.year, eth.month) - 1));
             const records: AttendanceRecord[] = [];
-            const fetchPromises = activeEmployees.map(async (emp) => {
+            const fetchPromises = allEmployees.map(async (emp) => {
                 const q = query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', start.toISOString()), where('date', '<=', end.toISOString()));
                 const snap = await getDocs(q);
                 snap.forEach(d => {
@@ -354,17 +354,17 @@ export default function DashboardPage() {
             setUnifiedAttendance(records);
         } catch (e) {} finally { setUnifiedLoading(false); }
     };
-    if (activeEmployees.length > 0) fetchUnifiedData();
-  }, [selectedUnifiedMonth, activeEmployees, firestore, user]);
+    if (allEmployees && allEmployees.length > 0) fetchUnifiedData();
+  }, [selectedUnifiedMonth, allEmployees, firestore, user]);
 
   const liveTotals = useMemo(() => {
-    if (activeEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0 };
+    if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0 };
     
-    const now = new Date();
-    const todayStr = format(now, "yyyy-MM-dd");
-    const weekStart = startOfDay(startOfWeek(now, { weekStartsOn: 0 }));
-    const monthStart = startOfDay(toGregorian(toEthiopian(now).year, toEthiopian(now).month, 1));
-    const ethNow = toEthiopian(now);
+    const nowLocal = new Date();
+    const todayStr = format(nowLocal, "yyyy-MM-dd");
+    const weekStart = startOfDay(startOfWeek(nowLocal, { weekStartsOn: 0 }));
+    const monthStart = startOfDay(toGregorian(toEthiopian(nowLocal).year, toEthiopian(nowLocal).month, 1));
+    const ethNow = toEthiopian(nowLocal);
     const units = getMonthlyWorkingUnits(monthStart, getEthiopianMonthDays(ethNow.year, ethNow.month));
 
     let todayCost = 0;
@@ -372,14 +372,22 @@ export default function DashboardPage() {
     let monthCost = 0;
     let onSite = 0;
 
-    activeEmployees.forEach(emp => {
+    allEmployees.forEach(emp => {
         const empRecords = currentMonthAttendance.filter(r => r.employeeId === emp.id);
         const todayRec = empRecords.find(r => r.id === todayStr);
         if (todayRec && (todayRec.morningStatus !== 'Absent' || todayRec.afternoonStatus !== 'Absent')) onSite++;
 
+        const empStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
+        const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
+
         const calcRecCost = (r: AttendanceRecord, date: Date) => {
             const isSun = getDay(date) === 0;
             const isSat = getDay(date) === 6;
+            const isInactiveDay = empInactiveDate && date >= empInactiveDate;
+            const isBeforeStart = date < empStartDate;
+
+            if (isInactiveDay || isBeforeStart) return 0;
+
             let cost = 0;
             if (emp.paymentMethod === 'Weekly') {
                 const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
@@ -405,15 +413,20 @@ export default function DashboardPage() {
         empRecords.forEach(r => {
             const d = parse(r.id!, "yyyy-MM-dd", new Date());
             const cost = calcRecCost(r, d);
-            if (isSameDay(d, now)) todayCost += cost;
+            if (isSameDay(d, nowLocal)) todayCost += cost;
             if (d >= weekStart) weekCost += cost;
             monthCost += cost;
         });
 
         const recordedDaysSet = new Set(empRecords.map(r => r.id));
-        eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
+        eachDayOfInterval({ start: monthStart, end: nowLocal }).forEach(day => {
             const ds = format(day, "yyyy-MM-dd");
+            const isInactive = empInactiveDate && day >= empInactiveDate;
+            const isBeforeStart = day < empStartDate;
+
             if (!recordedDaysSet.has(ds)) {
+                if (isInactive || isBeforeStart) return;
+
                 if (getDay(day) === 0) {
                      if (emp.paymentMethod === 'Weekly') weekCost += (emp.dailyRate || 0);
                 }
@@ -422,7 +435,7 @@ export default function DashboardPage() {
     });
 
     return { today: todayCost, week: weekCost, month: monthCost, onSite };
-  }, [activeEmployees, currentMonthAttendance, realTimeLoading, normalOTRate, sundayOTRate]);
+  }, [allEmployees, currentMonthAttendance, realTimeLoading, normalOTRate, sundayOTRate]);
 
   const dailyEarnings = useMemo(() => {
     if (!activeEmployees || !selectedDay) return [];
@@ -431,12 +444,21 @@ export default function DashboardPage() {
         const recordDayDate = new Date(selectedDay);
         const isSunday = getDay(recordDayDate) === 0;
         const isSaturday = getDay(recordDayDate) === 6;
+        const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
+        const isInactive = empInactiveDate && recordDayDate >= empInactiveDate;
 
         let amount = 0;
         let lateMins = record ? calculateMinutesLate(record) : 0;
         let absentHours = 0;
         let otHours = record?.overtimeHours || 0;
         let otAmount = 0;
+
+        if (isInactive) {
+            return { 
+                employeeId: emp.id, name: emp.name, morning: "—", afternoon: "—",
+                status: "Inactive", amount: 0, overtimeHours: 0, overtimeAmount: 0, lateMins: 0, absentHours: 0, paymentMethod: emp.paymentMethod
+            };
+        }
 
         if (emp.paymentMethod === 'Weekly') {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
@@ -507,12 +529,21 @@ export default function DashboardPage() {
         const end = endOfDay(endOfWeek(start, { weekStartsOn: 0 }));
         const interval = eachDayOfInterval({ start, end });
         const recordedDaysSet = new Set(records.map(r => r.id));
+        const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
 
         records.forEach(r => {
+            const rDate = parse(r.id!, "yyyy-MM-dd", new Date());
+            const isInactive = empInactiveDate && rDate >= empInactiveDate;
+            if (isInactive) return;
+
             if (r.morningStatus === 'Absent') absentHours += 4.5;
             if (r.afternoonStatus === 'Absent') absentHours += 3.5;
         });
-        interval.forEach(day => { if (getDay(day) !== 0 && !recordedDaysSet.has(format(day, 'yyyy-MM-dd'))) absentHours += 8; });
+
+        interval.forEach(day => { 
+            const isInactive = empInactiveDate && day >= empInactiveDate;
+            if (getDay(day) !== 0 && !recordedDaysSet.has(format(day, 'yyyy-MM-dd')) && !isInactive) absentHours += 8; 
+        });
 
         const total = (baseHours * (hourly || 0)) + (totalOTHours * (hourly || 0) * normalOTRate);
         const otAmount = totalOTHours * (hourly || 0) * normalOTRate;
@@ -533,6 +564,8 @@ export default function DashboardPage() {
         const units = getMonthlyWorkingUnits(start, daysInMonth);
         const hourly = (emp.monthlyRate || 0) / units / 8;
         const minuteRate = hourly / 60;
+        const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
+        const employeeStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
 
         const ethYearForPeriod = eth.year;
         const permissionDatesInYear = new Set<string>();
@@ -550,7 +583,16 @@ export default function DashboardPage() {
         records.forEach(r => {
             if (!r.id) return;
             const d = parse(r.id, "yyyy-MM-dd", new Date());
+            const isInactive = empInactiveDate && d >= empInactiveDate;
             const isSun = getDay(d) === 0, isSat = getDay(d) === 6;
+
+            if (isInactive) {
+                if (!isSun) {
+                    const abs = isSat ? 4.5 : 8;
+                    absentHours += abs; totalDeduction += abs * hourly;
+                }
+                return;
+            }
 
             if (isSun) {
                 const working = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
@@ -575,9 +617,14 @@ export default function DashboardPage() {
 
         eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
-            if (day <= today && getDay(day) !== 0 && !recordedDaysSet.has(dayStr)) {
-                const abs = getDay(day) === 6 ? 4.5 : 8;
-                absentHours += abs; totalDeduction += abs * hourly;
+            const isInactive = empInactiveDate && day >= empInactiveDate;
+            const isBeforeStart = day < employeeStartDate;
+
+            if (!recordedDaysSet.has(dayStr) && getDay(day) !== 0) {
+                if (day <= today || isInactive || isBeforeStart) {
+                    const abs = getDay(day) === 6 ? 4.5 : 8;
+                    absentHours += abs; totalDeduction += abs * hourly;
+                }
             }
         });
 
@@ -589,7 +636,7 @@ export default function DashboardPage() {
   }, [activeEmployees, lazyAttendance, selectedMonthStart, normalOTRate, sundayOTRate]);
 
   const unifiedMonthTotal = useMemo(() => {
-    if (!selectedUnifiedMonth || activeEmployees.length === 0) return 0;
+    if (!selectedUnifiedMonth || !allEmployees || allEmployees.length === 0) return 0;
     const start = startOfDay(new Date(selectedUnifiedMonth));
     const eth = toEthiopian(start);
     const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
@@ -597,9 +644,12 @@ export default function DashboardPage() {
     const today = new Date();
     let totalExpenditure = 0;
 
-    activeEmployees.forEach(emp => {
+    allEmployees.forEach(emp => {
         const records = unifiedAttendance.filter(r => r.employeeId === emp.id);
         const empRecordedDaysSet = new Set(records.map(r => r.id));
+        const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
+        const empStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
+
         if (emp.paymentMethod === 'Monthly') {
             const baseSalary = emp.monthlyRate || 0;
             const hourly = baseSalary / units / 8;
@@ -617,7 +667,14 @@ export default function DashboardPage() {
             records.forEach(r => {
                 if (!r.id) return;
                 const d = parse(r.id, "yyyy-MM-dd", new Date());
+                const isInactiveDay = empInactiveDate && d >= empInactiveDate;
                 const isSun = getDay(d) === 0, isSat = getDay(d) === 6;
+
+                if (isInactiveDay) {
+                    if (!isSun) totalDeduction += (isSat ? 4.5 : 8) * hourly;
+                    return;
+                }
+
                 if (isSun) {
                     const working = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
                     if (working) {
@@ -634,30 +691,45 @@ export default function DashboardPage() {
                 }
                 if (r.overtimeHours) otAmount += r.overtimeHours * hourly * normalOTRate;
             });
+
             eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
                 const dayStr = format(day, 'yyyy-MM-dd');
-                if (day <= today && getDay(day) !== 0 && !empRecordedDaysSet.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
+                const isInactive = empInactiveDate && day >= empInactiveDate;
+                const isBeforeStart = day < empStartDate;
+
+                if (getDay(day) !== 0 && !empRecordedDaysSet.has(dayStr)) {
+                    if (day <= today || isInactive || isBeforeStart) {
+                        totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
+                    }
+                }
             });
             totalExpenditure += baseSalary - totalDeduction - (lateMins * minuteRate) + otAmount;
         } else {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
             let empTotal = 0;
-            records.forEach(r => { empTotal += (calculateHoursWorked(r) * (hourly || 0)) + ((r.overtimeHours || 0) * (hourly || 0) * normalOTRate); });
+            records.forEach(r => { 
+                const d = parse(r.id!, "yyyy-MM-dd", new Date());
+                const isInactiveDay = empInactiveDate && d >= empInactiveDate;
+                const isBeforeStart = d < empStartDate;
+                if (!isInactiveDay && !isBeforeStart) {
+                    empTotal += (calculateHoursWorked(r) * (hourly || 0)) + ((r.overtimeHours || 0) * (hourly || 0) * normalOTRate); 
+                }
+            });
             totalExpenditure += empTotal;
         }
     });
     return totalExpenditure;
-  }, [activeEmployees, unifiedAttendance, selectedUnifiedMonth, normalOTRate, sundayOTRate]);
+  }, [allEmployees, unifiedAttendance, selectedUnifiedMonth, normalOTRate, sundayOTRate]);
 
   const periodOptions = useMemo(() => {
-    const now = new Date();
-    const w = []; let ws = startOfWeek(now, { weekStartsOn: 0 });
+    const nowLocal = new Date();
+    const w = []; let ws = startOfWeek(nowLocal, { weekStartsOn: 0 });
     for(let i=0; i<12; i++){
         const we = endOfWeek(ws, { weekStartsOn: 0 });
         w.push({ value: format(ws, "yyyy-MM-dd"), label: `Week: ${ethiopianDateFormatter(ws, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(we, { day: 'numeric', month: 'short', year: 'numeric' })}` });
         ws = addDays(ws, -7);
     }
-    const m = []; let ms = toGregorian(toEthiopian(now).year, toEthiopian(now).month, 1);
+    const m = []; let ms = toGregorian(toEthiopian(nowLocal).year, toEthiopian(nowLocal).month, 1);
     for(let i=0; i<12; i++){
         const eth = toEthiopian(ms);
         m.push({ value: format(ms, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(ms, { month: 'long' })} ${eth.year}` });

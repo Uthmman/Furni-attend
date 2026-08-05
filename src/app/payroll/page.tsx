@@ -281,6 +281,7 @@ export default function PayrollPage() {
         if (!hourlyRate) return;
 
         const period = { start: weekStart, end: weekEnd };
+        const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
         
         const relevantRecords = allAttendance.filter(r => 
             r.employeeId === employee.id &&
@@ -288,8 +289,17 @@ export default function PayrollPage() {
             isWithinInterval(getDateFromRecord(r.date), period)
         );
 
-        const totalHours = relevantRecords.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
-        const overtimeHours = relevantRecords.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+        const totalHours = relevantRecords.reduce((acc, r) => {
+            const rDate = getDateFromRecord(r.date);
+            if (empInactiveDate && rDate >= empInactiveDate) return acc;
+            return acc + calculateHoursWorked(r);
+        }, 0);
+
+        const overtimeHours = relevantRecords.reduce((acc, r) => {
+            const rDate = getDateFromRecord(r.date);
+            if (empInactiveDate && rDate >= empInactiveDate) return acc;
+            return acc + (r.overtimeHours || 0);
+        }, 0);
         
         let minutesLate = 0;
         let hoursAbsent = 0;
@@ -297,6 +307,8 @@ export default function PayrollPage() {
         const recordedDates = new Set(relevantRecords.map(r => r.id));
 
         relevantRecords.forEach(r => {
+            const rDate = getDateFromRecord(r.date);
+            if (empInactiveDate && rDate >= empInactiveDate) return;
             minutesLate += calculateMinutesLate(r);
             if (r.morningStatus === 'Absent') hoursAbsent += 4.5;
             if (r.afternoonStatus === 'Absent') hoursAbsent += 3.5;
@@ -304,10 +316,9 @@ export default function PayrollPage() {
 
         periodDays.forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
-            if (!recordedDates.has(dayStr)) {
-                if (getDay(day) !== 0) {
-                    hoursAbsent += 8; 
-                }
+            const isInactive = empInactiveDate && day >= empInactiveDate;
+            if (!recordedDates.has(dayStr) && getDay(day) !== 0 && !isInactive) {
+                hoursAbsent += 8; 
             }
         });
         
@@ -315,7 +326,11 @@ export default function PayrollPage() {
         const overtimeAmount = overtimeHours * hourlyRate * normalOTRate;
         const finalAmount = baseAmount + overtimeAmount;
         
-        const daysWorked = new Set(relevantRecords.filter(r => r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent').map(r => r.id)).size;
+        const daysWorked = new Set(relevantRecords.filter(r => {
+            const rDate = getDateFromRecord(r.date);
+            const isInactive = empInactiveDate && rDate >= empInactiveDate;
+            return !isInactive && (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent');
+        }).map(r => r.id)).size;
         
         if (finalAmount > 0 || daysWorked > 0 || relevantRecords.length > 0) {
             weekly.push({
@@ -371,6 +386,7 @@ export default function PayrollPage() {
         const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
         
         const monthEnd = endOfDay(addDays(monthStart, daysInMonth - 1));
+        const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
         
         const hourlyRate = baseSalary / workingUnits / 8;
         const minuteRate = hourlyRate / 60;
@@ -394,10 +410,16 @@ export default function PayrollPage() {
             const dStr = r.id;
             if(!dStr) return;
             const recordDate = parse(dStr, "yyyy-MM-dd", new Date());
-            if(recordDate > today) return;
-
+            const isInactive = empInactiveDate && recordDate >= empInactiveDate;
             const isSaturday = getDay(recordDate) === 6;
             const isSunday = getDay(recordDate) === 0;
+
+            if (isInactive) {
+                if (!isSunday) projectedHoursAbsent += isSaturday ? 4.5 : 8;
+                return;
+            }
+
+            if (recordDate > today) return;
 
             if (isSunday) {
                 const isWorking = r.morningStatus === 'Present' || r.morningStatus === 'Late' || r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late';
@@ -410,7 +432,6 @@ export default function PayrollPage() {
                 let afternoonIsUnpaidAbsence = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dStr));
 
                 if (morningIsUnpaidAbsence) projectedHoursAbsent += 4.5;
-                // POLICY: Saturday afternoon no deduction
                 if (afternoonIsUnpaidAbsence && !isSaturday) projectedHoursAbsent += 3.5;
                 
                 displayMinutesLate += calculateMinutesLate(r);
@@ -427,10 +448,13 @@ export default function PayrollPage() {
 
         calculationPeriodDays.forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
-            if (day >= employeeStartDate && getDay(day) !== 0 && day <= today) { 
-                if (!recordedDatesForMonth.has(dayStr)) {
+            const isInactive = empInactiveDate && day >= empInactiveDate;
+            const isBeforeStart = day < employeeStartDate;
+
+            if (getDay(day) !== 0 && !recordedDatesForMonth.has(dayStr)) { 
+                if (isBeforeStart || isInactive || day <= today) {
                     if (getDay(day) === 6) {
-                        projectedHoursAbsent += 4.5; // Saturday unrecorded is only morning deduction
+                        projectedHoursAbsent += 4.5;
                     } else {
                         projectedHoursAbsent += 8;
                     }
@@ -497,7 +521,11 @@ export default function PayrollPage() {
                 r.employeeId === employee.id && r.id === dayStr
              );
 
-             if (record) {
+             const empStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
+             const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
+             const isInactive = (empInactiveDate && day >= empInactiveDate) || (day < empStartDate);
+
+             if (record && !isInactive) {
                 const hoursWorked = calculateHoursWorked(record);
                 const overtime = record.overtimeHours || 0;
                 dailyMonthlyExpense += (hoursWorked + overtime) * hourlyRate;
@@ -537,14 +565,18 @@ export default function PayrollPage() {
                 r.employeeId === employee.id && r.id === dayStr
             );
             
+            const empStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
+            const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
+            const isInactive = (empInactiveDate && day >= empInactiveDate) || (day < empStartDate);
+
+            if (isInactive) return;
+
             if (record) {
                 const hoursWorked = calculateHoursWorked(record);
                 const overtime = record.overtimeHours || 0;
                 dailyWeeklyExpense += (hoursWorked + overtime) * hourlyRate;
             } else if (getDay(day) === 0) { // Unrecorded Sunday for weekly
-                if (new Date(employee.attendanceStartDate || 0) <= day) {
-                    dailyWeeklyExpense += 8 * hourlyRate;
-                }
+                dailyWeeklyExpense += 8 * hourlyRate;
             }
         });
         
@@ -590,14 +622,18 @@ export default function PayrollPage() {
                 r.employeeId === employee.id && r.id === dayStr
             );
             
+            const empStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
+            const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
+            const isInactive = (empInactiveDate && day >= empInactiveDate) || (day < empStartDate);
+
+            if (isInactive) return;
+
             if (record) {
                 const hoursWorked = calculateHoursWorked(record);
                 const overtime = record.overtimeHours || 0;
                 dailyTotalExpense += (hoursWorked + overtime) * hourlyRate;
-            } else if (employee.paymentMethod === 'Weekly' && getDay(day) === 0) { // Unrecorded Sunday for weekly
-                if (new Date(employee.attendanceStartDate || 0) <= day) {
-                    dailyTotalExpense += 8 * hourlyRate;
-                }
+            } else if (employee.paymentMethod === 'Weekly' && getDay(day) === 0) {
+                dailyTotalExpense += 8 * hourlyRate;
             }
         });
         
