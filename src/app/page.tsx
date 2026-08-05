@@ -638,7 +638,7 @@ export default function DashboardPage() {
             });
             eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
                 const dayStr = format(day, 'yyyy-MM-dd');
-                if (day <= today && getDay(day) !== 0 && !recordedDates.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
+                if (day <= today && getDay(day) !== 0 && !recordedDays.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
             });
             totalExpenditure += baseSalary - totalDeduction - (lateMins * minuteRate) + otAmount;
         } else {
@@ -672,7 +672,7 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-8 pb-10 font-body">
       <div className="flex flex-col sm:flex-row justify-between items-end gap-2 px-1 mb-2">
         <div>
-          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">Today&apos;s Date (Ethiopian)</p>
+          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">Today's Date (Ethiopian)</p>
           <h2 className="text-2xl font-semibold text-[#1e293b] tracking-tight">
             {ethiopianDateFormatter(now, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
           </h2>
@@ -688,7 +688,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="shadow-sm border-primary/5">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Today&apos;s Total Cost</CardTitle>
+                <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Today's Total Cost</CardTitle>
                 <Wallet2 className="h-5 w-5 text-amber-600" />
             </CardHeader>
             <CardContent>
@@ -790,7 +790,7 @@ export default function DashboardPage() {
                                     {weeklySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
                                         <EmployeeCard 
                                             key={emp.id}
-                                            employeeId={item.employeeId}
+                                            employeeId={emp.id}
                                             name={emp.name}
                                             paymentMethod="Weekly"
                                             lateMins={lateMins}
@@ -824,7 +824,7 @@ export default function DashboardPage() {
                                     {monthlySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
                                         <EmployeeCard 
                                             key={emp.id}
-                                            employeeId={item.employeeId}
+                                            employeeId={emp.id}
                                             name={emp.name}
                                             paymentMethod="Monthly"
                                             lateMins={lateMins}
