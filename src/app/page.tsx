@@ -679,8 +679,16 @@ export default function DashboardPage() {
                   </div>
                   <div>
                       <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-2">CURRENT ETHIOPIAN DATE</p>
-                      <h2 className="text-xl sm:text-2xl font-bold text-[#1e293b] tracking-tight leading-tight">
-                          {ethiopianDateFormatter(now, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                      <h2 className="text-[#1e293b] tracking-tight leading-tight">
+                          <span className="text-sm font-black uppercase text-primary/60 block mb-1">
+                            {ethiopianDateFormatter(now, { weekday: 'short' }).toUpperCase()}
+                          </span>
+                          <span className="text-2xl sm:text-3xl font-black">
+                            {ethiopianDateFormatter(now, { month: 'long', day: 'numeric' })}
+                          </span>
+                          <span className="text-lg font-bold text-muted-foreground ml-2">
+                            {ethiopianDateFormatter(now, { year: 'numeric' }).replace(/\s?[A-Z]+$/, '')}
+                          </span>
                       </h2>
                   </div>
               </div>
