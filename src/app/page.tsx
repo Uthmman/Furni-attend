@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -410,10 +411,10 @@ export default function DashboardPage() {
         });
 
         // Add projected basic pay for unrecorded days in current month to avoid showing 0
-        const recordedDays = new Set(empRecords.map(r => r.id));
+        const recordedDaysSet = new Set(empRecords.map(r => r.id));
         eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
             const ds = format(day, "yyyy-MM-dd");
-            if (!recordedDays.has(ds)) {
+            if (!recordedDaysSet.has(ds)) {
                 if (getDay(day) === 0) {
                      if (emp.paymentMethod === 'Weekly') weekCost += (emp.dailyRate || 0); // Sunday project
                 } else {
@@ -508,13 +509,13 @@ export default function DashboardPage() {
         const start = startOfDay(new Date(selectedWeekStart));
         const end = endOfDay(endOfWeek(start, { weekStartsOn: 0 }));
         const interval = eachDayOfInterval({ start, end });
-        const recordedDays = new Set(records.map(r => r.id));
+        const recordedDaysSet = new Set(records.map(r => r.id));
 
         records.forEach(r => {
             if (r.morningStatus === 'Absent') absentHours += 4.5;
             if (r.afternoonStatus === 'Absent') absentHours += 3.5;
         });
-        interval.forEach(day => { if (getDay(day) !== 0 && !recordedDays.has(format(day, 'yyyy-MM-dd'))) absentHours += 8; });
+        interval.forEach(day => { if (getDay(day) !== 0 && !recordedDaysSet.has(format(day, 'yyyy-MM-dd'))) absentHours += 8; });
 
         const total = (baseHours * (hourly || 0)) + (totalOTHours * (hourly || 0) * normalOTRate);
         const otAmount = totalOTHours * (hourly || 0) * normalOTRate;
@@ -546,7 +547,7 @@ export default function DashboardPage() {
         const allowedPermissionDates = new Set(Array.from(permissionDatesInYear).sort().slice(0, 15));
 
         let lateMins = 0, otHours = 0, otAmount = 0, absentHours = 0, totalDeduction = 0;
-        const recordedDates = new Set(records.map(r => r.id));
+        const recordedDaysSet = new Set(records.map(r => r.id));
         const today = new Date();
 
         records.forEach(r => {
@@ -577,7 +578,7 @@ export default function DashboardPage() {
 
         eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
-            if (day <= today && getDay(day) !== 0 && !recordedDates.has(dayStr)) {
+            if (day <= today && getDay(day) !== 0 && !recordedDaysSet.has(dayStr)) {
                 const abs = getDay(day) === 6 ? 4.5 : 8;
                 absentHours += abs; totalDeduction += abs * hourly;
             }
@@ -601,7 +602,7 @@ export default function DashboardPage() {
 
     activeEmployees.forEach(emp => {
         const records = unifiedAttendance.filter(r => r.employeeId === emp.id);
-        const recordedDates = new Set(records.map(r => r.id));
+        const recordedDatesSet = new Set(records.map(r => r.id));
         if (emp.paymentMethod === 'Monthly') {
             const baseSalary = emp.monthlyRate || 0;
             const hourly = baseSalary / units / 8;
@@ -609,7 +610,7 @@ export default function DashboardPage() {
             let otAmount = 0, totalDeduction = 0, lateMins = 0;
 
             const permissionDatesInYear = new Set<string>();
-            unifiedAttendance.filter(r => r.employeeId === emp.id).forEach(rec => {
+            records.forEach(rec => {
                 if (rec.id && parse(rec.id, "yyyy-MM-dd", new Date()).getFullYear() === eth.year) {
                     if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') permissionDatesInYear.add(rec.id);
                 }
@@ -638,7 +639,7 @@ export default function DashboardPage() {
             });
             eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
                 const dayStr = format(day, 'yyyy-MM-dd');
-                if (day <= today && getDay(day) !== 0 && !recordedDays.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
+                if (day <= today && getDay(day) !== 0 && !recordedDatesSet.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
             });
             totalExpenditure += baseSalary - totalDeduction - (lateMins * minuteRate) + otAmount;
         } else {
