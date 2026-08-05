@@ -602,7 +602,7 @@ export default function DashboardPage() {
 
     activeEmployees.forEach(emp => {
         const records = unifiedAttendance.filter(r => r.employeeId === emp.id);
-        const recordedDatesSet = new Set(records.map(r => r.id));
+        const empRecordedDays = new Set(records.map(r => r.id));
         if (emp.paymentMethod === 'Monthly') {
             const baseSalary = emp.monthlyRate || 0;
             const hourly = baseSalary / units / 8;
@@ -639,7 +639,7 @@ export default function DashboardPage() {
             });
             eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
                 const dayStr = format(day, 'yyyy-MM-dd');
-                if (day <= today && getDay(day) !== 0 && !recordedDatesSet.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
+                if (day <= today && getDay(day) !== 0 && !empRecordedDays.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
             });
             totalExpenditure += baseSalary - totalDeduction - (lateMins * minuteRate) + otAmount;
         } else {
@@ -671,20 +671,35 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8 pb-10 font-body">
-      <div className="flex flex-col sm:flex-row justify-between items-end gap-2 px-1 mb-2">
-        <div>
-          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">Today's Date (Ethiopian)</p>
-          <h2 className="text-2xl font-semibold text-[#1e293b] tracking-tight">
-            {ethiopianDateFormatter(now, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
-          </h2>
-        </div>
-        <div className="text-right">
-          <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">Current Time</p>
-          <p className="text-3xl font-semibold text-primary tabular-nums tracking-tighter leading-none">
-            {format(now, "HH:mm:ss")}
-          </p>
-        </div>
-      </div>
+      <Card className="shadow-lg border-none bg-primary/5 rounded-[2.5rem] overflow-hidden mb-2">
+          <CardContent className="p-8 sm:p-10 flex flex-col md:flex-row justify-between items-center gap-8">
+              <div className="flex items-center gap-6 w-full md:w-auto">
+                  <div className="bg-white p-5 rounded-[1.5rem] text-primary shadow-xl shadow-primary/5">
+                      <CalendarDays className="h-9 w-9" />
+                  </div>
+                  <div>
+                      <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-2">CURRENT ETHIOPIAN DATE</p>
+                      <h2 className="text-xl sm:text-2xl font-bold text-[#1e293b] tracking-tight leading-tight">
+                          {ethiopianDateFormatter(now, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+                      </h2>
+                  </div>
+              </div>
+
+              <div className="hidden md:block h-16 w-px bg-primary/10" />
+
+              <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
+                  <div className="md:text-right">
+                      <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-2">WORKSHOP LIVE TIME</p>
+                      <p className="text-4xl sm:text-5xl font-bold text-primary tabular-nums tracking-tighter leading-none">
+                          {format(now, "HH:mm:ss")}
+                      </p>
+                  </div>
+                  <div className="bg-primary p-5 rounded-[1.5rem] text-primary-foreground shadow-xl shadow-primary/20">
+                      <Clock className="h-9 w-9" />
+                  </div>
+              </div>
+          </CardContent>
+      </Card>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="shadow-sm border-primary/5">
@@ -849,7 +864,7 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
 
-        <Card className="shadow-lg border-none bg-primary/5 rounded-3xl overflow-hidden">
+        <Card className="shadow-lg border-none rounded-3xl overflow-hidden">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-8 border-b border-primary/10">
                 <div className="flex items-center gap-4">
                   <div className="bg-primary p-3.5 rounded-2xl text-primary-foreground shadow-lg shadow-primary/20"><Wallet className="h-7 w-7" /></div>
