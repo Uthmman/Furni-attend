@@ -704,45 +704,59 @@ export default function DashboardPage() {
           </CardContent>
       </Card>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="shadow-sm border-primary/5">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Today's Total Cost</CardTitle>
-                <Wallet2 className="h-5 w-5 text-amber-600" />
-            </CardHeader>
-            <CardContent>
-                <div className="text-xl sm:text-2xl font-semibold text-[#1e293b] tracking-tighter">ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-2">
+        <Card className="rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+            <CardContent className="p-6 flex items-center gap-4">
+                <div className="bg-amber-100 p-4 rounded-2xl text-amber-600 shadow-lg shadow-amber-500/10">
+                    <Wallet2 className="h-6 w-6" />
+                </div>
+                <div>
+                    <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Today's Total</p>
+                    <p className="text-xl font-black text-[#1e293b] tracking-tighter leading-none">
+                        ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                </div>
             </CardContent>
         </Card>
 
-        <Card className="shadow-sm border-primary/5">
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">On-site Today</CardTitle>
-            <UserCheck className="h-5 w-5 text-green-600" />
-          </CardHeader>
-          <CardContent className="space-y-3">
-            <div className="text-xl sm:text-2xl font-semibold text-[#1e293b] tracking-tighter">{liveTotals.onSite} / {activeEmployees.length}</div>
-            <Progress value={activeEmployees.length > 0 ? (liveTotals.onSite / activeEmployees.length) * 100 : 0} className="h-1.5" />
+        <Card className="rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+          <CardContent className="p-6 flex items-center gap-4">
+            <div className="bg-green-100 p-4 rounded-2xl text-green-600 shadow-lg shadow-green-500/10">
+              <UserCheck className="h-6 w-6" />
+            </div>
+            <div className="flex-1">
+              <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">On-site Staff</p>
+              <p className="text-xl font-black text-[#1e293b] tracking-tighter leading-none mb-2">{liveTotals.onSite} / {activeEmployees.length}</p>
+              <Progress value={activeEmployees.length > 0 ? (liveTotals.onSite / activeEmployees.length) * 100 : 0} className="h-1" />
+            </div>
           </CardContent>
         </Card>
 
-        <Card className="shadow-sm border-primary/5">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Current Week Est</CardTitle>
-                <HandCoins className="h-5 w-5 text-blue-600" />
-            </CardHeader>
-            <CardContent>
-                <div className="text-xl sm:text-2xl font-semibold text-[#1e293b] tracking-tighter">ETB {liveTotals.week.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        <Card className="rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+            <CardContent className="p-6 flex items-center gap-4">
+                <div className="bg-blue-100 p-4 rounded-2xl text-blue-600 shadow-lg shadow-blue-500/10">
+                    <HandCoins className="h-6 w-6" />
+                </div>
+                <div>
+                    <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Weekly Est.</p>
+                    <p className="text-xl font-black text-[#1e293b] tracking-tighter leading-none">
+                        ETB {liveTotals.week.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                </div>
             </CardContent>
         </Card>
 
-        <Card className="shadow-sm border-primary/5">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                <CardTitle className="text-[10px] font-black text-muted-foreground uppercase tracking-wider">Current Month Est</CardTitle>
-                <BarChart3 className="h-5 w-5 text-purple-600" />
-            </CardHeader>
-            <CardContent>
-                <div className="text-xl sm:text-2xl font-semibold text-[#1e293b] tracking-tighter">ETB {liveTotals.month.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div>
+        <Card className="rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+            <CardContent className="p-6 flex items-center gap-4">
+                <div className="bg-purple-100 p-4 rounded-2xl text-purple-600 shadow-lg shadow-purple-500/10">
+                    <BarChart3 className="h-6 w-6" />
+                </div>
+                <div>
+                    <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Monthly Est.</p>
+                    <p className="text-xl font-black text-[#1e293b] tracking-tighter leading-none">
+                        ETB {liveTotals.month.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                </div>
             </CardContent>
         </Card>
       </div>
@@ -907,3 +921,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
