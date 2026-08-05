@@ -153,7 +153,7 @@ const EmployeeCard = ({
     status,
     isToday 
   }: any) => (
-    <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors font-headline">
+    <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors">
         <CardContent className="p-4 space-y-4">
             <div className="flex justify-between items-start">
                 <Link href={`/employees/${employeeId}`} className="group inline-flex items-center gap-1">
@@ -162,7 +162,7 @@ const EmployeeCard = ({
                 {isToday ? (
                   <Badge 
                     className={cn(
-                        "text-[10px] font-bold h-6 px-3 rounded-full border-none shadow-none font-body",
+                        "text-[10px] font-bold h-6 px-3 rounded-full border-none shadow-none",
                         status === 'Present' && "bg-secondary text-secondary-foreground",
                         status === 'Late' && "bg-amber-100 text-amber-700",
                         status === 'Absent' && "bg-destructive/10 text-destructive",
@@ -172,7 +172,7 @@ const EmployeeCard = ({
                     {status}
                   </Badge>
                 ) : (
-                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60 font-body">
+                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60">
                       {paymentMethod}
                   </Badge>
                 )}
@@ -272,7 +272,6 @@ export default function DashboardPage() {
   }, [firestore, user, selectedDay]);
   const { data: todayRecords } = useCollection<AttendanceRecord>(todayAttendanceRef);
 
-  // Fetch current month attendance for top cards on load
   useEffect(() => {
     const fetchCurrentMonthData = async () => {
         if (!firestore || !user || activeEmployees.length === 0) return;
@@ -376,7 +375,6 @@ export default function DashboardPage() {
         const todayRec = empRecords.find(r => r.id === todayStr);
         if (todayRec && (todayRec.morningStatus !== 'Absent' || todayRec.afternoonStatus !== 'Absent')) onSite++;
 
-        // Helper for one record cost
         const calcRecCost = (r: AttendanceRecord, date: Date) => {
             const isSun = getDay(date) === 0;
             const isSat = getDay(date) === 6;
@@ -410,15 +408,12 @@ export default function DashboardPage() {
             monthCost += cost;
         });
 
-        // Add projected basic pay for unrecorded days in current month to avoid showing 0
         const recordedDaysSet = new Set(empRecords.map(r => r.id));
         eachDayOfInterval({ start: monthStart, end: now }).forEach(day => {
             const ds = format(day, "yyyy-MM-dd");
             if (!recordedDaysSet.has(ds)) {
                 if (getDay(day) === 0) {
-                     if (emp.paymentMethod === 'Weekly') weekCost += (emp.dailyRate || 0); // Sunday project
-                } else {
-                    // We don't add projected cost for absences on unrecorded days
+                     if (emp.paymentMethod === 'Weekly') weekCost += (emp.dailyRate || 0);
                 }
             }
         });
@@ -602,7 +597,7 @@ export default function DashboardPage() {
 
     activeEmployees.forEach(emp => {
         const records = unifiedAttendance.filter(r => r.employeeId === emp.id);
-        const empRecordedDays = new Set(records.map(r => r.id));
+        const empRecordedDaysSet = new Set(records.map(r => r.id));
         if (emp.paymentMethod === 'Monthly') {
             const baseSalary = emp.monthlyRate || 0;
             const hourly = baseSalary / units / 8;
@@ -639,7 +634,7 @@ export default function DashboardPage() {
             });
             eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
                 const dayStr = format(day, 'yyyy-MM-dd');
-                if (day <= today && getDay(day) !== 0 && !empRecordedDays.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
+                if (day <= today && getDay(day) !== 0 && !empRecordedDaysSet.has(dayStr)) totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
             });
             totalExpenditure += baseSalary - totalDeduction - (lateMins * minuteRate) + otAmount;
         } else {
@@ -670,7 +665,7 @@ export default function DashboardPage() {
   }, []);
 
   return (
-    <div className="flex flex-col gap-8 pb-10 font-body">
+    <div className="flex flex-col gap-8 pb-10">
       <Card className="shadow-lg border-none bg-primary/5 rounded-[2.5rem] overflow-hidden mb-2">
           <CardContent className="p-8 sm:p-10 flex flex-col md:flex-row justify-between items-center gap-8">
               <div className="flex items-center gap-6 w-full md:w-auto">
@@ -679,14 +674,14 @@ export default function DashboardPage() {
                   </div>
                   <div>
                       <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-2">CURRENT ETHIOPIAN DATE</p>
-                      <h2 className="text-[#1e293b] tracking-tight leading-tight">
-                          <span className="text-sm font-black uppercase text-primary/60 block mb-1">
+                      <h2 className="text-[#1e293b] tracking-tight leading-tight flex items-baseline gap-2">
+                          <span className="text-sm font-black uppercase text-primary/60">
                             {ethiopianDateFormatter(now, { weekday: 'short' }).toUpperCase()}
                           </span>
                           <span className="text-2xl sm:text-3xl font-black">
                             {ethiopianDateFormatter(now, { month: 'long', day: 'numeric' })}
                           </span>
-                          <span className="text-lg font-bold text-muted-foreground ml-2">
+                          <span className="text-lg font-bold text-muted-foreground">
                             {ethiopianDateFormatter(now, { year: 'numeric' }).replace(/\s?[A-Z]+$/, '')}
                           </span>
                       </h2>
