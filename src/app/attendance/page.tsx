@@ -15,7 +15,7 @@ import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@
 import { collection, doc, writeBatch, type CollectionReference, type Query } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { HorizontalDatePicker } from "@/components/ui/horizontal-date-picker";
-import { Plus, Wallet, Sunrise, Sun, CheckSquare, Square, Check, Clock, UserCheck, UserX, Timer, ChevronDown, ChevronUp, X } from "lucide-react";
+import { Plus, Wallet, Sunrise, Sun, CheckSquare, Square, Check, Clock, UserCheck, UserX, Timer, ChevronDown, ChevronUp, X, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Checkbox } from "@/components/ui/checkbox";
 
@@ -101,8 +101,10 @@ export default function AttendancePage() {
   
   // Bulk actions state
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [bulkTime, setBulkTime] = useState("08:00");
   const [isBulkExpanded, setIsBulkExpanded] = useState(false);
+  const [isBulkLateDialogOpen, setIsBulkLateDialogOpen] = useState(false);
+  const [bulkLateSession, setBulkLateSession] = useState<'morning' | 'afternoon' | null>(null);
+  const [bulkLateTimeValue, setBulkLateTimeValue] = useState("08:00");
 
   const settingsRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -191,12 +193,13 @@ export default function AttendancePage() {
     setIsLateTimeDialogOpen(false);
   };
 
-  const handleBulkStatus = async (session: 'morning' | 'afternoon', status: AttendanceStatus) => {
+  const executeBulkUpdate = async (session: 'morning' | 'afternoon', status: AttendanceStatus, lateTime?: string) => {
     if (selectedIds.size === 0 || !firestore) return;
     
-    const time = session === 'morning' ? (status === 'Late' ? bulkTime : "08:00") : (status === 'Late' ? bulkTime : "13:30");
+    const time = session === 'morning' ? (status === 'Late' ? (lateTime || "08:00") : "08:00") : (status === 'Late' ? (lateTime || "13:30") : "13:30");
     
-    const updates: DailyAttendance[] = attendance.map(att => {
+    const updates: DailyAttendance[] = [];
+    const newTotalAttendance = attendance.map(att => {
         if (!selectedIds.has(att.employeeId)) return att;
         
         const updated = { ...att };
@@ -207,13 +210,38 @@ export default function AttendancePage() {
             updated.afternoonStatus = status;
             updated.afternoonEntry = (status === 'Present' || status === 'Late') ? time : "";
         }
+        updates.push(updated);
         return updated;
-    }).filter(att => selectedIds.has(att.employeeId));
+    });
 
-    await saveAttendanceBatch(updates);
+    // Optimistic Update
+    setAttendance(newTotalAttendance);
+    const updateCount = updates.length;
     setSelectedIds(new Set());
     setIsBulkExpanded(false);
-    toast({ title: "Bulk update complete", description: `Updated ${updates.length} employees.` });
+
+    try {
+        await saveAttendanceBatch(updates);
+        toast({ title: "Bulk update complete", description: `Updated ${updateCount} employees.` });
+    } catch (e) {
+        toast({ variant: 'destructive', title: "Bulk update failed" });
+    }
+  };
+
+  const handleBulkStatus = (session: 'morning' | 'afternoon', status: AttendanceStatus) => {
+    if (status === 'Late') {
+        setBulkLateSession(session);
+        setBulkLateTimeValue(session === 'morning' ? "08:00" : "13:30");
+        setIsBulkLateDialogOpen(true);
+        return;
+    }
+    executeBulkUpdate(session, status);
+  };
+
+  const handleSaveBulkLateTime = () => {
+    if (!bulkLateSession) return;
+    executeBulkUpdate(bulkLateSession, 'Late', bulkLateTimeValue);
+    setIsBulkLateDialogOpen(false);
   };
 
   const toggleSelect = (id: string) => {
@@ -335,45 +363,32 @@ export default function AttendancePage() {
                         <div className="space-y-6 animate-in fade-in slide-in-from-top-2 duration-300">
                             <div className="h-px bg-white/10" />
                             
-                            <div className="flex items-center justify-between bg-white/10 p-4 rounded-2xl border border-white/5 shadow-inner">
-                                <div className="flex items-center gap-3">
-                                    <Clock className="h-5 w-5 text-white/60" />
-                                    <span className="text-[11px] font-black uppercase tracking-widest">Late Entry Time</span>
-                                </div>
-                                <Input 
-                                    type="time" 
-                                    value={bulkTime} 
-                                    onChange={(e) => setBulkTime(e.target.value)} 
-                                    className="bg-white/20 border-none text-white h-10 w-28 text-lg font-bold text-center p-0 focus-visible:ring-0 rounded-xl"
-                                />
-                            </div>
-
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 {/* Morning Bulk */}
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 text-white/60 px-1">
-                                        <Sunrise className="h-4 w-4" />
+                                        <Sunrise className="h-4 w-4 text-orange-400" />
                                         <span className="text-[11px] font-black uppercase tracking-[0.2em]">Bulk Morning</span>
                                     </div>
                                     <div className="grid grid-cols-4 gap-2">
-                                        <BulkButton label="P" onClick={() => handleBulkStatus('morning', 'Present')} color="hover:bg-blue-400" />
-                                        <BulkButton label="L" onClick={() => handleBulkStatus('morning', 'Late')} color="hover:bg-amber-400" />
-                                        <BulkButton label="A" onClick={() => handleBulkStatus('morning', 'Absent')} color="hover:bg-red-400" />
-                                        <BulkButton label="PR" onClick={() => handleBulkStatus('morning', 'Permission')} color="hover:bg-blue-300" />
+                                        <BulkButton label="P" onClick={() => handleBulkStatus('morning', 'Present')} className="bg-blue-600 hover:bg-blue-700 border-none shadow-md" />
+                                        <BulkButton label="L" onClick={() => handleBulkStatus('morning', 'Late')} className="bg-amber-500 hover:bg-amber-600 border-none shadow-md" />
+                                        <BulkButton label="A" onClick={() => handleBulkStatus('morning', 'Absent')} className="bg-red-500 hover:bg-red-600 border-none shadow-md" />
+                                        <BulkButton label="PR" onClick={() => handleBulkStatus('morning', 'Permission')} className="bg-blue-400 hover:bg-blue-500 border-none shadow-md" />
                                     </div>
                                 </div>
 
                                 {/* Afternoon Bulk */}
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2 text-white/60 px-1">
-                                        <Sun className="h-4 w-4" />
+                                        <Sun className="h-4 w-4 text-yellow-500" />
                                         <span className="text-[11px] font-black uppercase tracking-[0.2em]">Bulk Afternoon</span>
                                     </div>
                                     <div className="grid grid-cols-4 gap-2">
-                                        <BulkButton label="P" onClick={() => handleBulkStatus('afternoon', 'Present')} color="hover:bg-blue-400" />
-                                        <BulkButton label="L" onClick={() => handleBulkStatus('afternoon', 'Late')} color="hover:bg-amber-400" />
-                                        <BulkButton label="A" onClick={() => handleBulkStatus('afternoon', 'Absent')} color="hover:bg-red-400" />
-                                        <BulkButton label="PR" onClick={() => handleBulkStatus('afternoon', 'Permission')} color="hover:bg-blue-300" />
+                                        <BulkButton label="P" onClick={() => handleBulkStatus('afternoon', 'Present')} className="bg-blue-600 hover:bg-blue-700 border-none shadow-md" />
+                                        <BulkButton label="L" onClick={() => handleBulkStatus('afternoon', 'Late')} className="bg-amber-500 hover:bg-amber-600 border-none shadow-md" />
+                                        <BulkButton label="A" onClick={() => handleBulkStatus('afternoon', 'Absent')} className="bg-red-500 hover:bg-red-600 border-none shadow-md" />
+                                        <BulkButton label="PR" onClick={() => handleBulkStatus('afternoon', 'Permission')} className="bg-blue-400 hover:bg-blue-500 border-none shadow-md" />
                                     </div>
                                 </div>
                             </div>
@@ -421,6 +436,30 @@ export default function AttendancePage() {
               <DialogFooter className="gap-2">
                   <Button variant="outline" onClick={() => setIsLateTimeDialogOpen(false)}>Cancel</Button>
                   <Button onClick={handleSaveLateTime} className="bg-amber-600 hover:bg-amber-700">Confirm Time</Button>
+              </DialogFooter>
+          </DialogContent>
+      </Dialog>
+
+      {/* Bulk Late Entry Dialog */}
+      <Dialog open={isBulkLateDialogOpen} onOpenChange={setIsBulkLateDialogOpen}>
+          <DialogContent className="sm:max-w-xs">
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                    <Timer className="h-5 w-5 text-amber-500" /> Bulk Late Arrival
+                </DialogTitle>
+                <DialogDescription>Entering {bulkLateSession === 'morning' ? 'Morning' : 'Afternoon'} time for {selectedIds.size} staff members.</DialogDescription>
+              </DialogHeader>
+              <div className="py-4">
+                <Input 
+                    type="time" 
+                    value={bulkLateTimeValue} 
+                    onChange={(e) => setBulkLateTimeValue(e.target.value)} 
+                    className="h-12 text-lg font-bold text-center"
+                />
+              </div>
+              <DialogFooter className="gap-2">
+                  <Button variant="outline" onClick={() => setIsBulkLateDialogOpen(false)}>Cancel</Button>
+                  <Button onClick={handleSaveBulkLateTime} className="bg-amber-600 hover:bg-amber-700">Set Time for All</Button>
               </DialogFooter>
           </DialogContent>
       </Dialog>
@@ -542,14 +581,14 @@ function AttendanceMarkButton({ status, color, active, onClick }: { status: Atte
     );
 }
 
-function BulkButton({ label, onClick, color }: { label: string, onClick: () => void, color: string }) {
+function BulkButton({ label, onClick, className }: { label: string, onClick: () => void, className?: string }) {
     return (
         <Button 
             variant="outline" 
             onClick={onClick}
             className={cn(
                 "h-12 bg-white/10 border-white/10 text-white font-black transition-all duration-200 rounded-xl hover:text-white",
-                color
+                className
             )}
         >
             {label}
