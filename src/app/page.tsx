@@ -880,7 +880,7 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
 
-        <Card className="shadow-lg border-none rounded-3xl overflow-hidden">
+        <Card className="shadow-lg border-none rounded-3xl overflow-hidden ring-1 ring-primary/5 shadow-[0_0_40px_rgba(59,130,246,0.15)]">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-8 border-b border-primary/10">
                 <div className="flex items-center gap-4">
                   <div className="bg-primary p-3.5 rounded-2xl text-primary-foreground shadow-lg shadow-primary/20"><Wallet className="h-7 w-7" /></div>
@@ -905,7 +905,7 @@ export default function DashboardPage() {
                 ) : (
                     <div className="text-center group">
                         <p className="text-[11px] font-black text-muted-foreground/60 uppercase tracking-[0.4em] mb-4 group-hover:text-primary transition-colors">Expenditure Total</p>
-                        <p className="text-6xl sm:text-7xl font-semibold text-primary tracking-tighter drop-shadow-[0_0_30px_rgba(59,130,246,0.35)]">
+                        <p className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold text-primary tracking-tighter">
                             ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                         <div className="flex items-center justify-center gap-4 mt-8 opacity-20">
