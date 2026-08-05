@@ -906,7 +906,7 @@ export default function DashboardPage() {
                 ) : (
                     <div className="text-center group">
                         <p className="text-[11px] font-black text-muted-foreground/60 uppercase tracking-[0.4em] mb-4 group-hover:text-primary transition-colors">Expenditure Total</p>
-                        <p className="text-6xl sm:text-7xl font-bold text-primary tracking-tighter drop-shadow-sm">
+                        <p className="text-6xl sm:text-7xl font-bold text-primary tracking-tighter drop-shadow-[0_0_30px_rgba(59,130,246,0.35)]">
                             ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                         <div className="flex items-center justify-center gap-4 mt-8 opacity-20">
@@ -921,4 +921,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
