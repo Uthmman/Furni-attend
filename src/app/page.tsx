@@ -346,7 +346,9 @@ export default function DashboardPage() {
             const fetchPromises = activeEmployees.map(async (emp) => {
                 const q = query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', start.toISOString()), where('date', '<=', end.toISOString()));
                 const snap = await getDocs(q);
-                snap.forEach(d => records.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
+                snap.forEach(d => {
+                  records.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord);
+                });
             });
             await Promise.all(fetchPromises);
             setUnifiedAttendance(records);
@@ -675,14 +677,11 @@ export default function DashboardPage() {
                   <div>
                       <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-2">CURRENT ETHIOPIAN DATE</p>
                       <h2 className="text-[#1e293b] tracking-tight leading-tight flex items-baseline gap-2">
-                          <span className="text-sm font-black uppercase text-primary/60">
+                          <span className="text-xs sm:text-sm font-black uppercase text-primary/60">
                             {ethiopianDateFormatter(now, { weekday: 'short' }).toUpperCase()}
                           </span>
-                          <span className="text-2xl sm:text-3xl font-black">
+                          <span className="text-xl sm:text-3xl font-black">
                             {ethiopianDateFormatter(now, { month: 'long', day: 'numeric' })}
-                          </span>
-                          <span className="text-lg font-bold text-muted-foreground">
-                            {ethiopianDateFormatter(now, { year: 'numeric' }).replace(/\s?[A-Z]+$/, '')}
                           </span>
                       </h2>
                   </div>
@@ -712,7 +711,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                     <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Today's Total</p>
-                    <p className="text-xl font-black text-[#1e293b] tracking-tighter leading-none">
+                    <p className="text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
                         ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                 </div>
@@ -726,7 +725,7 @@ export default function DashboardPage() {
             </div>
             <div className="flex-1">
               <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">On-site Staff</p>
-              <p className="text-xl font-black text-[#1e293b] tracking-tighter leading-none mb-2">{liveTotals.onSite} / {activeEmployees.length}</p>
+              <p className="text-xl font-semibold text-[#1e293b] tracking-tighter leading-none mb-2">{liveTotals.onSite} / {activeEmployees.length}</p>
               <Progress value={activeEmployees.length > 0 ? (liveTotals.onSite / activeEmployees.length) * 100 : 0} className="h-1" />
             </div>
           </CardContent>
@@ -739,7 +738,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                     <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Weekly Est.</p>
-                    <p className="text-xl font-black text-[#1e293b] tracking-tighter leading-none">
+                    <p className="text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
                         ETB {liveTotals.week.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                 </div>
@@ -753,7 +752,7 @@ export default function DashboardPage() {
                 </div>
                 <div>
                     <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Monthly Est.</p>
-                    <p className="text-xl font-black text-[#1e293b] tracking-tighter leading-none">
+                    <p className="text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
                         ETB {liveTotals.month.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                 </div>
@@ -906,7 +905,7 @@ export default function DashboardPage() {
                 ) : (
                     <div className="text-center group">
                         <p className="text-[11px] font-black text-muted-foreground/60 uppercase tracking-[0.4em] mb-4 group-hover:text-primary transition-colors">Expenditure Total</p>
-                        <p className="text-6xl sm:text-7xl font-bold text-primary tracking-tighter drop-shadow-[0_0_30px_rgba(59,130,246,0.35)]">
+                        <p className="text-6xl sm:text-7xl font-semibold text-primary tracking-tighter drop-shadow-[0_0_30px_rgba(59,130,246,0.35)]">
                             ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                         <div className="flex items-center justify-center gap-4 mt-8 opacity-20">
