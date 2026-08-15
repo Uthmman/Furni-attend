@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Employee, PayrollSettings, AttendanceRecord } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone, Trash2, Edit, Calendar, Send, Loader2, CopyIcon, CalendarDays, Timer, UserX, Info } from "lucide-react";
+import { Copy, Phone, Trash2, Edit, Calendar, Send, Loader2, CopyIcon, CalendarDays, Timer, UserX, Info, Check } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
@@ -274,7 +274,7 @@ export default function EmployeeProfilePage() {
   }, [employeeAttendance, selectedPeriod, employee]);
 
   const payrollData = useMemo(() => {
-    if (!employee || !selectedPeriod) return { totalAmount: 0, periodLabel: "", overtimeDetails: [], lateDetails: [], absentDetails: [] };
+    if (!employee || !selectedPeriod) return { totalAmount: 0, periodLabel: "", overtimeDetails: [], lateDetails: [], absentDetails: [], standardAmount: 0 };
     const normalOTRate = settings?.normalOvertimeRate || 1.5;
     const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
     const selectedPeriodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || "";
@@ -400,7 +400,8 @@ export default function EmployeeProfilePage() {
         hourlyRate: hourlyRateCalc,
         overtimeDetails,
         lateDetails,
-        absentDetails
+        absentDetails,
+        standardAmount: baseSalary
       };
     } else {
       const hourly = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
@@ -471,6 +472,8 @@ export default function EmployeeProfilePage() {
           }
       });
 
+      const standardAmount = 44.5 * (hourly || 0);
+
       return { 
         hours: baseHours, 
         overtimePay: totalOTPay, 
@@ -482,7 +485,8 @@ export default function EmployeeProfilePage() {
         lateDetails,
         absentDetails,
         minutesLate: totalLateMins,
-        hoursAbsent: totalAbsentHours
+        hoursAbsent: totalAbsentHours,
+        standardAmount
       };
     }
   }, [employee, employeeAttendance, periodOptions, selectedPeriod, settings, allAttendance]);
@@ -491,6 +495,8 @@ export default function EmployeeProfilePage() {
     if (!employee || !payrollData) return;
     let msg = `💰 *Payroll Summary* for *${employee.name}*\n📅 Period: ${payrollData.periodLabel}\n\n`;
     
+    msg += `Projected Full Pay: ETB ${payrollData.standardAmount?.toFixed(2)}\n`;
+
     if (employee.paymentMethod === 'Monthly') {
       msg += `Base Salary: ETB ${(payrollData.baseSalary || 0).toFixed(2)}\n`;
     } else {
@@ -643,6 +649,18 @@ export default function EmployeeProfilePage() {
             </div>
 
             <div className="space-y-10">
+                <div className="flex justify-between items-end border-b border-dashed pb-6">
+                    <div className="space-y-1">
+                        <p className="text-[11px] font-black text-[#64748b] uppercase tracking-widest">Expected Full Pay</p>
+                        <p className="text-xl font-bold text-[#64748b]/60">ETB {payrollData.standardAmount?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    {(payrollData.minutesLate === 0 && payrollData.hoursAbsent === 0) && (
+                        <Badge className="bg-green-100 text-green-700 border-none px-4 py-1.5 h-auto rounded-full font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
+                            <Check className="h-3 w-3" /> Perfect Attendance
+                        </Badge>
+                    )}
+                </div>
+
                 <div className="space-y-1">
                     <p className="text-[13px] font-bold text-[#64748b]">{employee.paymentMethod === 'Monthly' ? 'Base Salary' : `Base Pay (${payrollData.hours?.toFixed(1)} hrs)`}</p>
                     <p className="text-3xl font-black text-[#1e293b]">ETB {((payrollData.baseSalary || 0) || ( (payrollData.hours || 0) * (payrollData.hourlyRate || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
