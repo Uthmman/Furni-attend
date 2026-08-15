@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { Employee, PayrollSettings, AttendanceRecord } from "@/lib/types";
 import { Button } from "@/components/ui/button";
-import { Copy, Phone, Trash2, Edit, Calendar, Send, Loader2, CopyIcon, CalendarDays } from "lucide-react";
+import { Copy, Phone, Trash2, Edit, Calendar, Send, Loader2, CopyIcon, CalendarDays, Timer, UserX, Info } from "lucide-react";
 import { useCopyToClipboard } from "@/hooks/use-copy-to-clipboard";
 import { useCollection, useDoc, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, doc, deleteDoc } from "firebase/firestore";
@@ -118,7 +118,7 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
     let date = new Date(ethYear + 7, ethMonth + 7, ethDay, 12, 0, 0);
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 300; i++) {
         const eth = toEthiopian(date);
         if (eth.year === ethYear && eth.month === ethMonth && eth.day === ethDay) return startOfDay(date);
         if (eth.year < ethYear || (eth.year === ethYear && eth.month < ethMonth) || (eth.year === ethYear && eth.month === ethMonth && eth.day < ethDay)) date.setDate(date.getDate() + 1);
@@ -142,6 +142,17 @@ type OvertimeDetail = {
     label: string;
     hours: number;
     amount: number;
+};
+
+type LateDetail = {
+    date: Date;
+    minutes: number;
+    entryTime: string;
+};
+
+type AbsenceDetail = {
+    date: Date;
+    reason: string;
 };
 
 export default function EmployeeProfilePage() {
@@ -252,8 +263,8 @@ export default function EmployeeProfilePage() {
             id: dateStr, 
             employeeId: employee.id, 
             date: day.toISOString(), 
-            morningStatus: isSun ? '(-, -)' : (isInactive ? 'Inactive' : 'Absent'), 
-            afternoonStatus: isSun ? '(-, -)' : (isInactive ? 'Inactive' : 'Absent'), 
+            morningStatus: isSun ? '(-, -)' : (isInactive ? 'Inactive' : (isBeforeStart ? 'Absent' : 'Absent')), 
+            afternoonStatus: isSun ? '(-, -)' : (isInactive ? 'Inactive' : (isBeforeStart ? 'Absent' : 'Absent')), 
             isVirtual: true,
             isSunday: isSun,
             isInactive: isInactive,
@@ -263,11 +274,14 @@ export default function EmployeeProfilePage() {
   }, [employeeAttendance, selectedPeriod, employee]);
 
   const payrollData = useMemo(() => {
-    if (!employee || !selectedPeriod) return { totalAmount: 0, periodLabel: "" };
+    if (!employee || !selectedPeriod) return { totalAmount: 0, periodLabel: "", overtimeDetails: [], lateDetails: [], absentDetails: [] };
     const normalOTRate = settings?.normalOvertimeRate || 1.5;
     const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
     const selectedPeriodLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || "";
+    
     let overtimeDetails: OvertimeDetail[] = [];
+    let lateDetails: LateDetail[] = [];
+    let absentDetails: AbsenceDetail[] = [];
 
     const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
 
@@ -300,8 +314,12 @@ export default function EmployeeProfilePage() {
             const isInactiveDay = empInactiveDate && r.date >= empInactiveDate;
 
             if (isInactiveDay) {
-                if (!isSun) totalHoursAbsent += isSat ? 4.5 : 8;
-                return; // No OT if inactive
+                if (!isSun) {
+                    const abs = isSat ? 4.5 : 8;
+                    totalHoursAbsent += abs;
+                    absentDetails.push({ date: r.date, reason: "Inactive" });
+                }
+                return;
             }
 
             if (isSun) {
@@ -315,9 +333,24 @@ export default function EmployeeProfilePage() {
             } else {
                 let mAbs = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(dStr));
                 let pAbs = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(dStr));
-                if (mAbs) totalHoursAbsent += 4.5;
-                if (pAbs && !isSat) totalHoursAbsent += 3.5;
                 
+                if (mAbs || pAbs) {
+                    let localAbs = 0;
+                    if (mAbs) localAbs += 4.5;
+                    if (pAbs && !isSat) localAbs += 3.5;
+                    totalHoursAbsent += localAbs;
+                    if (localAbs > 0) absentDetails.push({ date: r.date, reason: r.morningStatus === 'Permission' ? "Over Permission Limit" : "Marked Absent" });
+                }
+                
+                const lateMins = calculateMinutesLate(r);
+                if (lateMins > 0) {
+                    lateDetails.push({ 
+                        date: r.date, 
+                        minutes: lateMins, 
+                        entryTime: `${r.morningStatus === 'Late' ? r.morningEntry : ''}${r.morningStatus === 'Late' && r.afternoonStatus === 'Late' ? ' / ' : ''}${r.afternoonStatus === 'Late' ? r.afternoonEntry : ''}` 
+                    });
+                }
+
                 // Bonus for Saturday Afternoon
                 if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
                     const amt = 3.5 * hourlyRateCalc * normalOTRate;
@@ -343,27 +376,32 @@ export default function EmployeeProfilePage() {
             const isBeforeStart = day < employeeStartDate;
 
             if (getDay(day) !== 0 && !recordedDates.has(dayStr)) {
-                // If it's before they started, after they became inactive, or missing before today
                 if (isBeforeStart || isInactive || day <= today) {
-                    totalHoursAbsent += (getDay(day) === 6) ? 4.5 : 8;
+                    const abs = getDay(day) === 6 ? 4.5 : 8;
+                    totalHoursAbsent += abs;
+                    absentDetails.push({ date: day, reason: isBeforeStart ? "Before Start Date" : (isInactive ? "Inactive" : "No Log Found") });
                 }
             }
         });
 
       const absenceDeduction = totalHoursAbsent * hourlyRateCalc;
-      const lateDeduction = recordsInPeriod.reduce((acc, r) => acc + calculateMinutesLate(r), 0) * minuteRate;
+      const lateMinsTotal = lateDetails.reduce((acc, l) => acc + l.minutes, 0);
+      const lateDeduction = lateMinsTotal * minuteRate;
+      
       return { 
         totalAmount: baseSalary - (absenceDeduction + lateDeduction) + otPayTotal, 
         baseSalary, 
         lateDeduction, 
         absenceDeduction, 
         hoursAbsent: totalHoursAbsent, 
-        minutesLate: recordsInPeriod.reduce((acc, r) => acc + calculateMinutesLate(r), 0), 
+        minutesLate: lateMinsTotal, 
         periodLabel: selectedPeriodLabel, 
         overtimePay: otPayTotal, 
         overtimeHours: otHoursTotal, 
         hourlyRate: hourlyRateCalc,
-        overtimeDetails
+        overtimeDetails,
+        lateDetails,
+        absentDetails
       };
     } else {
       const hourly = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
@@ -408,7 +446,9 @@ export default function EmployeeProfilePage() {
         periodLabel: selectedPeriodLabel, 
         overtimeHours: totalOTHours, 
         hourlyRate: hourly,
-        overtimeDetails
+        overtimeDetails,
+        lateDetails: [],
+        absentDetails: []
       };
     }
   }, [employee, employeeAttendance, periodOptions, selectedPeriod, settings, allAttendance]);
@@ -418,24 +458,37 @@ export default function EmployeeProfilePage() {
     let msg = `💰 *Payroll Summary* for *${employee.name}*\n📅 Period: ${payrollData.periodLabel}\n\n`;
     if (employee.paymentMethod === 'Monthly') {
       msg += `Base Salary: ETB ${(payrollData.baseSalary || 0).toFixed(2)}\n`;
-      if ((payrollData.lateDeduction || 0) > 0) msg += `Late Deduction (${payrollData.minutesLate} mins): - ETB ${(payrollData.lateDeduction || 0).toFixed(2)}\n`;
-      if ((payrollData.absenceDeduction || 0) > 0) msg += `Absence Deduction (${payrollData.hoursAbsent?.toFixed(1)} hrs): - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
+      
+      if ((payrollData.lateDeduction || 0) > 0) {
+        msg += `\nLate Deduction: - ETB ${(payrollData.lateDeduction || 0).toFixed(2)}\n`;
+        payrollData.lateDetails.forEach(l => {
+            msg += `  - ${format(l.date, 'MMM d')}: ${l.minutes}m late (${l.entryTime})\n`;
+        });
+      }
+      
+      if ((payrollData.absenceDeduction || 0) > 0) {
+        msg += `\nAbsence Deduction: - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
+        payrollData.absentDetails.forEach(a => {
+            msg += `  - ${format(a.date, 'MMM d')}: ${a.reason}\n`;
+        });
+      }
+      
       if ((payrollData.overtimePay || 0) > 0) {
-        msg += `Overtime Pay (${payrollData.overtimeHours?.toFixed(1)} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+        msg += `\nOvertime Pay: + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
         payrollData.overtimeDetails?.forEach((d: any) => {
             msg += `  - ${d.label}: + ETB ${d.amount.toFixed(2)}\n`;
         });
       }
-      msg += `--------------------\n*Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
+      msg += `\n--------------------\n*Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     } else {
       msg += `Base Pay (${payrollData.hours?.toFixed(1)} hrs): ETB ${( (payrollData.hours || 0) * (payrollData.hourlyRate || 0)).toFixed(2)}\n`;
       if ((payrollData.overtimePay || 0) > 0) {
-        msg += `Overtime Pay (${payrollData.overtimeHours?.toFixed(1)} hrs): + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+        msg += `\nOvertime Pay: + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
         payrollData.overtimeDetails?.forEach((d: any) => {
             msg += `  - ${d.label}: + ETB ${d.amount.toFixed(2)}\n`;
         });
       }
-      msg += `--------------------\n*Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
+      msg += `\n--------------------\n*Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     }
     setSummaryText(msg); setIsSummaryDialogOpen(true);
   };
@@ -450,9 +503,9 @@ export default function EmployeeProfilePage() {
        <EmployeeForm isOpen={isFormOpen} setIsOpen={setIsFormOpen} employee={employee} />
        
        <Dialog open={isSummaryDialogOpen} onOpenChange={setIsSummaryDialogOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Payroll Summary</DialogTitle><DialogDescription>For {employee.name} covering {payrollData.periodLabel}</DialogDescription></DialogHeader>
-          <Textarea readOnly value={summaryText} rows={12} className="text-sm font-mono" />
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader><DialogTitle>Detailed Payroll Summary</DialogTitle><DialogDescription>Detailed breakdown for {employee.name} covering {payrollData.periodLabel}</DialogDescription></DialogHeader>
+          <Textarea readOnly value={summaryText} rows={15} className="text-xs font-mono bg-muted/20" />
           <DialogFooter className="gap-2">
              <Button variant="outline" onClick={async () => { setIsSending(true); const r = await sendAdminPayrollSummary(summaryText); setIsSending(false); if(r.success) toast({ title: "Sent!" }); }} disabled={isSending}>
                 {isSending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />} Send to Admin
@@ -563,20 +616,51 @@ export default function EmployeeProfilePage() {
                 <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full bg-muted/30" onClick={handleViewSummary}><CopyIcon className="h-4 w-4 text-muted-foreground" /></Button>
             </div>
 
-            <div className="space-y-6">
+            <div className="space-y-10">
                 <div className="space-y-1">
                     <p className="text-[13px] font-bold text-[#64748b]">Base Salary</p>
                     <p className="text-3xl font-black text-[#1e293b]">ETB {((payrollData.baseSalary || 0) || ( (payrollData.hours || 0) * (payrollData.hourlyRate || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                 </div>
 
-                <div className="space-y-1">
-                    <p className="text-[13px] font-bold text-[#64748b]">Late Deduction ({payrollData.minutesLate} mins)</p>
-                    <p className="text-xl font-black text-amber-500">- ETB {payrollData.lateDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                {/* Late Deductions Section */}
+                <div className="space-y-4">
+                    <div className="space-y-1">
+                        <p className="text-[13px] font-bold text-[#64748b]">Late Deduction ({payrollData.minutesLate} mins)</p>
+                        <p className="text-xl font-black text-amber-500">- ETB {payrollData.lateDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    {payrollData.lateDetails.length > 0 && (
+                        <div className="bg-amber-50/50 rounded-2xl p-4 space-y-2 border border-amber-100">
+                             <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-1 flex items-center gap-1.5"><Timer className="h-3 w-3" /> Lateness Breakdown</p>
+                             {payrollData.lateDetails.map((l, idx) => (
+                                <div key={idx} className="flex justify-between items-center text-xs">
+                                    <span className="text-[#64748b] font-medium">{format(l.date, 'EEE, MMM d')}</span>
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-[10px] font-bold text-amber-600/60">{l.entryTime}</span>
+                                        <span className="font-black text-amber-600">{l.minutes}m delayed</span>
+                                    </div>
+                                </div>
+                             ))}
+                        </div>
+                    )}
                 </div>
 
-                <div className="space-y-1">
-                    <p className="text-[13px] font-bold text-[#64748b]">Absence Deduction ({payrollData.hoursAbsent?.toFixed(1)} hrs)</p>
-                    <p className="text-xl font-black text-red-500">- ETB {payrollData.absenceDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                {/* Absence Deductions Section */}
+                <div className="space-y-4">
+                    <div className="space-y-1">
+                        <p className="text-[13px] font-bold text-[#64748b]">Absence Deduction ({payrollData.hoursAbsent?.toFixed(1)} hrs)</p>
+                        <p className="text-xl font-black text-red-500">- ETB {payrollData.absenceDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    </div>
+                    {payrollData.absentDetails.length > 0 && (
+                        <div className="bg-red-50/50 rounded-2xl p-4 space-y-2 border border-red-100">
+                             <p className="text-[9px] font-black text-red-600 uppercase tracking-widest mb-1 flex items-center gap-1.5"><UserX className="h-3 w-3" /> Absence Detail</p>
+                             {payrollData.absentDetails.map((a, idx) => (
+                                <div key={idx} className="flex justify-between items-center text-xs">
+                                    <span className="text-[#64748b] font-medium">{format(a.date, 'EEE, MMM d')}</span>
+                                    <span className="text-[10px] font-bold text-red-600/70 italic">{a.reason}</span>
+                                </div>
+                             ))}
+                        </div>
+                    )}
                 </div>
 
                 {payrollData.overtimePay > 0 && (
@@ -650,6 +734,7 @@ export default function EmployeeProfilePage() {
                                 >
                                     {record.morningStatus}
                                 </Badge>
+                                {record.morningStatus === 'Late' && record.morningEntry && <span className="text-[9px] font-bold text-amber-600/70">{record.morningEntry}</span>}
                             </div>
                         </TableCell>
                         <TableCell className="py-5 pr-8">
@@ -667,6 +752,7 @@ export default function EmployeeProfilePage() {
                                 >
                                     {record.afternoonStatus}
                                 </Badge>
+                                {record.afternoonStatus === 'Late' && record.afternoonEntry && <span className="text-[9px] font-bold text-amber-600/70">{record.afternoonEntry}</span>}
                                 {record.overtimeHours > 0 && <span className="text-[9px] text-primary font-black bg-primary/10 px-2 py-0.5 rounded-full">+{record.overtimeHours}h OT</span>}
                             </div>
                         </TableCell>
