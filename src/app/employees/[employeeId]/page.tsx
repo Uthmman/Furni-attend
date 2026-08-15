@@ -284,6 +284,8 @@ export default function EmployeeProfilePage() {
     let absentDetails: AbsenceDetail[] = [];
 
     const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
+    const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
+    const today = new Date();
 
     if (employee.paymentMethod === 'Monthly') {
         const baseSalary = employee.monthlyRate || 0;
@@ -367,9 +369,6 @@ export default function EmployeeProfilePage() {
             }
         });
 
-        const today = new Date();
-        const employeeStartDate = startOfDay(new Date(employee.attendanceStartDate || 0));
-
         eachDayOfInterval(interval).forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
             const isInactive = empInactiveDate && day >= empInactiveDate;
@@ -408,10 +407,13 @@ export default function EmployeeProfilePage() {
       const weekStart = startOfWeek(new Date(selectedPeriod), { weekStartsOn: 0 });
       const interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
       const records = employeeAttendance.filter(r => isWithinInterval(r.date, interval));
-      
+      const recordedDates = new Set(records.map(r => format(r.date, 'yyyy-MM-dd')));
+
       let baseHours = 0;
       let totalOTPay = 0;
       let totalOTHours = 0;
+      let totalLateMins = 0;
+      let totalAbsentHours = 0;
 
       records.forEach(r => {
           const isSun = getDay(r.date) === 0;
@@ -429,6 +431,21 @@ export default function EmployeeProfilePage() {
               }
           } else {
               baseHours += calculateHoursWorked(r);
+              const lm = calculateMinutesLate(r);
+              if (lm > 0) {
+                  totalLateMins += lm;
+                  lateDetails.push({ 
+                    date: r.date, 
+                    minutes: lm, 
+                    entryTime: `${r.morningStatus === 'Late' ? r.morningEntry : ''}${r.morningStatus === 'Late' && r.afternoonStatus === 'Late' ? ' / ' : ''}${r.afternoonStatus === 'Late' ? r.afternoonEntry : ''}`
+                  });
+              }
+              
+              if (r.morningStatus === 'Absent') totalAbsentHours += 4.5;
+              if (r.afternoonStatus === 'Absent' && getDay(r.date) !== 6) totalAbsentHours += 3.5;
+              if (r.morningStatus === 'Absent' || r.afternoonStatus === 'Absent') {
+                  absentDetails.push({ date: r.date, reason: "Marked Absent" });
+              }
           }
           
           if (r.overtimeHours) {
@@ -436,6 +453,21 @@ export default function EmployeeProfilePage() {
               totalOTPay += amt;
               totalOTHours += r.overtimeHours;
               overtimeDetails.push({ label: `OT Log (${format(r.date, 'MMM d')})`, hours: r.overtimeHours, amount: amt });
+          }
+      });
+
+      eachDayOfInterval(interval).forEach(day => {
+          const ds = format(day, 'yyyy-MM-dd');
+          const isInactive = empInactiveDate && day >= empInactiveDate;
+          const isBeforeStart = day < employeeStartDate;
+          const isSun = getDay(day) === 0;
+
+          if (!recordedDates.has(ds) && !isSun) {
+              if (isBeforeStart || isInactive || day <= today) {
+                const abs = getDay(day) === 6 ? 4.5 : 8;
+                totalAbsentHours += abs;
+                absentDetails.push({ date: day, reason: isBeforeStart ? "Before Start" : (isInactive ? "Inactive" : "No Log") });
+              }
           }
       });
 
@@ -447,8 +479,10 @@ export default function EmployeeProfilePage() {
         overtimeHours: totalOTHours, 
         hourlyRate: hourly,
         overtimeDetails,
-        lateDetails: [],
-        absentDetails: []
+        lateDetails,
+        absentDetails,
+        minutesLate: totalLateMins,
+        hoursAbsent: totalAbsentHours
       };
     }
   }, [employee, employeeAttendance, periodOptions, selectedPeriod, settings, allAttendance]);
@@ -456,40 +490,35 @@ export default function EmployeeProfilePage() {
   const handleViewSummary = () => {
     if (!employee || !payrollData) return;
     let msg = `💰 *Payroll Summary* for *${employee.name}*\n📅 Period: ${payrollData.periodLabel}\n\n`;
+    
     if (employee.paymentMethod === 'Monthly') {
       msg += `Base Salary: ETB ${(payrollData.baseSalary || 0).toFixed(2)}\n`;
-      
-      if ((payrollData.lateDeduction || 0) > 0) {
-        msg += `\nLate Deduction: - ETB ${(payrollData.lateDeduction || 0).toFixed(2)}\n`;
-        payrollData.lateDetails.forEach(l => {
-            msg += `  - ${format(l.date, 'MMM d')}: ${l.minutes}m late (${l.entryTime})\n`;
-        });
-      }
-      
-      if ((payrollData.absenceDeduction || 0) > 0) {
-        msg += `\nAbsence Deduction: - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
-        payrollData.absentDetails.forEach(a => {
-            msg += `  - ${format(a.date, 'MMM d')}: ${a.reason}\n`;
-        });
-      }
-      
-      if ((payrollData.overtimePay || 0) > 0) {
-        msg += `\nOvertime Pay: + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
-        payrollData.overtimeDetails?.forEach((d: any) => {
-            msg += `  - ${d.label}: + ETB ${d.amount.toFixed(2)}\n`;
-        });
-      }
-      msg += `\n--------------------\n*Net Salary: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     } else {
       msg += `Base Pay (${payrollData.hours?.toFixed(1)} hrs): ETB ${( (payrollData.hours || 0) * (payrollData.hourlyRate || 0)).toFixed(2)}\n`;
-      if ((payrollData.overtimePay || 0) > 0) {
-        msg += `\nOvertime Pay: + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
-        payrollData.overtimeDetails?.forEach((d: any) => {
-            msg += `  - ${d.label}: + ETB ${d.amount.toFixed(2)}\n`;
-        });
-      }
-      msg += `\n--------------------\n*Total Payout: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     }
+      
+    if ((payrollData.minutesLate || 0) > 0) {
+      msg += `\nLateness (${payrollData.minutesLate} mins): ${employee.paymentMethod === 'Monthly' ? `- ETB ${(payrollData.lateDeduction || 0).toFixed(2)}` : ''}\n`;
+      payrollData.lateDetails.forEach(l => {
+          msg += `  - ${format(l.date, 'MMM d')}: ${l.minutes}m late (${l.entryTime})\n`;
+      });
+    }
+    
+    if ((payrollData.hoursAbsent || 0) > 0) {
+      msg += `\nAbsence (${payrollData.hoursAbsent?.toFixed(1)} hrs): ${employee.paymentMethod === 'Monthly' ? `- ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}` : ''}\n`;
+      payrollData.absentDetails.forEach(a => {
+          msg += `  - ${format(a.date, 'MMM d')}: ${a.reason}\n`;
+      });
+    }
+    
+    if ((payrollData.overtimePay || 0) > 0) {
+      msg += `\nOvertime Pay: + ETB ${(payrollData.overtimePay || 0).toFixed(2)}\n`;
+      payrollData.overtimeDetails?.forEach((d: any) => {
+          msg += `  - ${d.label}: + ETB ${d.amount.toFixed(2)}\n`;
+      });
+    }
+    
+    msg += `\n--------------------\n*Net Total: ETB ${(payrollData.totalAmount || 0).toFixed(2)}*`;
     setSummaryText(msg); setIsSummaryDialogOpen(true);
   };
 
@@ -516,7 +545,6 @@ export default function EmployeeProfilePage() {
         </DialogContent>
       </Dialog>
 
-      {/* Profile Card */}
       <Card className="shadow-lg border-none overflow-hidden rounded-3xl">
         <CardContent className="p-8">
             <div className="flex justify-between items-start mb-10">
@@ -588,7 +616,6 @@ export default function EmployeeProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Select Period Card */}
       <Card className="shadow-lg border-none rounded-3xl">
         <CardContent className="p-8">
             <h2 className="text-2xl font-black text-[#1e293b] tracking-tight font-headline mb-6">Select Period</h2>
@@ -605,7 +632,6 @@ export default function EmployeeProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Payroll Summary Card */}
       <Card className="shadow-lg border-none rounded-3xl relative overflow-hidden">
         <CardContent className="p-8">
             <div className="flex justify-between items-start mb-8">
@@ -618,15 +644,16 @@ export default function EmployeeProfilePage() {
 
             <div className="space-y-10">
                 <div className="space-y-1">
-                    <p className="text-[13px] font-bold text-[#64748b]">Base Salary</p>
+                    <p className="text-[13px] font-bold text-[#64748b]">{employee.paymentMethod === 'Monthly' ? 'Base Salary' : `Base Pay (${payrollData.hours?.toFixed(1)} hrs)`}</p>
                     <p className="text-3xl font-black text-[#1e293b]">ETB {((payrollData.baseSalary || 0) || ( (payrollData.hours || 0) * (payrollData.hourlyRate || 0))).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                 </div>
 
-                {/* Late Deductions Section */}
                 <div className="space-y-4">
                     <div className="space-y-1">
-                        <p className="text-[13px] font-bold text-[#64748b]">Late Deduction ({payrollData.minutesLate} mins)</p>
-                        <p className="text-xl font-black text-amber-500">- ETB {payrollData.lateDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        <p className="text-[13px] font-bold text-[#64748b]">Lateness ({payrollData.minutesLate} mins)</p>
+                        {employee.paymentMethod === 'Monthly' && (
+                            <p className="text-xl font-black text-amber-500">- ETB {payrollData.lateDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        )}
                     </div>
                     {payrollData.lateDetails.length > 0 && (
                         <div className="bg-amber-50/50 rounded-2xl p-4 space-y-2 border border-amber-100">
@@ -644,11 +671,12 @@ export default function EmployeeProfilePage() {
                     )}
                 </div>
 
-                {/* Absence Deductions Section */}
                 <div className="space-y-4">
                     <div className="space-y-1">
-                        <p className="text-[13px] font-bold text-[#64748b]">Absence Deduction ({payrollData.hoursAbsent?.toFixed(1)} hrs)</p>
-                        <p className="text-xl font-black text-red-500">- ETB {payrollData.absenceDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        <p className="text-[13px] font-bold text-[#64748b]">Absence / Missing Log ({payrollData.hoursAbsent?.toFixed(1)} hrs)</p>
+                        {employee.paymentMethod === 'Monthly' && (
+                            <p className="text-xl font-black text-red-500">- ETB {payrollData.absenceDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                        )}
                     </div>
                     {payrollData.absentDetails.length > 0 && (
                         <div className="bg-red-50/50 rounded-2xl p-4 space-y-2 border border-red-100">
@@ -692,7 +720,6 @@ export default function EmployeeProfilePage() {
         </CardContent>
       </Card>
 
-      {/* Attendance History Card */}
       <Card className="shadow-lg border-none rounded-3xl overflow-hidden">
         <CardHeader className="bg-[#f8faff] border-b border-blue-50 py-8">
             <div className="text-center">
