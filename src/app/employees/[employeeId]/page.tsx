@@ -405,6 +405,7 @@ export default function EmployeeProfilePage() {
       };
     } else {
       const hourly = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
+      const minuteRate = (hourly || 0) / 60;
       const weekStart = startOfWeek(new Date(selectedPeriod), { weekStartsOn: 0 });
       const interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
       const records = employeeAttendance.filter(r => isWithinInterval(r.date, interval));
@@ -473,6 +474,8 @@ export default function EmployeeProfilePage() {
       });
 
       const standardAmount = 44.5 * (hourly || 0);
+      const lateDeduction = totalLateMins * minuteRate;
+      const absenceDeduction = totalAbsentHours * (hourly || 0);
 
       return { 
         hours: baseHours, 
@@ -486,7 +489,9 @@ export default function EmployeeProfilePage() {
         absentDetails,
         minutesLate: totalLateMins,
         hoursAbsent: totalAbsentHours,
-        standardAmount
+        standardAmount,
+        lateDeduction,
+        absenceDeduction
       };
     }
   }, [employee, employeeAttendance, periodOptions, selectedPeriod, settings, allAttendance]);
@@ -504,14 +509,14 @@ export default function EmployeeProfilePage() {
     }
       
     if ((payrollData.minutesLate || 0) > 0) {
-      msg += `\nLateness (${payrollData.minutesLate} mins): ${employee.paymentMethod === 'Monthly' ? `- ETB ${(payrollData.lateDeduction || 0).toFixed(2)}` : ''}\n`;
+      msg += `\nLateness (${payrollData.minutesLate} mins): - ETB ${(payrollData.lateDeduction || 0).toFixed(2)}\n`;
       payrollData.lateDetails.forEach(l => {
           msg += `  - ${format(l.date, 'MMM d')}: ${l.minutes}m late (${l.entryTime})\n`;
       });
     }
     
     if ((payrollData.hoursAbsent || 0) > 0) {
-      msg += `\nAbsence (${payrollData.hoursAbsent?.toFixed(1)} hrs): ${employee.paymentMethod === 'Monthly' ? `- ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}` : ''}\n`;
+      msg += `\nAbsence (${payrollData.hoursAbsent?.toFixed(1)} hrs): - ETB ${(payrollData.absenceDeduction || 0).toFixed(2)}\n`;
       payrollData.absentDetails.forEach(a => {
           msg += `  - ${format(a.date, 'MMM d')}: ${a.reason}\n`;
       });
@@ -669,9 +674,7 @@ export default function EmployeeProfilePage() {
                 <div className="space-y-4">
                     <div className="space-y-1">
                         <p className="text-[13px] font-bold text-[#64748b]">Lateness ({payrollData.minutesLate} mins)</p>
-                        {employee.paymentMethod === 'Monthly' && (
-                            <p className="text-xl font-black text-amber-500">- ETB {payrollData.lateDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                        )}
+                        <p className="text-xl font-black text-amber-500">- ETB {payrollData.lateDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                     </div>
                     {payrollData.lateDetails.length > 0 && (
                         <div className="bg-amber-50/50 rounded-2xl p-4 space-y-2 border border-amber-100">
@@ -692,9 +695,7 @@ export default function EmployeeProfilePage() {
                 <div className="space-y-4">
                     <div className="space-y-1">
                         <p className="text-[13px] font-bold text-[#64748b]">Absence / Missing Log ({payrollData.hoursAbsent?.toFixed(1)} hrs)</p>
-                        {employee.paymentMethod === 'Monthly' && (
-                            <p className="text-xl font-black text-red-500">- ETB {payrollData.absenceDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                        )}
+                        <p className="text-xl font-black text-red-500">- ETB {payrollData.absenceDeduction?.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                     </div>
                     {payrollData.absentDetails.length > 0 && (
                         <div className="bg-red-50/50 rounded-2xl p-4 space-y-2 border border-red-100">
