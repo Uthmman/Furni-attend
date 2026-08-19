@@ -775,8 +775,8 @@ export default function DashboardPage() {
           </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-2">
-        <Card className="rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-2">
+        <Card className="col-span-2 sm:col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
             <CardContent className="p-6 flex items-center gap-4">
                 <div className="bg-amber-100 p-4 rounded-2xl text-amber-600 shadow-lg shadow-amber-500/10">
                     <Wallet2 className="h-6 w-6" />
@@ -790,7 +790,7 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
 
-        <Card className="rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+        <Card className="col-span-2 sm:col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
           <CardContent className="p-6 flex items-center gap-4">
             <div className="bg-green-100 p-4 rounded-2xl text-green-600 shadow-lg shadow-green-500/10">
               <UserCheck className="h-6 w-6" />
@@ -803,28 +803,28 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
-            <CardContent className="p-6 flex items-center gap-4">
-                <div className="bg-blue-100 p-4 rounded-2xl text-blue-600 shadow-lg shadow-blue-500/10">
-                    <HandCoins className="h-6 w-6" />
+        <Card className="col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 h-full">
+            <CardContent className="p-4 sm:p-6 flex flex-col sm:flex-row items-center sm:items-center gap-3 sm:gap-4 text-center sm:text-left justify-center sm:justify-start h-full">
+                <div className="bg-blue-100 p-3 sm:p-4 rounded-2xl text-blue-600 shadow-lg shadow-blue-500/10">
+                    <HandCoins className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div>
                     <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Weekly Est.</p>
-                    <p className="text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
+                    <p className="text-lg sm:text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
                         ETB {liveTotals.week.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                 </div>
             </CardContent>
         </Card>
 
-        <Card className="rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
-            <CardContent className="p-6 flex items-center gap-4">
-                <div className="bg-purple-100 p-4 rounded-2xl text-purple-600 shadow-lg shadow-purple-500/10">
-                    <BarChart3 className="h-6 w-6" />
+        <Card className="col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 h-full">
+            <CardContent className="p-4 sm:p-6 flex flex-col sm:flex-row items-center sm:items-center gap-3 sm:gap-4 text-center sm:text-left justify-center sm:justify-start h-full">
+                <div className="bg-purple-100 p-3 sm:p-4 rounded-2xl text-purple-600 shadow-lg shadow-purple-500/10">
+                    <BarChart3 className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div>
                     <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Monthly Est.</p>
-                    <p className="text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
+                    <p className="text-lg sm:text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
                         ETB {liveTotals.month.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                 </div>
@@ -952,7 +952,7 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
 
-        <Card className="shadow-lg border-none rounded-3xl overflow-hidden ring-1 ring-primary/5 shadow-[0_0_40px_rgba(59,130,246,0.15)]">
+        <Card className="shadow-lg border-none rounded-3xl overflow-hidden ring-1 ring-primary/5 shadow-primary/20">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-8 border-b border-primary/10">
                 <div className="flex items-center gap-4">
                   <div className="bg-primary p-3.5 rounded-2xl text-primary-foreground shadow-lg shadow-primary/20"><Wallet className="h-7 w-7" /></div>
@@ -977,7 +977,7 @@ export default function DashboardPage() {
                 ) : (
                     <div className="text-center group">
                         <p className="text-[11px] font-black text-muted-foreground/60 uppercase tracking-[0.4em] mb-4 group-hover:text-primary transition-colors">Expenditure Total</p>
-                        <p className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold text-primary tracking-tighter">
+                        <p className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold text-primary tracking-tighter">
                             ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                         <div className="flex items-center justify-center gap-4 mt-8 opacity-20">
