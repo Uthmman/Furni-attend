@@ -5,7 +5,7 @@ import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3 } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
 import { collection, query, where, getDocs, doc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Progress } from "@/components/ui/progress";
+import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
 
@@ -74,6 +75,7 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
+    // Saturdays counted as 0.5625 units for Monthly staff payout logic
     return weekdays + (saturdays * 0.5625);
 };
 
@@ -277,9 +279,9 @@ export default function DashboardPage() {
         if (!firestore || !user || !allEmployees || allEmployees.length === 0) return;
         setRealTimeLoading(true);
         try {
-            const now = new Date();
-            const start = startOfDay(toGregorian(toEthiopian(now).year, toEthiopian(now).month, 1));
-            const end = endOfDay(now);
+            const nowLocal = new Date();
+            const start = startOfDay(subDays(toGregorian(toEthiopian(nowLocal).year, toEthiopian(nowLocal).month, 1), 7));
+            const end = endOfDay(nowLocal);
             
             const records: AttendanceRecord[] = [];
             const fetchPromises = allEmployees.map(async (emp) => {
@@ -435,6 +437,60 @@ export default function DashboardPage() {
     });
 
     return { today: todayCost, week: weekCost, month: monthCost, onSite };
+  }, [allEmployees, currentMonthAttendance, realTimeLoading, normalOTRate, sundayOTRate]);
+
+  const weeklyChartData = useMemo(() => {
+    if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return [];
+    
+    const nowLocal = new Date();
+    const chartData = [];
+    
+    for (let i = 6; i >= 0; i--) {
+        const date = subDays(nowLocal, i);
+        const dayStr = format(date, "yyyy-MM-dd");
+        const ethDay = ethiopianDateFormatter(date, { weekday: 'short' }).toUpperCase();
+        
+        let dailyTotal = 0;
+        const monthStart = startOfMonth(date);
+        const units = getMonthlyWorkingUnits(monthStart, 30);
+
+        allEmployees.forEach(emp => {
+            const rec = currentMonthAttendance.find(r => r.employeeId === emp.id && r.id === dayStr);
+            const empStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
+            const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
+
+            const isSun = getDay(date) === 0;
+            const isSat = getDay(date) === 6;
+            const isInactiveDay = empInactiveDate && date >= empInactiveDate;
+            const isBeforeStart = date < empStartDate;
+
+            if (isInactiveDay || isBeforeStart) return;
+
+            if (rec) {
+                if (emp.paymentMethod === 'Weekly') {
+                    const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+                    dailyTotal += (calculateHoursWorked(rec) * (hourly || 0)) + ((rec.overtimeHours || 0) * (hourly || 0) * normalOTRate);
+                    if (isSun && rec.morningStatus !== 'Absent') dailyTotal += 8 * (hourly || 0) * (sundayOTRate - 1);
+                } else {
+                    const hourly = (emp.monthlyRate || 0) / units / 8;
+                    const daily = (emp.monthlyRate || 0) / units;
+                    let deduction = 0;
+                    if (rec.morningStatus === 'Absent') deduction += 4.5 * hourly;
+                    if (rec.afternoonStatus === 'Absent' && !isSat) deduction += 3.5 * hourly;
+                    deduction += calculateMinutesLate(rec) * (hourly / 60);
+                    let ot = (rec.overtimeHours || 0) * hourly * normalOTRate;
+                    if (isSun && (rec.morningStatus !== 'Absent' || rec.afternoonStatus !== 'Absent')) ot += 8 * hourly * sundayOTRate;
+                    else if (isSat && (rec.afternoonStatus === 'Present' || rec.afternoonStatus === 'Late')) ot += 3.5 * hourly * normalOTRate;
+                    dailyTotal += daily - deduction + ot;
+                }
+            } else if (isSun && emp.paymentMethod === 'Weekly') {
+                dailyTotal += (emp.dailyRate || 0);
+            }
+        });
+        
+        chartData.push({ name: ethDay, total: dailyTotal });
+    }
+    return chartData;
   }, [allEmployees, currentMonthAttendance, realTimeLoading, normalOTRate, sundayOTRate]);
 
   const dailyEarnings = useMemo(() => {
@@ -761,16 +817,39 @@ export default function DashboardPage() {
 
               <div className="hidden md:block h-16 w-px bg-primary/10" />
 
-              <div className="flex items-center gap-6 w-full md:w-auto justify-between md:justify-end">
-                  <div className="md:text-right">
-                      <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-2">WORKSHOP LIVE TIME</p>
-                      <p className="text-4xl sm:text-5xl font-bold text-primary tabular-nums tracking-tighter leading-none">
-                          {format(now, "HH:mm:ss")}
-                      </p>
-                  </div>
-                  <div className="bg-primary p-5 rounded-[1.5rem] text-primary-foreground shadow-xl shadow-primary/20">
-                      <Clock className="h-9 w-9" />
-                  </div>
+              <div className="flex-1 w-full h-[120px] min-w-[240px]">
+                  <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-4">Weekly Performance Trend</p>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={weeklyChartData}>
+                      <defs>
+                        <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <RechartsTooltip 
+                        content={({ active, payload }) => {
+                          if (active && payload && payload.length) {
+                            return (
+                              <div className="bg-white px-3 py-2 border rounded-xl shadow-2xl text-[10px]">
+                                <p className="font-black text-primary tracking-tighter">ETB {payload[0].value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                              </div>
+                            );
+                          }
+                          return null;
+                        }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey="total" 
+                        stroke="hsl(var(--primary))" 
+                        strokeWidth={4}
+                        fillOpacity={1} 
+                        fill="url(#colorTrend)" 
+                        animationDuration={1500}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
               </div>
           </CardContent>
       </Card>
@@ -803,8 +882,8 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 h-full">
-            <CardContent className="p-4 sm:p-6 flex flex-col sm:flex-row items-center sm:items-center gap-3 sm:gap-4 text-center sm:text-left justify-center sm:justify-start h-full">
+        <Card className="col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square">
+            <CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3">
                 <div className="bg-blue-100 p-3 sm:p-4 rounded-2xl text-blue-600 shadow-lg shadow-blue-500/10">
                     <HandCoins className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
@@ -817,8 +896,8 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
 
-        <Card className="col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 h-full">
-            <CardContent className="p-4 sm:p-6 flex flex-col sm:flex-row items-center sm:items-center gap-3 sm:gap-4 text-center sm:text-left justify-center sm:justify-start h-full">
+        <Card className="col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square">
+            <CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3">
                 <div className="bg-purple-100 p-3 sm:p-4 rounded-2xl text-purple-600 shadow-lg shadow-purple-500/10">
                     <BarChart3 className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
