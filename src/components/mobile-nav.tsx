@@ -18,7 +18,7 @@ import type { Item } from "@/lib/types";
 
 const links = [
   { href: "/", label: "Home", icon: LayoutDashboard },
-  { href: "/employees", label: "Employees", icon: Users },
+  { href: "/employees", label: "Staff", icon: Users },
   { href: "/attendance", label: "Logs", icon: CalendarCheck },
   { href: "/store", label: "Store", icon: Package },
   { href: "/orders", label: "Orders", icon: ShoppingBag },
@@ -55,44 +55,45 @@ export function MobileNav() {
   }
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-50">
-      <div className="bg-background border-t">
-        <nav className="flex justify-around items-center p-2">
-          {links.map((link) => {
-            const isActive = link.href === "/" ? pathname === link.href : pathname.startsWith(link.href);
-            const isStore = link.href === "/store";
+    <div className="md:hidden fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-28px)] max-w-md animate-in slide-in-from-bottom-10 duration-500">
+      <nav className="flex justify-around items-center p-2 bg-background/70 backdrop-blur-xl border border-white/20 shadow-[0_8px_32px_rgba(0,0,0,0.12)] rounded-[2rem] ring-1 ring-black/5">
+        {links.map((link) => {
+          const isActive = link.href === "/" ? pathname === link.href : pathname.startsWith(link.href);
+          const isStore = link.href === "/store";
 
-            return (
-              <Link
-                key={link.href}
-                href={link.href}
-                className={cn(
-                  "flex flex-col items-center justify-center gap-1 p-1 rounded-lg transition-colors duration-200 relative",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-accent"
-                )}
-                style={{ minWidth: '50px' }}
-              >
-                <link.icon className="h-5 w-5" />
-                
-                {isStore && lowStockCount > 0 && (
-                  <span className="absolute top-0 right-1 flex h-4 w-4 items-center justify-center rounded-full bg-destructive text-[9px] font-black text-white border-2 border-background animate-in zoom-in duration-300">
-                    {lowStockCount}
-                  </span>
-                )}
-
+          return (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={cn(
+                "flex flex-col items-center justify-center gap-1 p-2 rounded-2xl transition-all duration-300 relative",
+                isActive
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105"
+                  : "text-muted-foreground hover:bg-accent/50"
+              )}
+              style={{ minWidth: isActive ? '70px' : '50px' }}
+            >
+              <link.icon className={cn("transition-transform duration-300", isActive ? "h-5 w-5" : "h-6 w-6")} />
+              
+              {isStore && lowStockCount > 0 && (
                 <span className={cn(
-                  "text-[10px] font-bold uppercase tracking-tighter",
-                  isActive ? "block" : "hidden"
+                  "absolute flex h-4 w-4 items-center justify-center rounded-full text-[9px] font-black border-2 border-background animate-in zoom-in duration-300",
+                  isActive ? "top-0 -right-1 bg-white text-primary" : "-top-1 right-1 bg-destructive text-white"
                 )}>
-                  {link.label}
+                  {lowStockCount}
                 </span>
-              </Link>
-            )
-          })}
-        </nav>
-      </div>
+              )}
+
+              <span className={cn(
+                "text-[9px] font-black uppercase tracking-tighter transition-all duration-300",
+                isActive ? "block opacity-100 translate-y-0" : "hidden opacity-0 translate-y-1"
+              )}>
+                {link.label}
+              </span>
+            </Link>
+          )
+        })}
+      </nav>
     </div>
   );
 }
