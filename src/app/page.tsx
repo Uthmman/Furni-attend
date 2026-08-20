@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -75,7 +74,6 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
-    // Saturdays counted as 0.5625 units for Monthly staff payout logic
     return weekdays + (saturdays * 0.5625);
 };
 
@@ -806,48 +804,47 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8 pb-10">
-      <Card className="shadow-lg border-none bg-primary/5 rounded-[2.5rem] overflow-hidden mb-2 relative">
-          {/* Blueprint background effect */}
-          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#10192E 1px, transparent 1px), linear-gradient(90deg, #10192E 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
+      <Card className="shadow-lg border-none bg-[#E8ECF6] rounded-[2.5rem] overflow-hidden mb-2 relative">
+          <div className="absolute inset-0 opacity-[0.035] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#10192E 1px, transparent 1px), linear-gradient(90deg, #10192E 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
           
           <CardContent className="p-8 sm:p-10 flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
               <div className="flex items-center gap-6 w-full md:w-auto shrink-0">
-                  <div className="bg-white p-5 rounded-[1.5rem] text-primary shadow-xl shadow-primary/5 border border-primary/10">
+                  <div className="bg-white p-5 rounded-[1.5rem] text-[#3478F6] shadow-md border border-[#E7EBF3]">
                       <CalendarDays className="h-9 w-9" />
                   </div>
                   <div>
-                      <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-2">CURRENT ETHIOPIAN DATE</p>
+                      <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.14em] mb-2">Current Ethiopian Date</p>
                       <h2 className="text-[#10192E] tracking-tight leading-tight flex items-baseline gap-2">
-                          <span className="text-xs sm:text-sm font-black uppercase text-primary/60">
+                          <span className="text-xs sm:text-sm font-bold uppercase text-[#3478F6]">
                             {ethiopianDateFormatter(now, { weekday: 'short' }).toUpperCase()}
                           </span>
-                          <span className="text-xl sm:text-3xl font-black font-headline">
+                          <span className="text-xl sm:text-3xl font-bold font-headline">
                             {ethiopianDateFormatter(now, { month: 'long', day: 'numeric' })}
                           </span>
                       </h2>
                   </div>
               </div>
 
-              <div className="hidden md:block h-32 w-px bg-primary/10 mx-4" />
+              <div className="hidden md:block h-32 w-px bg-gradient-to-b from-[#EDF1F8] to-transparent mx-4" />
 
               <div className="flex-1 w-full flex flex-col gap-4">
                   <div className="flex justify-between items-end">
                       <div>
                           <div className="flex items-center gap-2 mb-2">
-                              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-                              <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em]">Today&apos;s Total Cost</p>
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#3478F6] animate-pulse" />
+                              <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.14em]">Today&apos;s Total Cost</p>
                           </div>
                           <div className="flex items-baseline gap-1">
-                              <span className="text-sm font-bold text-muted-foreground/60">ETB</span>
-                              <h2 className="text-3xl font-black text-[#10192E] tracking-tighter font-headline">
+                              <span className="text-[16px] font-semibold text-[#9AA3B8]">ETB</span>
+                              <h2 className="text-[32px] font-bold text-[#10192E] tracking-tight font-headline">
                                 {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                               </h2>
                           </div>
                       </div>
                       
                       <div className={cn(
-                          "px-3 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1.5 mb-1 shadow-sm",
-                          todayTrendPercent >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                          "px-3 py-1.5 rounded-xl text-[12px] font-bold flex items-center gap-1.5 mb-1 shadow-sm",
+                          todayTrendPercent >= 0 ? "bg-[rgba(52,194,100,0.13)] text-[#34C264]" : "bg-[rgba(255,59,48,0.1)] text-[#FF3B30]"
                       )}>
                           {todayTrendPercent >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
                           {Math.abs(todayTrendPercent).toFixed(1)}%
@@ -859,16 +856,16 @@ export default function DashboardPage() {
                         <AreaChart data={weeklyChartData}>
                           <defs>
                             <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.25}/>
-                              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                              <stop offset="0%" stopColor="#3478F6" stopOpacity={0.3}/>
+                              <stop offset="100%" stopColor="#3478F6" stopOpacity={0}/>
                             </linearGradient>
                           </defs>
                           <RechartsTooltip 
                             content={({ active, payload }) => {
                               if (active && payload && payload.length) {
                                 return (
-                                  <div className="bg-white/90 backdrop-blur-md px-3 py-2 border border-primary/10 rounded-xl shadow-2xl text-[10px]">
-                                    <p className="font-black text-primary tracking-tighter">ETB {payload[0].value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                  <div className="bg-white/90 backdrop-blur-md px-3 py-2 border border-[#E7EBF3] rounded-xl shadow-lg text-[10px]">
+                                    <p className="font-bold text-[#3478F6] font-code">ETB {payload[0].value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                   </div>
                                 );
                               }
@@ -878,8 +875,8 @@ export default function DashboardPage() {
                           <Area 
                             type="monotone" 
                             dataKey="total" 
-                            stroke="hsl(var(--primary))" 
-                            strokeWidth={3}
+                            stroke="#3478F6" 
+                            strokeWidth={2.5}
                             fillOpacity={1} 
                             fill="url(#colorTrend)" 
                             animationDuration={1500}
@@ -888,82 +885,84 @@ export default function DashboardPage() {
                       </ResponsiveContainer>
                   </div>
 
-                  <div className="flex justify-between text-[9px] font-black text-muted-foreground/30 uppercase tracking-[0.3em] px-1">
+                  <div className="flex justify-between text-[9.5px] font-medium text-[#9AA3B8] font-code uppercase tracking-widest px-1">
                       <span>{weeklyChartData[0]?.name}</span>
                       <span>{weeklyChartData[3]?.name}</span>
-                      <span className="text-primary/60">NOW</span>
+                      <span className="text-[#3478F6] font-bold">NOW</span>
                   </div>
               </div>
           </CardContent>
       </Card>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-2">
-        <Card className="col-span-2 sm:col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+        <Card className="col-span-2 sm:col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
             <CardContent className="p-6 flex items-center gap-4">
-                <div className="bg-amber-100 p-4 rounded-2xl text-amber-600 shadow-lg shadow-amber-500/10">
+                <div className="bg-[rgba(242,169,59,0.14)] p-4 rounded-2xl text-[#F2A93B] shadow-sm">
                     <Wallet2 className="h-6 w-6" />
                 </div>
                 <div>
-                    <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Today's Total</p>
-                    <p className="text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
+                    <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Today's Total</p>
+                    <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">
                         ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </p>
                 </div>
             </CardContent>
         </Card>
 
-        <Card className="col-span-2 sm:col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+        <Card className="col-span-2 sm:col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
           <CardContent className="p-6 flex items-center gap-4">
-            <div className="bg-green-100 p-4 rounded-2xl text-green-600 shadow-lg shadow-green-500/10">
+            <div className="bg-[rgba(52,194,100,0.13)] p-4 rounded-2xl text-[#34C264] shadow-sm">
               <UserCheck className="h-6 w-6" />
             </div>
             <div className="flex-1">
-              <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">On-site Staff</p>
-              <p className="text-xl font-semibold text-[#1e293b] tracking-tighter leading-none mb-2">{liveTotals.onSite} / {activeEmployees.length}</p>
-              <Progress value={activeEmployees.length > 0 ? (liveTotals.onSite / activeEmployees.length) * 100 : 0} className="h-1" />
+              <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">On-site Staff</p>
+              <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none mb-2 font-headline">{liveTotals.onSite} <span className="text-[#9AA3B8] font-medium">/ {activeEmployees.length}</span></p>
+              <Progress value={activeEmployees.length > 0 ? (liveTotals.onSite / activeEmployees.length) * 100 : 0} className="h-1 bg-[#EFF3FA]" />
             </div>
           </CardContent>
         </Card>
 
-        <Card className="col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square">
+        <Card className="col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square">
             <CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3">
-                <div className="bg-blue-100 p-3 sm:p-4 rounded-2xl text-blue-600 shadow-lg shadow-blue-500/10">
+                <div className="bg-[rgba(52,120,246,0.11)] p-3 sm:p-4 rounded-2xl text-[#3478F6] shadow-sm">
                     <HandCoins className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div>
-                    <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Weekly Est.</p>
-                    <p className="text-lg sm:text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
-                        ETB {liveTotals.week.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Weekly Est.</p>
+                    <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">
+                        {liveTotals.week.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
+                    <p className="text-[11px] text-[#6B7690] font-medium mt-1">ETB projected</p>
                 </div>
             </CardContent>
         </Card>
 
-        <Card className="col-span-1 rounded-[2rem] border-none shadow-xl shadow-primary/5 bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square">
+        <Card className="col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square">
             <CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3">
-                <div className="bg-purple-100 p-3 sm:p-4 rounded-2xl text-purple-600 shadow-lg shadow-purple-500/10">
+                <div className="bg-[rgba(139,92,246,0.12)] p-3 sm:p-4 rounded-2xl text-[#8B5CF6] shadow-sm">
                     <BarChart3 className="h-5 w-5 sm:h-6 sm:w-6" />
                 </div>
                 <div>
-                    <p className="text-[9px] font-black text-muted-foreground/60 uppercase tracking-[0.15em] mb-1">Monthly Est.</p>
-                    <p className="text-lg sm:text-xl font-semibold text-[#1e293b] tracking-tighter leading-none">
-                        ETB {liveTotals.month.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Monthly Est.</p>
+                    <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">
+                        {liveTotals.month.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                     </p>
+                    <p className="text-[11px] text-[#6B7690] font-medium mt-1">ETB projected</p>
                 </div>
             </CardContent>
         </Card>
       </div>
 
        <Card className="shadow-lg border-none rounded-3xl overflow-hidden">
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b bg-[#f8faff] py-6 px-8">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b bg-[#EFF3FA]/50 py-6 px-8">
                 <div>
-                    <CardTitle className="text-2xl font-black text-[#1e293b] tracking-tight">Detailed Overview</CardTitle>
-                    <CardDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Track payments and performance across periods</CardDescription>
+                    <CardTitle className="text-2xl font-bold text-[#10192E] tracking-tight font-headline">Detailed Overview</CardTitle>
+                    <CardDescription className="text-xs font-semibold text-[#9AA3B8] uppercase tracking-widest mt-1">Track payments and performance across periods</CardDescription>
                 </div>
                 <Popover>
                     <PopoverTrigger asChild>
-                        <Button variant="outline" className="h-12 px-6 rounded-2xl border-2 flex items-center gap-3 bg-white hover:bg-[#f8faff] font-bold text-[#1e293b]">
-                          <CalendarIcon className="h-4 w-4 text-primary" /> 
+                        <Button variant="outline" className="h-12 px-6 rounded-2xl border-[#E7EBF3] flex items-center gap-3 bg-white hover:bg-[#F4F6FB] font-bold text-[#10192E] shadow-sm">
+                          <CalendarIcon className="h-4 w-4 text-[#3478F6]" /> 
                           {ethiopianDateFormatter(new Date(selectedDay), { month: 'long', day: 'numeric', year: 'numeric' })}
                         </Button>
                     </PopoverTrigger>
@@ -974,10 +973,10 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="p-8">
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
-                    <TabsList className="grid w-full grid-cols-3 mb-10 h-14 p-1.5 bg-[#f1f5f9] rounded-2xl">
-                        <TabsTrigger value="today" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">Today</TabsTrigger>
-                        <TabsTrigger value="week" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">This Week</TabsTrigger>
-                        <TabsTrigger value="month" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm">This Month</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-3 mb-10 h-14 p-1.5 bg-[#EFF3FA] rounded-2xl">
+                        <TabsTrigger value="today" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#3478F6]">Today</TabsTrigger>
+                        <TabsTrigger value="week" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#3478F6]">This Week</TabsTrigger>
+                        <TabsTrigger value="month" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#3478F6]">This Month</TabsTrigger>
                     </TabsList>
                     
                     <TabsContent value="today" className="space-y-6">
@@ -1006,11 +1005,11 @@ export default function DashboardPage() {
                     <TabsContent value="week" className="space-y-6">
                         <div className="flex justify-center mb-8">
                             <Select value={selectedWeekStart} onValueChange={setSelectedWeekStart}>
-                                <SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#f8faff] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select week" /></SelectTrigger>
+                                <SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#F4F6FB] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select week" /></SelectTrigger>
                                 <SelectContent className="rounded-2xl">{periodOptions.weeks.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                        {lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-primary" /><p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Compiling Week...</p></div> : (
+                        {lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-[#3478F6]" /><p className="text-[10px] font-bold uppercase text-[#9AA3B8] tracking-widest">Compiling Week...</p></div> : (
                             <div className="flex flex-col gap-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {weeklySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
@@ -1029,9 +1028,9 @@ export default function DashboardPage() {
                                         />
                                     ))}
                                 </div>
-                                <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-3xl p-10 text-center shadow-sm">
-                                    <p className="text-[11px] font-black text-[#9d174d] uppercase tracking-[0.2em] mb-2">TOTAL WEEKLY PAYROLL</p>
-                                    <p className="text-5xl font-bold text-[#be185d] tracking-tighter">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm">
+                                    <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL WEEKLY PAYROLL</p>
+                                    <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
                         )}
@@ -1040,11 +1039,11 @@ export default function DashboardPage() {
                     <TabsContent value="month" className="space-y-6">
                         <div className="flex justify-center mb-8">
                             <Select value={selectedMonthStart} onValueChange={setSelectedMonthStart}>
-                                <SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#f8faff] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select month" /></SelectTrigger>
+                                <SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#F4F6FB] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select month" /></SelectTrigger>
                                 <SelectContent className="rounded-2xl">{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent>
                             </Select>
                         </div>
-                         {lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-primary" /><p className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Compiling Month...</p></div> : (
+                         {lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-[#3478F6]" /><p className="text-[10px] font-bold uppercase text-[#9AA3B8] tracking-widest">Compiling Month...</p></div> : (
                             <div className="flex flex-col gap-6">
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                                     {monthlySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
@@ -1063,9 +1062,9 @@ export default function DashboardPage() {
                                         />
                                     ))}
                                 </div>
-                                <div className="mt-4 bg-[#fdf2f8] border border-[#fbcfe8] rounded-3xl p-10 text-center shadow-sm">
-                                    <p className="text-[11px] font-black text-[#9d174d] uppercase tracking-[0.2em] mb-2">TOTAL MONTHLY PAYROLL</p>
-                                    <p className="text-5xl font-bold text-[#be185d] tracking-tighter">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm">
+                                    <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL MONTHLY PAYROLL</p>
+                                    <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                 </div>
                             </div>
                         )}
@@ -1074,40 +1073,42 @@ export default function DashboardPage() {
             </CardContent>
         </Card>
 
-        <Card className="shadow-lg border-none rounded-3xl overflow-hidden ring-1 ring-primary/5 shadow-primary/20">
-            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-8 border-b border-primary/10">
+        <Card className="shadow-lg border-none rounded-3xl overflow-hidden ring-1 ring-[#10192E]/5">
+            <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-8 border-b border-[#E7EBF3]">
                 <div className="flex items-center gap-4">
-                  <div className="bg-primary p-3.5 rounded-2xl text-primary-foreground shadow-lg shadow-primary/20"><Wallet className="h-7 w-7" /></div>
+                  <div className="bg-[#3478F6] p-3.5 rounded-2xl text-white shadow-md"><Wallet className="h-7 w-7" /></div>
                   <div>
-                      <CardTitle className="text-2xl font-black text-[#1e293b] tracking-tight">Historical Workshop Audit</CardTitle>
-                      <CardDescription className="text-xs font-bold text-muted-foreground uppercase tracking-widest mt-1">Consolidated monthly expense summary</CardDescription>
+                      <CardTitle className="text-2xl font-bold text-[#10192E] tracking-tight font-headline">Historical Workshop Audit</CardTitle>
+                      <CardDescription className="text-xs font-semibold text-[#9AA3B8] uppercase tracking-widest mt-1">Consolidated monthly expense summary</CardDescription>
                   </div>
                 </div>
                 <div className="w-full sm:w-[280px]">
                     <Select value={selectedUnifiedMonth} onValueChange={setSelectedUnifiedMonth}>
-                        <SelectTrigger className="h-12 bg-white rounded-2xl border-none font-bold px-6 shadow-sm focus:ring-2 focus:ring-primary/20"><SelectValue placeholder="Select month" /></SelectTrigger>
+                        <SelectTrigger className="h-12 bg-white rounded-2xl border-[#E7EBF3] font-bold px-6 shadow-sm"><SelectValue placeholder="Select month" /></SelectTrigger>
                         <SelectContent className="rounded-2xl">{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent>
                     </Select>
                 </div>
             </CardHeader>
-            <CardContent className="flex justify-center py-16">
+            <CardContent className="flex flex-col items-center justify-center py-16">
                 {unifiedLoading ? (
                     <div className="flex flex-col items-center gap-4">
-                        <Clock className="animate-spin h-10 w-10 text-primary opacity-40" />
-                        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.3em]">Calculating Audit...</p>
+                        <Clock className="animate-spin h-10 w-10 text-[#3478F6] opacity-40" />
+                        <p className="text-[10px] font-bold text-[#9AA3B8] uppercase tracking-[0.3em]">Calculating Audit...</p>
                     </div>
                 ) : (
-                    <div className="text-center group">
-                        <p className="text-[11px] font-black text-muted-foreground/60 uppercase tracking-[0.4em] mb-4 group-hover:text-primary transition-colors">Expenditure Total</p>
-                        <p className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-semibold text-primary tracking-tighter">
-                            ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
-                        <div className="flex items-center justify-center gap-4 mt-8 opacity-20">
-                            <div className="h-[2px] w-12 bg-primary rounded-full" />
-                            <Wallet2 className="h-5 w-5 text-primary" />
-                            <div className="h-[2px] w-12 bg-primary rounded-full" />
+                    <>
+                        <div className="text-center group">
+                            <p className="text-[11px] font-bold text-[#9AA3B8] uppercase tracking-[0.4em] mb-4">Expenditure Total</p>
+                            <p className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#10192E] tracking-tighter font-headline">
+                                ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </p>
                         </div>
-                    </div>
+                        <div className="flex items-center justify-center gap-6 mt-12 opacity-30">
+                            <div className="h-[1px] w-20 bg-gradient-to-r from-transparent to-[#3478F6] rounded-full" />
+                            <Sparkles className="h-6 w-6 text-[#3478F6] animate-pulse" />
+                            <div className="h-[1px] w-20 bg-gradient-to-l from-transparent to-[#3478F6] rounded-full" />
+                        </div>
+                    </>
                 )}
             </CardContent>
         </Card>

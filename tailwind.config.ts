@@ -11,8 +11,8 @@ export default {
     extend: {
       fontFamily: {
         body: ['Inter', 'sans-serif'],
-        headline: ['Montserrat', 'sans-serif'],
-        code: ['monospace'],
+        headline: ['Space Grotesk', 'Montserrat', 'sans-serif'],
+        code: ['IBM Plex Mono', 'monospace'],
       },
       colors: {
         background: 'hsl(var(--background))',
