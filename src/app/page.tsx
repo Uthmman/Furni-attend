@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -895,30 +896,45 @@ export default function DashboardPage() {
       </Card>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-2">
-        <Card className="col-span-2 sm:col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
-            <CardContent className="p-6 flex items-center gap-4">
-                <div className="bg-[rgba(242,169,59,0.14)] p-4 rounded-2xl text-[#F2A93B] shadow-sm">
-                    <Wallet2 className="h-6 w-6" />
+        <Card className="col-span-2 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+            <CardContent className="p-6 flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                    <div className="bg-[rgba(242,169,59,0.14)] p-4 rounded-2xl text-[#F2A93B] shadow-sm">
+                        <Wallet2 className="h-6 w-6" />
+                    </div>
+                    <div>
+                        <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Today's Total</p>
+                        <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">
+                            ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </p>
+                    </div>
                 </div>
-                <div>
-                    <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Today's Total</p>
-                    <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">
-                        ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </p>
+                <div className={cn(
+                    "flex items-center gap-1 text-[11px] font-bold",
+                    todayTrendPercent >= 0 ? "text-[#34C264]" : "text-[#FF3B30]"
+                )}>
+                    {todayTrendPercent >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                    {Math.abs(todayTrendPercent).toFixed(1)}%
                 </div>
             </CardContent>
         </Card>
 
-        <Card className="col-span-2 sm:col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
-          <CardContent className="p-6 flex items-center gap-4">
-            <div className="bg-[rgba(52,194,100,0.13)] p-4 rounded-2xl text-[#34C264] shadow-sm">
-              <UserCheck className="h-6 w-6" />
+        <Card className="col-span-2 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
+          <CardContent className="p-6 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="bg-[rgba(52,194,100,0.13)] p-4 rounded-2xl text-[#34C264] shadow-sm">
+                <UserCheck className="h-6 w-6" />
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">On-site Staff</p>
+                <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.onSite} <span className="text-[#9AA3B8] font-medium">/ {activeEmployees.length}</span></p>
+              </div>
             </div>
-            <div className="flex-1">
-              <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">On-site Staff</p>
-              <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none mb-2 font-headline">{liveTotals.onSite} <span className="text-[#9AA3B8] font-medium">/ {activeEmployees.length}</span></p>
-              <Progress value={activeEmployees.length > 0 ? (liveTotals.onSite / activeEmployees.length) * 100 : 0} className="h-1 bg-[#EFF3FA]" />
-            </div>
+            {liveTotals.onSite === activeEmployees.length && activeEmployees.length > 0 && (
+                <Badge className="bg-[rgba(52,194,100,0.13)] text-[#34C264] border-none shadow-none font-bold text-[10px] uppercase tracking-[0.06em] px-2 py-1 h-auto rounded-lg">
+                    FULL
+                </Badge>
+            )}
           </CardContent>
         </Card>
 
