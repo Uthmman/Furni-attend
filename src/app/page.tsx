@@ -3,7 +3,7 @@
 
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3 } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
@@ -493,6 +493,16 @@ export default function DashboardPage() {
     return chartData;
   }, [allEmployees, currentMonthAttendance, realTimeLoading, normalOTRate, sundayOTRate]);
 
+  const todayTrendPercent = useMemo(() => {
+    if (weeklyChartData.length < 2 || realTimeLoading) return 0;
+    const today = weeklyChartData[6].total;
+    // Average of previous 6 days
+    const pastDays = weeklyChartData.slice(0, 6);
+    const average = pastDays.reduce((acc, curr) => acc + curr.total, 0) / 6;
+    if (average === 0) return today > 0 ? 100 : 0;
+    return ((today - average) / average) * 100;
+  }, [weeklyChartData, realTimeLoading]);
+
   const dailyEarnings = useMemo(() => {
     if (!activeEmployees || !selectedDay) return [];
     return activeEmployees.map(emp => {
@@ -796,60 +806,93 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8 pb-10">
-      <Card className="shadow-lg border-none bg-primary/5 rounded-[2.5rem] overflow-hidden mb-2">
-          <CardContent className="p-8 sm:p-10 flex flex-col md:flex-row justify-between items-center gap-8">
-              <div className="flex items-center gap-6 w-full md:w-auto">
-                  <div className="bg-white p-5 rounded-[1.5rem] text-primary shadow-xl shadow-primary/5">
+      <Card className="shadow-lg border-none bg-primary/5 rounded-[2.5rem] overflow-hidden mb-2 relative">
+          {/* Blueprint background effect */}
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#10192E 1px, transparent 1px), linear-gradient(90deg, #10192E 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
+          
+          <CardContent className="p-8 sm:p-10 flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
+              <div className="flex items-center gap-6 w-full md:w-auto shrink-0">
+                  <div className="bg-white p-5 rounded-[1.5rem] text-primary shadow-xl shadow-primary/5 border border-primary/10">
                       <CalendarDays className="h-9 w-9" />
                   </div>
                   <div>
                       <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-2">CURRENT ETHIOPIAN DATE</p>
-                      <h2 className="text-[#1e293b] tracking-tight leading-tight flex items-baseline gap-2">
+                      <h2 className="text-[#10192E] tracking-tight leading-tight flex items-baseline gap-2">
                           <span className="text-xs sm:text-sm font-black uppercase text-primary/60">
                             {ethiopianDateFormatter(now, { weekday: 'short' }).toUpperCase()}
                           </span>
-                          <span className="text-xl sm:text-3xl font-black">
+                          <span className="text-xl sm:text-3xl font-black font-headline">
                             {ethiopianDateFormatter(now, { month: 'long', day: 'numeric' })}
                           </span>
                       </h2>
                   </div>
               </div>
 
-              <div className="hidden md:block h-16 w-px bg-primary/10" />
+              <div className="hidden md:block h-32 w-px bg-primary/10 mx-4" />
 
-              <div className="flex-1 w-full h-[120px] min-w-[240px]">
-                  <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em] mb-4">Weekly Performance Trend</p>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={weeklyChartData}>
-                      <defs>
-                        <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <RechartsTooltip 
-                        content={({ active, payload }) => {
-                          if (active && payload && payload.length) {
-                            return (
-                              <div className="bg-white px-3 py-2 border rounded-xl shadow-2xl text-[10px]">
-                                <p className="font-black text-primary tracking-tighter">ETB {payload[0].value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                              </div>
-                            );
-                          }
-                          return null;
-                        }}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey="total" 
-                        stroke="hsl(var(--primary))" 
-                        strokeWidth={4}
-                        fillOpacity={1} 
-                        fill="url(#colorTrend)" 
-                        animationDuration={1500}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+              <div className="flex-1 w-full flex flex-col gap-4">
+                  <div className="flex justify-between items-end">
+                      <div>
+                          <div className="flex items-center gap-2 mb-2">
+                              <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                              <p className="text-[10px] font-black text-muted-foreground/60 uppercase tracking-[0.3em]">Today&apos;s Total Cost</p>
+                          </div>
+                          <div className="flex items-baseline gap-1">
+                              <span className="text-sm font-bold text-muted-foreground/60">ETB</span>
+                              <h2 className="text-3xl font-black text-[#10192E] tracking-tighter font-headline">
+                                {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </h2>
+                          </div>
+                      </div>
+                      
+                      <div className={cn(
+                          "px-3 py-1.5 rounded-xl text-[11px] font-black flex items-center gap-1.5 mb-1 shadow-sm",
+                          todayTrendPercent >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
+                      )}>
+                          {todayTrendPercent >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
+                          {Math.abs(todayTrendPercent).toFixed(1)}%
+                      </div>
+                  </div>
+
+                  <div className="w-full h-[64px] relative">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={weeklyChartData}>
+                          <defs>
+                            <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.25}/>
+                              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <RechartsTooltip 
+                            content={({ active, payload }) => {
+                              if (active && payload && payload.length) {
+                                return (
+                                  <div className="bg-white/90 backdrop-blur-md px-3 py-2 border border-primary/10 rounded-xl shadow-2xl text-[10px]">
+                                    <p className="font-black text-primary tracking-tighter">ETB {payload[0].value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                  </div>
+                                );
+                              }
+                              return null;
+                            }}
+                          />
+                          <Area 
+                            type="monotone" 
+                            dataKey="total" 
+                            stroke="hsl(var(--primary))" 
+                            strokeWidth={3}
+                            fillOpacity={1} 
+                            fill="url(#colorTrend)" 
+                            animationDuration={1500}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                  </div>
+
+                  <div className="flex justify-between text-[9px] font-black text-muted-foreground/30 uppercase tracking-[0.3em] px-1">
+                      <span>{weeklyChartData[0]?.name}</span>
+                      <span>{weeklyChartData[3]?.name}</span>
+                      <span className="text-primary/60">NOW</span>
+                  </div>
               </div>
           </CardContent>
       </Card>
