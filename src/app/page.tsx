@@ -3,11 +3,11 @@
 
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2 } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
-import { collection, query, where, getDocs, doc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, writeBatch } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
@@ -15,10 +15,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Progress } from "@/components/ui/progress";
 import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
+import { sendAdminPayrollSummary } from "@/app/payroll/actions";
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) return date.toDate();
@@ -226,6 +227,7 @@ export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
+  const { toast } = useToast();
   
   const employeesRef = useMemoFirebase(() => {
     if (!firestore || !user) return null;
@@ -242,6 +244,7 @@ export default function DashboardPage() {
   const [lazyLoading, setLazyLoading] = useState(false);
   const [unifiedLoading, setUnifiedLoading] = useState(false);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
+  const [isMarkingPaid, setIsMarkingPaid] = useState(false);
   const [activeTab, setActiveTab] = useState("today");
 
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -495,7 +498,6 @@ export default function DashboardPage() {
   const todayTrendPercent = useMemo(() => {
     if (weeklyChartData.length < 2 || realTimeLoading) return 0;
     const today = weeklyChartData[6].total;
-    // Average of previous 6 days
     const pastDays = weeklyChartData.slice(0, 6);
     const average = pastDays.reduce((acc, curr) => acc + curr.total, 0) / 6;
     if (average === 0) return today > 0 ? 100 : 0;
@@ -700,6 +702,65 @@ export default function DashboardPage() {
     return { data, grandTotal };
   }, [activeEmployees, lazyAttendance, selectedMonthStart, normalOTRate, sundayOTRate]);
 
+  const handleMarkPaid = async (type: 'Weekly' | 'Monthly', data: any[], periodLabel: string, periodValue: string) => {
+    if (!firestore || !user || data.length === 0) return;
+    setIsMarkingPaid(true);
+
+    const batch = writeBatch(firestore);
+    const recordedAt = new Date().toISOString();
+    let telegramSummary = `✅ *PAYROLL MARKED AS PAID*\n`;
+    telegramSummary += `📊 Type: ${type}\n`;
+    telegramSummary += `📅 Period: ${periodLabel}\n`;
+    telegramSummary += `--------------------\n\n`;
+
+    let totalAmount = 0;
+
+    data.forEach(item => {
+      const employeeId = item.emp?.id || item.employeeId;
+      const employeeName = item.emp?.name || item.name;
+      const amount = item.total || item.amount || 0;
+      totalAmount += amount;
+
+      // Deterministic ID to prevent duplicates for the same period
+      const payoutId = `payout_${type.toUpperCase()}_${employeeId}_${periodValue}`;
+      const recordRef = doc(firestore, 'employeeExpenses', payoutId);
+
+      batch.set(recordRef, {
+        id: payoutId,
+        employeeId,
+        employeeName,
+        amount,
+        type,
+        period: periodValue,
+        periodLabel,
+        recordedAt,
+        paymentStatus: 'Paid',
+        category: 'Payroll',
+        details: {
+           lateMins: item.lateMins || 0,
+           absentHours: item.absentHours || 0,
+           overtimeHours: item.overtimeHours || 0,
+           overtimeAmount: item.overtimeAmount || 0,
+        }
+      }, { merge: true });
+
+      telegramSummary += `• *${employeeName}*: ETB ${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
+    });
+
+    telegramSummary += `\n--------------------\n`;
+    telegramSummary += `*TOTAL PAID: ETB ${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}*`;
+
+    try {
+      await batch.commit();
+      await sendAdminPayrollSummary(telegramSummary);
+      toast({ title: "Payroll Recorded", description: `Saved ${data.length} payouts to database and notified admin.` });
+    } catch (e) {
+      toast({ variant: 'destructive', title: "Error", description: "Failed to process payment records." });
+    } finally {
+      setIsMarkingPaid(false);
+    }
+  };
+
   const unifiedMonthTotal = useMemo(() => {
     if (!selectedUnifiedMonth || !allEmployees || allEmployees.length === 0) return 0;
     const start = startOfDay(new Date(selectedUnifiedMonth));
@@ -833,7 +894,7 @@ export default function DashboardPage() {
                       <div>
                           <div className="flex items-center gap-2 mb-2">
                               <div className="w-1.5 h-1.5 rounded-full bg-[#3478F6] animate-pulse" />
-                              <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.14em]">Today&apos;s Total Cost</p>
+                              <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.14em]">Today's Total Cost</p>
                           </div>
                           <div className="flex items-baseline gap-1">
                               <span className="text-[16px] font-semibold text-[#9AA3B8]">ETB</span>
@@ -1044,9 +1105,19 @@ export default function DashboardPage() {
                                         />
                                     ))}
                                 </div>
-                                <div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm">
-                                    <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL WEEKLY PAYROLL</p>
-                                    <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm space-y-6">
+                                    <div>
+                                        <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL WEEKLY PAYROLL</p>
+                                        <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                    <Button 
+                                        onClick={() => handleMarkPaid('Weekly', weeklySummary.data, periodOptions.weeks.find(w => w.value === selectedWeekStart)?.label || selectedWeekStart, selectedWeekStart)}
+                                        disabled={isMarkingPaid || weeklySummary.data.length === 0}
+                                        className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95"
+                                    >
+                                        {isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
+                                        Mark as Paid & Notify Admin
+                                    </Button>
                                 </div>
                             </div>
                         )}
@@ -1078,9 +1149,19 @@ export default function DashboardPage() {
                                         />
                                     ))}
                                 </div>
-                                <div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm">
-                                    <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL MONTHLY PAYROLL</p>
-                                    <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                <div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm space-y-6">
+                                    <div>
+                                        <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL MONTHLY PAYROLL</p>
+                                        <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    </div>
+                                    <Button 
+                                        onClick={() => handleMarkPaid('Monthly', monthlySummary.data, periodOptions.months.find(m => m.value === selectedMonthStart)?.label || selectedMonthStart, selectedMonthStart)}
+                                        disabled={isMarkingPaid || monthlySummary.data.length === 0}
+                                        className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95"
+                                    >
+                                        {isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
+                                        Mark as Paid & Notify Admin
+                                    </Button>
                                 </div>
                             </div>
                         )}
