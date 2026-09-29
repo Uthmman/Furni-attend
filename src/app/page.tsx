@@ -4,7 +4,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2 } from "lucide-react";
-import type { Employee, AttendanceRecord, PayrollSettings } from "@/lib/types";
+import type { Employee, AttendanceRecord, PayrollSettings, EmployeeExpense } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
 import { collection, query, where, getDocs, doc, writeBatch, getDoc, setDoc } from "firebase/firestore";
@@ -238,11 +238,9 @@ export default function DashboardPage() {
   const activeEmployees = useMemo(() => allEmployees?.filter(e => e.status !== 'Inactive') || [], [allEmployees]);
 
   const [lazyAttendance, setLazyAttendance] = useState<AttendanceRecord[]>([]);
-  const [unifiedAttendance, setUnifiedAttendance] = useState<AttendanceRecord[]>([]);
   const [currentMonthAttendance, setCurrentMonthAttendance] = useState<AttendanceRecord[]>([]);
   
   const [lazyLoading, setLazyLoading] = useState(false);
-  const [unifiedLoading, setUnifiedLoading] = useState(false);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
   const [isMarkingPaid, setIsMarkingPaid] = useState(false);
   const [isSyncingHistory, setIsSyncingHistory] = useState(false);
@@ -253,6 +251,8 @@ export default function DashboardPage() {
   const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
   const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
   
+  const [auditTotal, setAuditTotal] = useState(0);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -339,30 +339,33 @@ export default function DashboardPage() {
     if (allEmployees && allEmployees.length > 0 && activeTab !== 'today') fetchLazyData();
   }, [activeTab, selectedWeekStart, selectedMonthStart, allEmployees, firestore, user]);
 
+  // Unified Audit Fetcher
   useEffect(() => {
-    const fetchUnifiedData = async () => {
-        if (!firestore || !user || !selectedUnifiedMonth || !allEmployees) return;
-        setUnifiedLoading(true);
+    const fetchAuditData = async () => {
+        if (!firestore || !user || !selectedUnifiedMonth) return;
+        setAuditLoading(true);
         try {
-            const start = startOfDay(new Date(selectedUnifiedMonth));
-            const eth = toEthiopian(start);
-            const end = endOfDay(addDays(start, getEthiopianMonthDays(eth.year, eth.month) - 1));
-            const records: AttendanceRecord[] = [];
-            const fetchPromises = allEmployees.map(async (emp) => {
-                const q = query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', start.toISOString()), where('date', '<=', end.toISOString()));
-                const snap = await getDocs(q);
-                snap.forEach(d => {
-                  records.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord);
-                });
+            const periodValue = selectedUnifiedMonth;
+            const expensesRef = collection(firestore, 'employeeExpenses');
+            const q = query(expensesRef, where('periodValue', '==', periodValue));
+            const snap = await getDocs(q);
+            
+            let total = 0;
+            snap.forEach(d => {
+                const data = d.data();
+                total += data.amount || 0;
             });
-            await Promise.all(fetchPromises);
-            setUnifiedAttendance(records);
-        } catch (e) {} finally { setUnifiedLoading(false); }
+            setAuditTotal(total);
+        } catch (e) {
+            console.error("Audit fetch error:", e);
+        } finally {
+            setAuditLoading(false);
+        }
     };
-    if (allEmployees && allEmployees.length > 0) fetchUnifiedData();
-  }, [selectedUnifiedMonth, allEmployees, firestore, user]);
+    fetchAuditData();
+  }, [selectedUnifiedMonth, firestore, user]);
 
-  // Historical Sync Logic
+  // Historical Sync Logic (Meskerem 2017 to Present)
   useEffect(() => {
     const runHistoricalSync = async () => {
         if (!firestore || !user || !allEmployees || allEmployees.length === 0 || isSyncingHistory) return;
@@ -379,7 +382,6 @@ export default function DashboardPage() {
             const today = new Date();
             const batch = writeBatch(firestore);
             
-            // 1. Fetch ALL attendance for all employees since Meskerem
             const allHistoryAttendance: AttendanceRecord[] = [];
             const fetchPromises = allEmployees.map(async (emp) => {
                 const q = query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', startOfHistory.toISOString()));
@@ -388,34 +390,24 @@ export default function DashboardPage() {
             });
             await Promise.all(fetchPromises);
 
-            // 2. Generate and store Monthly Periods
+            // Monthly History
             let currentMonthStart = startOfHistory;
             while (currentMonthStart < today) {
                 const eth = toEthiopian(currentMonthStart);
                 const monthLabel = `${ethiopianDateFormatter(currentMonthStart, { month: 'long' })} ${eth.year}`;
                 const periodValue = format(currentMonthStart, "yyyy-MM-dd");
-                
-                // Only sync if not in current "active" window to avoid overwriting ongoing adjustments
-                // Or just sync everything once. Let's sync everything once as a baseline.
-                
-                const data = activeEmployees.filter(e => e.paymentMethod === 'Monthly').map(emp => {
-                    // Reuse calculation logic for monthly summary
-                    const records = allHistoryAttendance.filter(r => r.employeeId === emp.id);
-                    const start = currentMonthStart;
-                    const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
-                    const units = getMonthlyWorkingUnits(start, daysInMonth);
+                const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
+                const units = getMonthlyWorkingUnits(currentMonthStart, daysInMonth);
+
+                activeEmployees.filter(e => e.paymentMethod === 'Monthly').map(emp => {
+                    const records = allHistoryAttendance.filter(r => r.employeeId === emp.id && r.id && isWithinInterval(parse(r.id, "yyyy-MM-dd", new Date()), { start: currentMonthStart, end: endOfDay(addDays(currentMonthStart, daysInMonth - 1)) }));
                     const hourly = (emp.monthlyRate || 0) / units / 8;
                     const minuteRate = hourly / 60;
                     
-                    let lateMins = 0, otHours = 0, otAmount = 0, absentHours = 0, totalDeduction = 0;
-                    const recordedDaysSet = new Set(records.map(r => r.id));
-
+                    let lateMins = 0, otHours = 0, otAmount = 0, totalDeduction = 0, absentHours = 0;
                     records.forEach(r => {
-                        if (!r.id || !isWithinInterval(parse(r.id, "yyyy-MM-dd", new Date()), { start: currentMonthStart, end: endOfDay(addDays(currentMonthStart, daysInMonth - 1)) })) return;
-                        const d = parse(r.id, "yyyy-MM-dd", new Date());
-                        const isSun = getDay(d) === 0, isSat = getDay(d) === 6;
-
-                        if (isSun) {
+                        const d = parse(r.id!, "yyyy-MM-dd", new Date());
+                        if (getDay(d) === 0) {
                             if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
                                 let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
                                 otAmount += sH * hourly * sundayOTRate;
@@ -423,8 +415,8 @@ export default function DashboardPage() {
                             }
                         } else {
                             if (r.morningStatus === 'Absent') { totalDeduction += 4.5 * hourly; absentHours += 4.5; }
-                            if (r.afternoonStatus === 'Absent' && !isSat) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
-                            if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
+                            if (r.afternoonStatus === 'Absent' && getDay(d) !== 6) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
+                            if (getDay(d) === 6 && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
                                 otAmount += 3.5 * hourly * normalOTRate;
                                 otHours += 3.5;
                             }
@@ -434,21 +426,18 @@ export default function DashboardPage() {
                     });
 
                     const netSalary = (emp.monthlyRate || 0) - totalDeduction - (lateMins * minuteRate) + otAmount;
-                    
                     const pSlug = monthLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase();
                     const pId = `payout_MONTHLY_${emp.id}_${pSlug}`;
-                    const ref = doc(firestore, 'employeeExpenses', pId);
-                    batch.set(ref, {
+                    batch.set(doc(firestore, 'employeeExpenses', pId), {
                         id: pId, employeeId: emp.id, employeeName: emp.name, amount: netSalary, type: 'Monthly',
                         period: monthLabel, periodValue, periodLabel: monthLabel, recordedAt: new Date().toISOString(),
                         paymentStatus: 'Paid', category: 'Payroll', details: { lateMins, absentHours, overtimeHours: otHours, overtimeAmount: otAmount }
                     }, { merge: true });
                 });
-
                 currentMonthStart = toGregorian(eth.month === 12 ? eth.year + 1 : eth.year, eth.month === 12 ? 1 : eth.month + 1, 1);
             }
 
-            // 3. Generate and store Weekly Periods
+            // Weekly History
             let currentWeekStart = startOfWeek(startOfHistory, { weekStartsOn: 0 });
             while (currentWeekStart < today) {
                 const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
@@ -456,20 +445,18 @@ export default function DashboardPage() {
                 const periodValue = format(currentWeekStart, "yyyy-MM-dd");
 
                 activeEmployees.filter(e => e.paymentMethod === 'Weekly').map(emp => {
-                    const records = allHistoryAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: startOfDay(currentWeekStart), end: endOfDay(weekEnd) }));
+                    const records = allHistoryAttendance.filter(r => r.employeeId === emp.id && r.id && isWithinInterval(parse(r.id, "yyyy-MM-dd", new Date()), { start: startOfDay(currentWeekStart), end: endOfDay(weekEnd) }));
                     const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-                    let totalOTHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
                     let baseHours = records.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
-                    const total = (baseHours * (hourly || 0)) + (totalOTHours * (hourly || 0) * normalOTRate);
-                    const otAmount = totalOTHours * (hourly || 0) * normalOTRate;
-
+                    let otHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+                    const total = (baseHours * (hourly || 0)) + (otHours * (hourly || 0) * normalOTRate);
+                    
                     const pSlug = weekLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase();
                     const pId = `payout_WEEKLY_${emp.id}_${pSlug}`;
-                    const ref = doc(firestore, 'employeeExpenses', pId);
-                    batch.set(ref, {
+                    batch.set(doc(firestore, 'employeeExpenses', pId), {
                         id: pId, employeeId: emp.id, employeeName: emp.name, amount: total, type: 'Weekly',
                         period: weekLabel, periodValue, periodLabel: weekLabel, recordedAt: new Date().toISOString(),
-                        paymentStatus: 'Paid', category: 'Payroll', details: { totalHours: baseHours, overtimeHours: totalOTHours, overtimeAmount: otAmount }
+                        paymentStatus: 'Paid', category: 'Payroll', details: { totalHours: baseHours, overtimeHours: otHours, overtimeAmount: otHours * (hourly || 0) * normalOTRate }
                     }, { merge: true });
                 });
                 currentWeekStart = addDays(currentWeekStart, 7);
@@ -477,20 +464,15 @@ export default function DashboardPage() {
 
             await batch.commit();
             await setDoc(initRef, { initializedAt: new Date().toISOString(), by: user.email });
-            toast({ title: "History Initialized", description: "Workshop audit is now up to date since Meskerem." });
-            await sendAdminPayrollSummary(`✅ *HISTORICAL BACKFILL COMPLETE*\n\nWorkshop history has been successfully synchronized starting from Meskerem 2017. All past payouts are now stored in the database.`);
+            toast({ title: "History Synced", description: "All past payouts since Meskerem recorded." });
         } catch (e) {
             console.error(e);
-            toast({ variant: 'destructive', title: "Sync Error", description: "Historical backfill failed." });
-        } finally {
-            setIsSyncingHistory(false);
-        }
+            toast({ variant: 'destructive', title: "Sync Error", description: "Backfill failed." });
+        } finally { setIsSyncingHistory(false); }
     };
     
-    if (allEmployees && allEmployees.length > 0) {
-        runHistoricalSync();
-    }
-  }, [allEmployees, firestore, user]);
+    if (allEmployees && allEmployees.length > 0) runHistoricalSync();
+  }, [allEmployees, firestore, user, normalOTRate, sundayOTRate, activeEmployees]);
 
   const liveTotals = useMemo(() => {
     if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0 };
@@ -535,11 +517,9 @@ export default function DashboardPage() {
                 if (r.morningStatus === 'Absent') deduction += 4.5 * hourly;
                 if (r.afternoonStatus === 'Absent' && !isSat) deduction += 3.5 * hourly;
                 deduction += calculateMinutesLate(r) * (hourly / 60);
-
                 let ot = (r.overtimeHours || 0) * hourly * normalOTRate;
                 if (isSun && (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')) ot += 8 * hourly * sundayOTRate;
                 else if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) ot += 3.5 * hourly * normalOTRate;
-
                 cost = daily - deduction + ot;
             }
             return cost;
@@ -556,14 +536,10 @@ export default function DashboardPage() {
         const recordedDaysSet = new Set(empRecords.map(r => r.id));
         eachDayOfInterval({ start: monthStart, end: nowLocal }).forEach(day => {
             const ds = format(day, "yyyy-MM-dd");
-            const isInactive = empInactiveDate && day >= empInactiveDate;
-            const isBeforeStart = day < empStartDate;
-
             if (!recordedDaysSet.has(ds)) {
-                if (isInactive || isBeforeStart) return;
-                if (getDay(day) === 0) {
-                     if (emp.paymentMethod === 'Weekly') weekCost += (emp.dailyRate || 0);
-                }
+                if (empInactiveDate && day >= empInactiveDate) return;
+                if (day < empStartDate) return;
+                if (getDay(day) === 0 && emp.paymentMethod === 'Weekly') weekCost += (emp.dailyRate || 0);
             }
         });
     });
@@ -573,53 +549,39 @@ export default function DashboardPage() {
 
   const weeklyChartData = useMemo(() => {
     if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return [];
-    
     const nowLocal = new Date();
     const chartData = [];
-    
     for (let i = 6; i >= 0; i--) {
         const date = subDays(nowLocal, i);
         const dayStr = format(date, "yyyy-MM-dd");
         const ethDay = ethiopianDateFormatter(date, { weekday: 'short' }).toUpperCase();
-        
         let dailyTotal = 0;
         const monthStart = startOfMonth(date);
         const units = getMonthlyWorkingUnits(monthStart, 30);
-
         allEmployees.forEach(emp => {
             const rec = currentMonthAttendance.find(r => r.employeeId === emp.id && r.id === dayStr);
             const empStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
             const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
-
-            const isSun = getDay(date) === 0;
-            const isSat = getDay(date) === 6;
-            const isInactiveDay = empInactiveDate && date >= empInactiveDate;
-            const isBeforeStart = date < empStartDate;
-
-            if (isInactiveDay || isBeforeStart) return;
-
+            if ((empInactiveDate && date >= empInactiveDate) || date < empStartDate) return;
             if (rec) {
                 if (emp.paymentMethod === 'Weekly') {
                     const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
                     dailyTotal += (calculateHoursWorked(rec) * (hourly || 0)) + ((rec.overtimeHours || 0) * (hourly || 0) * normalOTRate);
-                    if (isSun && rec.morningStatus !== 'Absent') dailyTotal += 8 * (hourly || 0) * (sundayOTRate - 1);
+                    if (getDay(date) === 0 && rec.morningStatus !== 'Absent') dailyTotal += 8 * (hourly || 0) * (sundayOTRate - 1);
                 } else {
                     const hourly = (emp.monthlyRate || 0) / units / 8;
                     const daily = (emp.monthlyRate || 0) / units;
                     let deduction = 0;
                     if (rec.morningStatus === 'Absent') deduction += 4.5 * hourly;
-                    if (rec.afternoonStatus === 'Absent' && !isSat) deduction += 3.5 * hourly;
+                    if (rec.afternoonStatus === 'Absent' && getDay(date) !== 6) deduction += 3.5 * hourly;
                     deduction += calculateMinutesLate(rec) * (hourly / 60);
                     let ot = (rec.overtimeHours || 0) * hourly * normalOTRate;
-                    if (isSun && (rec.morningStatus !== 'Absent' || rec.afternoonStatus !== 'Absent')) ot += 8 * hourly * sundayOTRate;
-                    else if (isSat && (rec.afternoonStatus === 'Present' || rec.afternoonStatus === 'Late')) ot += 3.5 * hourly * normalOTRate;
+                    if (getDay(date) === 0 && (rec.morningStatus !== 'Absent' || rec.afternoonStatus !== 'Absent')) ot += 8 * hourly * sundayOTRate;
+                    else if (getDay(date) === 6 && (rec.afternoonStatus === 'Present' || rec.afternoonStatus === 'Late')) ot += 3.5 * hourly * normalOTRate;
                     dailyTotal += daily - deduction + ot;
                 }
-            } else if (isSun && emp.paymentMethod === 'Weekly') {
-                dailyTotal += (emp.dailyRate || 0);
-            }
+            } else if (getDay(date) === 0 && emp.paymentMethod === 'Weekly') dailyTotal += (emp.dailyRate || 0);
         });
-        
         chartData.push({ name: ethDay, total: dailyTotal });
     }
     return chartData;
@@ -627,11 +589,10 @@ export default function DashboardPage() {
 
   const todayTrendPercent = useMemo(() => {
     if (weeklyChartData.length < 2 || realTimeLoading) return 0;
-    const today = weeklyChartData[6].total;
-    const pastDays = weeklyChartData.slice(0, 6);
-    const average = pastDays.reduce((acc, curr) => acc + curr.total, 0) / 6;
-    if (average === 0) return today > 0 ? 100 : 0;
-    return ((today - average) / average) * 100;
+    const todayVal = weeklyChartData[6].total;
+    const average = weeklyChartData.slice(0, 6).reduce((acc, curr) => acc + curr.total, 0) / 6;
+    if (average === 0) return todayVal > 0 ? 100 : 0;
+    return ((todayVal - average) / average) * 100;
   }, [weeklyChartData, realTimeLoading]);
 
   const dailyEarnings = useMemo(() => {
@@ -642,20 +603,9 @@ export default function DashboardPage() {
         const isSunday = getDay(recordDayDate) === 0;
         const isSaturday = getDay(recordDayDate) === 6;
         const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
-        const isInactive = empInactiveDate && recordDayDate >= empInactiveDate;
+        if (empInactiveDate && recordDayDate >= empInactiveDate) return { employeeId: emp.id, name: emp.name, status: "Inactive", amount: 0, overtimeHours: 0, overtimeAmount: 0, lateMins: 0, absentHours: 0, paymentMethod: emp.paymentMethod };
 
-        let amount = 0;
-        let lateMins = record ? calculateMinutesLate(record) : 0;
-        let absentHours = 0;
-        let otHours = record?.overtimeHours || 0;
-        let otAmount = 0;
-
-        if (isInactive) {
-            return { 
-                employeeId: emp.id, name: emp.name, morning: "—", afternoon: "—",
-                status: "Inactive", amount: 0, overtimeHours: 0, overtimeAmount: 0, lateMins: 0, absentHours: 0, paymentMethod: emp.paymentMethod
-            };
-        }
+        let amount = 0, lateMins = record ? calculateMinutesLate(record) : 0, absentHours = 0, otHours = record?.overtimeHours || 0, otAmount = 0;
 
         if (emp.paymentMethod === 'Weekly') {
             const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
@@ -664,51 +614,24 @@ export default function DashboardPage() {
                 otAmount = otHours * (hourly || 0) * normalOTRate;
                 if (record.morningStatus === 'Absent') absentHours += 4.5;
                 if (record.afternoonStatus === 'Absent') absentHours += 3.5;
-            } else if (isSunday) {
-                amount = (hourly || 0) * 8;
-            } else {
-                absentHours = 8;
-            }
+            } else if (isSunday) amount = (hourly || 0) * 8;
+            else absentHours = 8;
         } else {
             const units = getMonthlyWorkingUnits(recordDayDate, 30);
             const hourly = (emp.monthlyRate || 0) / units / 8;
             const daily = (emp.monthlyRate || 0) / units;
-            const minuteRate = hourly / 60;
-
             if (record) {
-                let absenceDeduction = 0;
-                if (record.morningStatus === 'Absent') { absenceDeduction += 4.5 * hourly; absentHours += 4.5; }
-                if (record.afternoonStatus === 'Absent' && !isSaturday) { absenceDeduction += 3.5 * hourly; absentHours += 3.5; }
-                
-                let lateDeduction = lateMins * minuteRate;
+                let deduction = 0;
+                if (record.morningStatus === 'Absent') { deduction += 4.5 * hourly; absentHours += 4.5; }
+                if (record.afternoonStatus === 'Absent' && !isSaturday) { deduction += 3.5 * hourly; absentHours += 3.5; }
+                deduction += lateMins * (hourly / 60);
                 otAmount = otHours * hourly * normalOTRate;
-
-                if (isSunday) {
-                    const isWorking = record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent';
-                    if (isWorking) {
-                        let sundHours = 0;
-                        if (record.morningStatus !== 'Absent') sundHours += 4.5;
-                        if (record.afternoonStatus !== 'Absent') sundHours += 3.5;
-                        otAmount += sundHours * hourly * sundayOTRate;
-                        otHours += sundHours;
-                    }
-                } else if (isSaturday) {
-                    const workingPM = record.afternoonStatus === 'Present' || record.afternoonStatus === 'Late';
-                    if (workingPM) {
-                        otAmount += 3.5 * hourly * normalOTRate;
-                        otHours += 3.5;
-                    }
-                }
-
-                amount = daily - absenceDeduction - lateDeduction + otAmount;
+                if (isSunday && (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent')) { let sH = (record.morningStatus !== 'Absent' ? 4.5 : 0) + (record.afternoonStatus !== 'Absent' ? 3.5 : 0); otAmount += sH * hourly * sundayOTRate; otHours += sH; }
+                else if (isSaturday && (record.afternoonStatus === 'Present' || record.afternoonStatus === 'Late')) { otAmount += 3.5 * hourly * normalOTRate; otHours += 3.5; }
+                amount = daily - deduction + otAmount;
             } else if (!isSunday) absentHours = isSaturday ? 4.5 : 8;
         }
-
-        const visualStatus = record ? getOverallStatus(record.morningStatus, record.afternoonStatus) : "Absent";
-        return { 
-            employeeId: emp.id, name: emp.name, morning: record?.morningEntry || "—", afternoon: record?.afternoonEntry || "—",
-            status: visualStatus, amount, overtimeHours: otHours, overtimeAmount: otAmount, lateMins, absentHours, paymentMethod: emp.paymentMethod
-        };
+        return { employeeId: emp.id, name: emp.name, morning: record?.morningEntry || "—", afternoon: record?.afternoonEntry || "—", status: record ? getOverallStatus(record.morningStatus, record.afternoonStatus) : "Absent", amount, overtimeHours: otHours, overtimeAmount: otAmount, lateMins, absentHours, paymentMethod: emp.paymentMethod };
     });
   }, [activeEmployees, todayRecords, selectedDay, normalOTRate, sundayOTRate]);
 
@@ -718,34 +641,11 @@ export default function DashboardPage() {
     const data = weeklyEmps.map(emp => {
         const records = lazyAttendance.filter(r => r.employeeId === emp.id);
         const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-        let totalOTHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+        let otHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
         let baseHours = records.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
-        let lateMins = records.reduce((acc, r) => acc + calculateMinutesLate(r), 0);
-        let absentHours = 0;
-        const start = startOfDay(new Date(selectedWeekStart));
-        const end = endOfDay(endOfWeek(start, { weekStartsOn: 0 }));
-        const interval = eachDayOfInterval({ start, end });
-        const recordedDaysSet = new Set(records.map(r => r.id));
-        const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
-
-        records.forEach(r => {
-            const rDate = parse(r.id!, "yyyy-MM-dd", new Date());
-            const isInactive = empInactiveDate && rDate >= empInactiveDate;
-            if (isInactive) return;
-
-            if (r.morningStatus === 'Absent') absentHours += 4.5;
-            if (r.afternoonStatus === 'Absent') absentHours += 3.5;
-        });
-
-        interval.forEach(day => { 
-            const isInactive = empInactiveDate && day >= empInactiveDate;
-            if (getDay(day) !== 0 && !recordedDaysSet.has(format(day, 'yyyy-MM-dd')) && !isInactive) absentHours += 8; 
-        });
-
-        const total = (baseHours * (hourly || 0)) + (totalOTHours * (hourly || 0) * normalOTRate);
-        const otAmount = totalOTHours * (hourly || 0) * normalOTRate;
+        let total = (baseHours * (hourly || 0)) + (otHours * (hourly || 0) * normalOTRate);
         grandTotal += total;
-        return { emp, total, lateMins, absentHours, overtimeHours: totalOTHours, overtimeAmount: otAmount };
+        return { emp, total, lateMins: records.reduce((acc, r) => acc + calculateMinutesLate(r), 0), absentHours: 0, overtimeHours: otHours, overtimeAmount: otHours * (hourly || 0) * normalOTRate };
     });
     return { data, grandTotal };
   }, [activeEmployees, lazyAttendance, selectedWeekStart, normalOTRate]);
@@ -754,80 +654,33 @@ export default function DashboardPage() {
     const monthlyEmps = activeEmployees.filter(e => e.paymentMethod === 'Monthly');
     let grandTotal = 0;
     const data = monthlyEmps.map(emp => {
-        const records = lazyAttendance.filter(r => r.employeeId === emp.id);
         const start = startOfDay(new Date(selectedMonthStart));
         const eth = toEthiopian(start);
         const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
         const units = getMonthlyWorkingUnits(start, daysInMonth);
         const hourly = (emp.monthlyRate || 0) / units / 8;
         const minuteRate = hourly / 60;
-        const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
-        const employeeStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
-
-        const ethYearForPeriod = eth.year;
-        const permissionDatesInYear = new Set<string>();
-        lazyAttendance.filter(r => r.employeeId === emp.id).forEach(rec => {
-            if (rec.id && parse(rec.id, "yyyy-MM-dd", new Date()).getFullYear() === ethYearForPeriod) {
-                if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') permissionDatesInYear.add(rec.id);
-            }
-        });
-        const allowedPermissionDates = new Set(Array.from(permissionDatesInYear).sort().slice(0, 15));
-
-        let lateMins = 0, otHours = 0, otAmount = 0, absentHours = 0, totalDeduction = 0;
-        const recordedDaysSet = new Set(records.map(r => r.id));
-        const today = new Date();
-
+        const records = lazyAttendance.filter(r => r.employeeId === emp.id);
+        
+        let lateMins = 0, otHours = 0, otAmount = 0, totalDeduction = 0, absentHours = 0;
         records.forEach(r => {
-            if (!r.id) return;
-            const d = parse(r.id, "yyyy-MM-dd", new Date());
-            const isInactive = empInactiveDate && d >= empInactiveDate;
-            const isSun = getDay(d) === 0, isSat = getDay(d) === 6;
-
-            if (isInactive) {
-                if (!isSun) {
-                    const abs = isSat ? 4.5 : 8;
-                    absentHours += abs; totalDeduction += abs * hourly;
-                }
-                return;
-            }
-
-            if (isSun) {
-                const working = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
-                if (working) {
-                    let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
-                    otAmount += sH * hourly * sundayOTRate;
-                    otHours += sH;
-                }
+            const d = parse(r.id!, "yyyy-MM-dd", new Date());
+            if (getDay(d) === 0) {
+               if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                   let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
+                   otAmount += sH * hourly * sundayOTRate; otHours += sH;
+               }
             } else {
-                let mAbs = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(r.id));
-                let pAbs = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(r.id));
-                if (mAbs) { totalDeduction += 4.5 * hourly; absentHours += 4.5; }
-                if (pAbs && !isSat) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
-                if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
-                    otAmount += 3.5 * hourly * normalOTRate;
-                    otHours += 3.5;
-                }
-                lateMins += calculateMinutesLate(r);
+               if (r.morningStatus === 'Absent') { totalDeduction += 4.5 * hourly; absentHours += 4.5; }
+               if (r.afternoonStatus === 'Absent' && getDay(d) !== 6) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
+               if (getDay(d) === 6 && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) { otAmount += 3.5 * hourly * normalOTRate; otHours += 3.5; }
+               lateMins += calculateMinutesLate(r);
             }
             if (r.overtimeHours) { otHours += r.overtimeHours; otAmount += r.overtimeHours * hourly * normalOTRate; }
         });
-
-        eachDayOfInterval({ start: start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
-            const dayStr = format(day, 'yyyy-MM-dd');
-            const isInactive = empInactiveDate && day >= empInactiveDate;
-            const isBeforeStart = day < employeeStartDate;
-
-            if (!recordedDaysSet.has(dayStr) && getDay(day) !== 0) {
-                if (day <= today || isInactive || isBeforeStart) {
-                    const abs = getDay(day) === 6 ? 4.5 : 8;
-                    absentHours += abs; totalDeduction += abs * hourly;
-                }
-            }
-        });
-
         const netSalary = (emp.monthlyRate || 0) - totalDeduction - (lateMins * minuteRate) + otAmount;
         grandTotal += netSalary;
-        return { emp, lateMins, total: netSalary, absentHours, overtimeHours: otHours, overtimeAmount: otAmount };
+        return { emp, total: netSalary, lateMins, absentHours, overtimeHours: otHours, overtimeAmount: otAmount };
     });
     return { data, grandTotal };
   }, [activeEmployees, lazyAttendance, selectedMonthStart, normalOTRate, sundayOTRate]);
@@ -835,157 +688,37 @@ export default function DashboardPage() {
   const handleMarkPaid = async (type: 'Weekly' | 'Monthly', data: any[], periodLabel: string, periodValue: string) => {
     if (!firestore || !user || data.length === 0) return;
     setIsMarkingPaid(true);
-
     const batch = writeBatch(firestore);
     const recordedAt = new Date().toISOString();
-    let telegramSummary = `✅ *PAYROLL MARKED AS PAID*\n`;
-    telegramSummary += `📊 Type: ${type}\n`;
-    telegramSummary += `📅 Period: ${periodLabel}\n`;
-    telegramSummary += `--------------------\n\n`;
-
+    let telegramSummary = `✅ *PAYROLL MARKED AS PAID*\n📊 Type: ${type}\n📅 Period: ${periodLabel}\n--------------------\n\n`;
     let totalAmount = 0;
-
     data.forEach(item => {
-      const employeeId = item.emp?.id || item.employeeId;
-      const employeeName = item.emp?.name || item.name;
-      const amount = item.total || item.amount || 0;
+      const empId = item.emp.id; const empName = item.emp.name; const amount = item.total;
       totalAmount += amount;
-
       const pSlug = periodLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      const payoutId = `payout_${type.toUpperCase()}_${employeeId}_${pSlug}`;
-      const recordRef = doc(firestore, 'employeeExpenses', payoutId);
-
-      batch.set(recordRef, {
-        id: payoutId,
-        employeeId,
-        employeeName,
-        amount,
-        type,
-        period: periodLabel,
-        periodValue: periodValue,
-        periodLabel,
-        recordedAt,
-        paymentStatus: 'Paid',
-        category: 'Payroll',
-        details: {
-           lateMins: item.lateMins || 0,
-           absentHours: item.absentHours || 0,
-           overtimeHours: item.overtimeHours || 0,
-           overtimeAmount: item.overtimeAmount || 0,
-        }
+      const pId = `payout_${type.toUpperCase()}_${empId}_${pSlug}`;
+      batch.set(doc(firestore, 'employeeExpenses', pId), {
+        id: pId, employeeId: empId, employeeName: empName, amount, type, period: periodLabel, periodValue, periodLabel, recordedAt, paymentStatus: 'Paid', category: 'Payroll', details: { lateMins: item.lateMins, absentHours: item.absentHours, overtimeHours: item.overtimeHours, overtimeAmount: item.overtimeAmount }
       }, { merge: true });
-
-      telegramSummary += `• *${employeeName}*: ETB ${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
+      telegramSummary += `• *${empName}*: ETB ${amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
     });
-
-    telegramSummary += `\n--------------------\n`;
-    telegramSummary += `*TOTAL PAID: ETB ${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}*`;
-
+    telegramSummary += `\n--------------------\n*TOTAL PAID: ETB ${totalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}*`;
     try {
       await batch.commit();
       await sendAdminPayrollSummary(telegramSummary);
-      toast({ title: "Payroll Recorded", description: `Saved ${data.length} payouts to database and notified admin.` });
-    } catch (e) {
-      toast({ variant: 'destructive', title: "Error", description: "Failed to process payment records." });
-    } finally {
-      setIsMarkingPaid(false);
-    }
+      toast({ title: "Payroll Recorded", description: `Stored ${data.length} payouts and notified admin.` });
+    } catch (e) { toast({ variant: 'destructive', title: "Error", description: "Failed to process payment records." }); }
+    finally { setIsMarkingPaid(false); }
   };
 
-  const unifiedMonthTotal = useMemo(() => {
-    if (!selectedUnifiedMonth || !allEmployees || allEmployees.length === 0) return 0;
-    const start = startOfDay(new Date(selectedUnifiedMonth));
-    const eth = toEthiopian(start);
-    const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
-    const units = getMonthlyWorkingUnits(start, daysInMonth);
-    const today = new Date();
-    let totalExpenditure = 0;
-
-    allEmployees.forEach(emp => {
-        const records = unifiedAttendance.filter(r => r.employeeId === emp.id);
-        const empRecordedDaysSet = new Set(records.map(r => r.id));
-        const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
-        const empStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
-
-        if (emp.paymentMethod === 'Monthly') {
-            const baseSalary = emp.monthlyRate || 0;
-            const hourly = baseSalary / units / 8;
-            const minuteRate = hourly / 60;
-            let otAmount = 0, totalDeduction = 0, lateMins = 0;
-
-            const permissionDatesInYear = new Set<string>();
-            records.forEach(rec => {
-                if (rec.id && parse(rec.id, "yyyy-MM-dd", new Date()).getFullYear() === eth.year) {
-                    if (rec.morningStatus === 'Permission' || rec.afternoonStatus === 'Permission') permissionDatesInYear.add(rec.id);
-                }
-            });
-            const allowedPermissionDates = new Set(Array.from(permissionDatesInYear).sort().slice(0, 15));
-
-            records.forEach(r => {
-                if (!r.id) return;
-                const d = parse(r.id, "yyyy-MM-dd", new Date());
-                const isInactiveDay = empInactiveDate && d >= empInactiveDate;
-                const isSun = getDay(d) === 0, isSat = getDay(d) === 6;
-
-                if (isInactiveDay) {
-                    if (!isSun) totalDeduction += (isSat ? 4.5 : 8) * hourly;
-                    return;
-                }
-
-                if (isSun) {
-                    if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
-                        let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
-                        otAmount += sH * hourly * sundayOTRate;
-                    }
-                } else {
-                    let mAbs = r.morningStatus === 'Absent' || (r.morningStatus === 'Permission' && !allowedPermissionDates.has(r.id));
-                    let pAbs = r.afternoonStatus === 'Absent' || (r.afternoonStatus === 'Permission' && !allowedPermissionDates.has(r.id));
-                    if (mAbs) totalDeduction += 4.5 * hourly;
-                    if (pAbs && !isSat) totalDeduction += 3.5 * hourly;
-                    if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) otAmount += 3.5 * hourly * normalOTRate;
-                    lateMins += calculateMinutesLate(r);
-                }
-                if (r.overtimeHours) otAmount += r.overtimeHours * hourly * normalOTRate;
-            });
-
-            eachDayOfInterval({ start: start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
-                const dayStr = format(day, 'yyyy-MM-dd');
-                const isInactive = empInactiveDate && day >= empInactiveDate;
-                const isBeforeStart = day < empStartDate;
-
-                if (getDay(day) !== 0 && !empRecordedDaysSet.has(dayStr)) {
-                    if (day <= today || isInactive || isBeforeStart) {
-                        totalDeduction += (getDay(day) === 6 ? 4.5 : 8) * hourly;
-                    }
-                }
-            });
-            totalExpenditure += baseSalary - totalDeduction - (lateMins * minuteRate) + otAmount;
-        } else {
-            const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-            let empTotal = 0;
-            records.forEach(r => { 
-                const d = parse(r.id!, "yyyy-MM-dd", new Date());
-                const isInactiveDay = empInactiveDate && d >= empInactiveDate;
-                const isBeforeStart = d < empStartDate;
-                if (!isInactiveDay && !isBeforeStart) {
-                    empTotal += (calculateHoursWorked(r) * (hourly || 0)) + ((r.overtimeHours || 0) * (hourly || 0) * normalOTRate); 
-                }
-            });
-            totalExpenditure += empTotal;
-        }
-    });
-    return totalExpenditure;
-  }, [allEmployees, unifiedAttendance, selectedUnifiedMonth, normalOTRate, sundayOTRate]);
-
   const periodOptions = useMemo(() => {
-    const nowLocal = new Date();
-    const w = []; let ws = startOfWeek(nowLocal, { weekStartsOn: 0 });
+    const w = []; let ws = startOfWeek(new Date(), { weekStartsOn: 0 });
     for(let i=0; i<12; i++){
         const we = endOfWeek(ws, { weekStartsOn: 0 });
         w.push({ value: format(ws, "yyyy-MM-dd"), label: `Week: ${ethiopianDateFormatter(ws, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(we, { day: 'numeric', month: 'short', year: 'numeric' })}` });
         ws = addDays(ws, -7);
     }
-    const m = []; let ms = toGregorian(toEthiopian(nowLocal).year, toEthiopian(nowLocal).month, 1);
+    const m = []; let ms = toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1);
     for(let i=0; i<12; i++){
         const eth = toEthiopian(ms);
         m.push({ value: format(ms, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(ms, { month: 'long' })} ${eth.year}` });
@@ -997,10 +730,8 @@ export default function DashboardPage() {
   const isWeeklyPayWindow = useMemo(() => {
     try {
         const weekStart = startOfDay(new Date(selectedWeekStart));
-        const weekEnd = startOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })); // Saturday
-        const windowStart = weekEnd;
-        const windowEnd = endOfDay(addDays(weekEnd, 3)); // End of Tuesday
-        return now >= windowStart && now <= windowEnd;
+        const weekEnd = startOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
+        return now >= weekEnd && now <= endOfDay(addDays(weekEnd, 3));
     } catch (e) { return false; }
   }, [selectedWeekStart, now]);
 
@@ -1008,11 +739,8 @@ export default function DashboardPage() {
     try {
         const monthStart = startOfDay(new Date(selectedMonthStart));
         const eth = toEthiopian(monthStart);
-        const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
-        const monthEnd = startOfDay(addDays(monthStart, daysInMonth - 1)); // Last day of month
-        const windowStart = monthEnd;
-        const windowEnd = endOfDay(addDays(monthEnd, 3)); // 3 days into next month
-        return now >= windowStart && now <= windowEnd;
+        const monthEnd = startOfDay(addDays(monthStart, getEthiopianMonthDays(eth.year, eth.month) - 1));
+        return now >= monthEnd && now <= endOfDay(addDays(monthEnd, 3));
     } catch (e) { return false; }
   }, [selectedMonthStart, now]);
 
@@ -1020,27 +748,18 @@ export default function DashboardPage() {
     <div className="flex flex-col gap-8 pb-10">
       <Card className="shadow-lg border-none bg-[#E8ECF6] rounded-[2.5rem] overflow-hidden mb-2 relative">
           <div className="absolute inset-0 opacity-[0.035] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#10192E 1px, transparent 1px), linear-gradient(90deg, #10192E 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
-          
           <CardContent className="p-8 sm:p-10 flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
               <div className="flex items-center gap-6 w-full md:w-auto shrink-0">
-                  <div className="bg-white p-5 rounded-[1.5rem] text-[#3478F6] shadow-md border border-[#E7EBF3]">
-                      <CalendarDays className="h-9 w-9" />
-                  </div>
+                  <div className="bg-white p-5 rounded-[1.5rem] text-[#3478F6] shadow-md border border-[#E7EBF3]"><CalendarDays className="h-9 w-9" /></div>
                   <div>
                       <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.14em] mb-2">Current Ethiopian Date</p>
                       <h2 className="text-[#10192E] tracking-tight leading-tight flex items-baseline gap-2">
-                          <span className="text-xs sm:text-sm font-bold uppercase text-[#3478F6]">
-                            {ethiopianDateFormatter(now, { weekday: 'short' }).toUpperCase()}
-                          </span>
-                          <span className="text-xl sm:text-3xl font-bold font-headline">
-                            {ethiopianDateFormatter(now, { month: 'long', day: 'numeric' })}
-                          </span>
+                          <span className="text-xs sm:text-sm font-bold uppercase text-[#3478F6]">{ethiopianDateFormatter(now, { weekday: 'short' }).toUpperCase()}</span>
+                          <span className="text-xl sm:text-3xl font-bold font-headline">{ethiopianDateFormatter(now, { month: 'long', day: 'numeric' })}</span>
                       </h2>
                   </div>
               </div>
-
               <div className="hidden md:block h-32 w-px bg-gradient-to-b from-[#EDF1F8] to-transparent mx-4" />
-
               <div className="flex-1 w-full flex flex-col gap-4">
                   <div className="flex justify-between items-end">
                       <div>
@@ -1050,60 +769,23 @@ export default function DashboardPage() {
                           </div>
                           <div className="flex items-baseline gap-1">
                               <span className="text-[16px] font-semibold text-[#9AA3B8]">ETB</span>
-                              <h2 className="text-[32px] font-bold text-[#10192E] tracking-tight font-headline">
-                                {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </h2>
+                              <h2 className="text-[32px] font-bold text-[#10192E] tracking-tight font-headline">{liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h2>
                           </div>
                       </div>
-                      
-                      <div className={cn(
-                          "px-3 py-1.5 rounded-xl text-[12px] font-bold flex items-center gap-1.5 mb-1 shadow-sm",
-                          todayTrendPercent >= 0 ? "bg-[rgba(52,194,100,0.13)] text-[#34C264]" : "bg-[rgba(255,59,48,0.1)] text-[#FF3B30]"
-                      )}>
-                          {todayTrendPercent >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                          {Math.abs(todayTrendPercent).toFixed(1)}%
+                      <div className={cn("px-3 py-1.5 rounded-xl text-[12px] font-bold flex items-center gap-1.5 mb-1 shadow-sm", todayTrendPercent >= 0 ? "bg-[rgba(52,194,100,0.13)] text-[#34C264]" : "bg-[rgba(255,59,48,0.1)] text-[#FF3B30]")}>
+                          {todayTrendPercent >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />} {Math.abs(todayTrendPercent).toFixed(1)}%
                       </div>
                   </div>
-
                   <div className="w-full h-[64px] relative">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={weeklyChartData}>
-                          <defs>
-                            <linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1">
-                              <stop offset="0%" stopColor="#3478F6" stopOpacity={0.3}/>
-                              <stop offset="100%" stopColor="#3478F6" stopOpacity={0}/>
-                            </linearGradient>
-                          </defs>
-                          <RechartsTooltip 
-                            content={({ active, payload }) => {
-                              if (active && payload && payload.length) {
-                                return (
-                                  <div className="bg-white/90 backdrop-blur-md px-3 py-2 border border-[#E7EBF3] rounded-xl shadow-lg text-[10px]">
-                                    <p className="font-bold text-[#3478F6] font-code">ETB {payload[0].value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                                  </div>
-                                );
-                              }
-                              return null;
-                            }}
-                          />
-                          <Area 
-                            type="monotone" 
-                            dataKey="total" 
-                            stroke="#3478F6" 
-                            strokeWidth={2.5}
-                            fillOpacity={1} 
-                            fill="url(#colorTrend)" 
-                            animationDuration={1500}
-                          />
+                          <defs><linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3478F6" stopOpacity={0.3}/><stop offset="100%" stopColor="#3478F6" stopOpacity={0}/></linearGradient></defs>
+                          <RechartsTooltip content={({ active, payload }) => (active && payload?.length ? <div className="bg-white/90 backdrop-blur-md px-3 py-2 border border-[#E7EBF3] rounded-xl shadow-lg text-[10px]"><p className="font-bold text-[#3478F6] font-code">ETB {payload[0].value.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div> : null)} />
+                          <Area type="monotone" dataKey="total" stroke="#3478F6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorTrend)" animationDuration={1500} />
                         </AreaChart>
                       </ResponsiveContainer>
                   </div>
-
-                  <div className="flex justify-between text-[9.5px] font-medium text-[#9AA3B8] font-code uppercase tracking-widest px-1">
-                      <span>{weeklyChartData[0]?.name}</span>
-                      <span>{weeklyChartData[3]?.name}</span>
-                      <span className="text-[#3478F6] font-bold">NOW</span>
-                  </div>
+                  <div className="flex justify-between text-[9.5px] font-medium text-[#9AA3B8] font-code uppercase tracking-widest px-1"><span>{weeklyChartData[0]?.name}</span><span>{weeklyChartData[3]?.name}</span><span className="text-[#3478F6] font-bold">NOW</span></div>
               </div>
           </CardContent>
       </Card>
@@ -1112,257 +794,60 @@ export default function DashboardPage() {
         <Card className="col-span-2 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
             <CardContent className="p-6 flex items-center justify-between">
                 <div className="flex items-center gap-4">
-                    <div className="bg-[rgba(242,169,59,0.14)] p-4 rounded-2xl text-[#F2A93B] shadow-sm">
-                        <Wallet2 className="h-6 w-6" />
-                    </div>
-                    <div>
-                        <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Today's Total</p>
-                        <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">
-                            ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </p>
-                    </div>
+                    <div className="bg-[rgba(242,169,59,0.14)] p-4 rounded-2xl text-[#F2A93B] shadow-sm"><Wallet2 className="h-6 w-6" /></div>
+                    <div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Today's Total</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
                 </div>
-                <div className={cn(
-                    "flex items-center gap-1 text-[11px] font-bold",
-                    todayTrendPercent >= 0 ? "text-[#34C264]" : "text-[#FF3B30]"
-                )}>
-                    {todayTrendPercent >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />}
-                    {Math.abs(todayTrendPercent).toFixed(1)}%
-                </div>
+                <div className={cn("flex items-center gap-1 text-[11px] font-bold", todayTrendPercent >= 0 ? "text-[#34C264]" : "text-[#FF3B30]")}>{todayTrendPercent >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />} {Math.abs(todayTrendPercent).toFixed(1)}%</div>
             </CardContent>
         </Card>
-
         <Card className="col-span-2 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
           <CardContent className="p-6 flex items-center justify-between">
             <div className="flex items-center gap-4">
-              <div className="bg-[rgba(52,194,100,0.13)] p-4 rounded-2xl text-[#34C264] shadow-sm">
-                <UserCheck className="h-6 w-6" />
-              </div>
-              <div>
-                <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">On-site Staff</p>
-                <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.onSite} <span className="text-[#9AA3B8] font-medium">/ {activeEmployees.length}</span></p>
-              </div>
+              <div className="bg-[rgba(52,194,100,0.13)] p-4 rounded-2xl text-[#34C264] shadow-sm"><UserCheck className="h-6 w-6" /></div>
+              <div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">On-site Staff</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.onSite} <span className="text-[#9AA3B8] font-medium">/ {activeEmployees.length}</span></p></div>
             </div>
-            {liveTotals.onSite === activeEmployees.length && activeEmployees.length > 0 && (
-                <Badge className="bg-[rgba(52,194,100,0.13)] text-[#34C264] border-none shadow-none font-bold text-[10px] uppercase tracking-[0.06em] px-2 py-1 h-auto rounded-lg">
-                    FULL
-                </Badge>
-            )}
+            {liveTotals.onSite === activeEmployees.length && activeEmployees.length > 0 && <Badge className="bg-[rgba(52,194,100,0.13)] text-[#34C264] border-none shadow-none font-bold text-[10px] uppercase tracking-[0.06em] px-2 py-1 h-auto rounded-lg">FULL</Badge>}
           </CardContent>
         </Card>
-
         <Card className="col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square">
             <CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3">
-                <div className="bg-[rgba(52,120,246,0.11)] p-3 sm:p-4 rounded-2xl text-[#3478F6] shadow-sm">
-                    <HandCoins className="h-5 w-5 sm:h-6 sm:w-6" />
-                </div>
-                <div>
-                    <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Weekly Est.</p>
-                    <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">
-                        {liveTotals.week.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </p>
-                    <p className="text-[11px] text-[#6B7690] font-medium mt-1">ETB projected</p>
-                </div>
+                <div className="bg-[rgba(52,120,246,0.11)] p-3 sm:p-4 rounded-2xl text-[#3478F6] shadow-sm"><HandCoins className="h-5 w-5 sm:h-6 sm:w-6" /></div>
+                <div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Weekly Est.</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.week.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p><p className="text-[11px] text-[#6B7690] font-medium mt-1">ETB projected</p></div>
             </CardContent>
         </Card>
-
         <Card className="col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square">
             <CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3">
-                <div className="bg-[rgba(139,92,246,0.12)] p-3 sm:p-4 rounded-2xl text-[#8B5CF6] shadow-sm">
-                    <BarChart3 className="h-5 w-5 sm:h-6 sm:w-6" />
-                </div>
-                <div>
-                    <p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Monthly Est.</p>
-                    <p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">
-                        {liveTotals.month.toLocaleString(undefined, { maximumFractionDigits: 0 })}
-                    </p>
-                    <p className="text-[11px] text-[#6B7690] font-medium mt-1">ETB projected</p>
-                </div>
+                <div className="bg-[rgba(139,92,246,0.12)] p-3 sm:p-4 rounded-2xl text-[#8B5CF6] shadow-sm"><BarChart3 className="h-5 w-5 sm:h-6 sm:w-6" /></div>
+                <div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Monthly Est.</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.month.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p><p className="text-[11px] text-[#6B7690] font-medium mt-1">ETB projected</p></div>
             </CardContent>
         </Card>
       </div>
 
        <Card className="shadow-lg border-none rounded-3xl overflow-hidden">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b bg-[#EFF3FA]/50 py-6 px-8">
-                <div>
-                    <CardTitle className="text-2xl font-bold text-[#10192E] tracking-tight font-headline">Detailed Overview</CardTitle>
-                    <CardDescription className="text-xs font-semibold text-[#9AA3B8] uppercase tracking-widest mt-1">Track payments and performance across periods</CardDescription>
-                </div>
-                <Popover>
-                    <PopoverTrigger asChild>
-                        <Button variant="outline" className="h-12 px-6 rounded-2xl border-[#E7EBF3] flex items-center gap-3 bg-white hover:bg-[#F4F6FB] font-bold text-[#10192E] shadow-sm">
-                          <CalendarIcon className="h-4 w-4 text-[#3478F6]" /> 
-                          {ethiopianDateFormatter(new Date(selectedDay), { month: 'long', day: 'numeric', year: 'numeric' })}
-                        </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0 border-none shadow-2xl rounded-3xl" align="end">
-                      <Calendar mode="single" selected={new Date(selectedDay)} onSelect={(d) => d && setSelectedDay(format(d, "yyyy-MM-dd"))} initialFocus />
-                    </PopoverContent>
-                </Popover>
+                <div><CardTitle className="text-2xl font-bold text-[#10192E] tracking-tight font-headline">Detailed Overview</CardTitle><CardDescription className="text-xs font-semibold text-[#9AA3B8] uppercase tracking-widest mt-1">Track payments and performance across periods</CardDescription></div>
+                <Popover><PopoverTrigger asChild><Button variant="outline" className="h-12 px-6 rounded-2xl border-[#E7EBF3] flex items-center gap-3 bg-white hover:bg-[#F4F6FB] font-bold text-[#10192E] shadow-sm"><CalendarIcon className="h-4 w-4 text-[#3478F6]" /> {ethiopianDateFormatter(new Date(selectedDay), { month: 'long', day: 'numeric', year: 'numeric' })}</Button></PopoverTrigger><PopoverContent className="w-auto p-0 border-none shadow-2xl rounded-3xl" align="end"><Calendar mode="single" selected={new Date(selectedDay)} onSelect={(d) => d && setSelectedDay(format(d, "yyyy-MM-dd"))} initialFocus /></PopoverContent></Popover>
             </CardHeader>
             <CardContent className="p-8">
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
-                    <TabsList className="grid w-full grid-cols-3 mb-10 h-14 p-1.5 bg-[#EFF3FA] rounded-2xl">
-                        <TabsTrigger value="today" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#3478F6]">Today</TabsTrigger>
-                        <TabsTrigger value="week" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#3478F6]">This Week</TabsTrigger>
-                        <TabsTrigger value="month" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#3478F6]">This Month</TabsTrigger>
-                    </TabsList>
-                    
-                    <TabsContent value="today" className="space-y-6">
-                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {dailyEarnings.map(item => (
-                                <EmployeeCard 
-                                    key={item.employeeId}
-                                    employeeId={item.employeeId}
-                                    name={item.name}
-                                    paymentMethod={item.paymentMethod}
-                                    lateMins={item.lateMins}
-                                    absentHours={item.absentHours}
-                                    overtimeHours={item.overtimeHours}
-                                    overtimeAmount={item.overtimeAmount}
-                                    total={item.amount}
-                                    amountLabel="Daily Earn"
-                                    morning={item.morning}
-                                    afternoon={item.afternoon}
-                                    status={item.status}
-                                    isToday={true}
-                                />
-                            ))}
-                        </div>
-                    </TabsContent>
-
-                    <TabsContent value="week" className="space-y-6">
-                        <div className="flex justify-center mb-8">
-                            <Select value={selectedWeekStart} onValueChange={setSelectedWeekStart}>
-                                <SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#F4F6FB] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select week" /></SelectTrigger>
-                                <SelectContent className="rounded-2xl">{periodOptions.weeks.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
-                        {lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-[#3478F6]" /><p className="text-[10px] font-bold uppercase text-[#9AA3B8] tracking-widest">Compiling Week...</p></div> : (
-                            <div className="flex flex-col gap-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {weeklySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
-                                        <EmployeeCard 
-                                            key={emp.id}
-                                            employeeId={emp.id}
-                                            name={emp.name}
-                                            paymentMethod="Weekly"
-                                            lateMins={lateMins}
-                                            absentHours={absentHours}
-                                            overtimeHours={overtimeHours}
-                                            overtimeAmount={overtimeAmount}
-                                            total={total}
-                                            amountLabel="Weekly Total"
-                                            isToday={false}
-                                        />
-                                    ))}
-                                </div>
-                                <div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm space-y-6">
-                                    <div>
-                                        <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL WEEKLY PAYROLL</p>
-                                        <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                                    </div>
-                                    {isWeeklyPayWindow && (
-                                        <Button 
-                                            onClick={() => handleMarkPaid('Weekly', weeklySummary.data, periodOptions.weeks.find(w => w.value === selectedWeekStart)?.label || selectedWeekStart, selectedWeekStart)}
-                                            disabled={isMarkingPaid || weeklySummary.data.length === 0}
-                                            className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95"
-                                        >
-                                            {isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
-                                            Mark as Paid & Notify Admin
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </TabsContent>
-
-                    <TabsContent value="month" className="space-y-6">
-                        <div className="flex justify-center mb-8">
-                            <Select value={selectedMonthStart} onValueChange={setSelectedMonthStart}>
-                                <SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#F4F6FB] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select month" /></SelectTrigger>
-                                <SelectContent className="rounded-2xl">{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent>
-                            </Select>
-                        </div>
-                         {lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-[#3478F6]" /><p className="text-[10px] font-bold uppercase text-[#9AA3B8] tracking-widest">Compiling Month...</p></div> : (
-                            <div className="flex flex-col gap-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {monthlySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => (
-                                        <EmployeeCard 
-                                            key={emp.id}
-                                            employeeId={emp.id}
-                                            name={emp.name}
-                                            paymentMethod="Monthly"
-                                            lateMins={lateMins}
-                                            absentHours={absentHours}
-                                            overtimeHours={overtimeHours}
-                                            overtimeAmount={overtimeAmount}
-                                            total={total}
-                                            amountLabel="Month To-Date"
-                                            isToday={false}
-                                        />
-                                    ))}
-                                </div>
-                                <div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm space-y-6">
-                                    <div>
-                                        <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL MONTHLY PAYROLL</p>
-                                        <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                                    </div>
-                                    {isMonthlyPayWindow && (
-                                        <Button 
-                                            onClick={() => handleMarkPaid('Monthly', monthlySummary.data, periodOptions.months.find(m => m.value === selectedMonthStart)?.label || selectedMonthStart, selectedMonthStart)}
-                                            disabled={isMarkingPaid || monthlySummary.data.length === 0}
-                                            className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95"
-                                        >
-                                            {isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
-                                            Mark as Paid & Notify Admin
-                                        </Button>
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </TabsContent>
+                    <TabsList className="grid w-full grid-cols-3 mb-10 h-14 p-1.5 bg-[#EFF3FA] rounded-2xl"><TabsTrigger value="today" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#3478F6]">Today</TabsTrigger><TabsTrigger value="week" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#3478F6]">This Week</TabsTrigger><TabsTrigger value="month" className="rounded-xl font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-sm data-[state=active]:text-[#3478F6]">This Month</TabsTrigger></TabsList>
+                    <TabsContent value="today" className="space-y-6"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{dailyEarnings.map(item => <EmployeeCard key={item.employeeId} employeeId={item.employeeId} name={item.name} paymentMethod={item.paymentMethod} lateMins={item.lateMins} absentHours={item.absentHours} overtimeHours={item.overtimeHours} overtimeAmount={item.overtimeAmount} total={item.amount} amountLabel="Daily Earn" morning={item.morning} afternoon={item.afternoon} status={item.status} isToday={true} />)}</div></TabsContent>
+                    <TabsContent value="week" className="space-y-6"><div className="flex justify-center mb-8"><Select value={selectedWeekStart} onValueChange={setSelectedWeekStart}><SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#F4F6FB] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select week" /></SelectTrigger><SelectContent className="rounded-2xl">{periodOptions.weeks.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent></Select></div>{lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-[#3478F6]" /><p className="text-[10px] font-bold uppercase text-[#9AA3B8] tracking-widest">Compiling Week...</p></div> : <div className="flex flex-col gap-6"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{weeklySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => <EmployeeCard key={emp.id} employeeId={emp.id} name={emp.name} paymentMethod="Weekly" lateMins={lateMins} absentHours={absentHours} overtimeHours={overtimeHours} overtimeAmount={overtimeAmount} total={total} amountLabel="Weekly Total" isToday={false} />)}</div><div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm space-y-6"><div><p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL WEEKLY PAYROLL</p><p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>{isWeeklyPayWindow && <Button onClick={() => handleMarkPaid('Weekly', weeklySummary.data, periodOptions.weeks.find(w => w.value === selectedWeekStart)?.label || selectedWeekStart, selectedWeekStart)} disabled={isMarkingPaid || weeklySummary.data.length === 0} className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95">{isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />} Mark as Paid & Notify Admin</Button>}</div></div>}</TabsContent>
+                    <TabsContent value="month" className="space-y-6"><div className="flex justify-center mb-8"><Select value={selectedMonthStart} onValueChange={setSelectedMonthStart}><SelectTrigger className="w-full max-w-sm h-12 rounded-2xl bg-[#F4F6FB] border-none font-bold px-6 shadow-inner"><SelectValue placeholder="Select month" /></SelectTrigger><SelectContent className="rounded-2xl">{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent></Select></div>{lazyLoading ? <div className="h-40 flex flex-col items-center justify-center gap-3"><Clock className="animate-spin h-8 w-8 text-[#3478F6]" /><p className="text-[10px] font-bold uppercase text-[#9AA3B8] tracking-widest">Compiling Month...</p></div> : <div className="flex flex-col gap-6"><div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">{monthlySummary.data.map(({ emp, lateMins, total, absentHours, overtimeHours, overtimeAmount }) => <EmployeeCard key={emp.id} employeeId={emp.id} name={emp.name} paymentMethod="Monthly" lateMins={lateMins} absentHours={absentHours} overtimeHours={overtimeHours} overtimeAmount={overtimeAmount} total={total} amountLabel="Month To-Date" isToday={false} />)}</div><div className="mt-4 bg-[#F4F6FB] border border-[#E7EBF3] rounded-3xl p-10 text-center shadow-sm space-y-6"><div><p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL MONTHLY PAYROLL</p><p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>{isMonthlyPayWindow && <Button onClick={() => handleMarkPaid('Monthly', monthlySummary.data, periodOptions.months.find(m => m.value === selectedMonthStart)?.label || selectedMonthStart, selectedMonthStart)} disabled={isMarkingPaid || monthlySummary.data.length === 0} className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95">{isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />} Mark as Paid & Notify Admin</Button>}</div></div>}</TabsContent>
                 </Tabs>
             </CardContent>
         </Card>
 
         <Card className="shadow-lg border-none rounded-3xl overflow-hidden ring-1 ring-[#10192E]/5">
             <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-8 border-b border-[#E7EBF3]">
-                <div className="flex items-center gap-4">
-                  <div className="bg-[#3478F6] p-3.5 rounded-2xl text-white shadow-md"><Wallet className="h-7 w-7" /></div>
-                  <div>
-                      <CardTitle className="text-2xl font-bold text-[#10192E] tracking-tight font-headline">Historical Workshop Audit</CardTitle>
-                      <CardDescription className="text-xs font-semibold text-[#9AA3B8] uppercase tracking-widest mt-1">Consolidated monthly expense summary</CardDescription>
-                  </div>
-                </div>
-                <div className="w-full sm:w-[280px]">
-                    <Select value={selectedUnifiedMonth} onValueChange={setSelectedUnifiedMonth}>
-                        <SelectTrigger className="h-12 bg-white rounded-2xl border-[#E7EBF3] font-bold px-6 shadow-sm"><SelectValue placeholder="Select month" /></SelectTrigger>
-                        <SelectContent className="rounded-2xl">{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent>
-                    </Select>
-                </div>
+                <div className="flex items-center gap-4"><div className="bg-[#3478F6] p-3.5 rounded-2xl text-white shadow-md"><Wallet className="h-7 w-7" /></div><div><CardTitle className="text-2xl font-bold text-[#10192E] tracking-tight font-headline">Historical Workshop Audit</CardTitle><CardDescription className="text-xs font-semibold text-[#9AA3B8] uppercase tracking-widest mt-1">Consolidated monthly expense summary</CardDescription></div></div>
+                <div className="w-full sm:w-[280px]"><Select value={selectedUnifiedMonth} onValueChange={setSelectedUnifiedMonth}><SelectTrigger className="h-12 bg-white rounded-2xl border-[#E7EBF3] font-bold px-6 shadow-sm"><SelectValue placeholder="Select month" /></SelectTrigger><SelectContent className="rounded-2xl">{periodOptions.months.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>)}</SelectContent></Select></div>
             </CardHeader>
             <CardContent className="flex flex-col items-center justify-center py-16">
-                {unifiedLoading ? (
-                    <div className="flex flex-col items-center gap-4">
-                        <Clock className="animate-spin h-10 w-10 text-[#3478F6] opacity-40" />
-                        <p className="text-[10px] font-bold text-[#9AA3B8] uppercase tracking-[0.3em]">Calculating Audit...</p>
-                    </div>
-                ) : (
-                    <>
-                        <div className="text-center group">
-                            <p className="text-[11px] font-bold text-[#9AA3B8] uppercase tracking-[0.4em] mb-4">Expenditure Total</p>
-                            <p className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#10192E] tracking-tighter font-headline">
-                                ETB {unifiedMonthTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                            </p>
-                        </div>
-                        <div className="flex items-center justify-center gap-6 mt-12 opacity-30">
-                            <div className="h-[1px] w-20 bg-gradient-to-r from-transparent to-[#3478F6] rounded-full" />
-                            <Sparkles className="h-6 w-6 text-[#3478F6] animate-pulse" />
-                            <div className="h-[1px] w-20 bg-gradient-to-l from-transparent to-[#3478F6] rounded-full" />
-                        </div>
-                    </>
-                )}
+                {auditLoading ? <div className="flex flex-col items-center gap-4"><Clock className="animate-spin h-10 w-10 text-[#3478F6] opacity-40" /><p className="text-[10px] font-bold text-[#9AA3B8] uppercase tracking-[0.3em]">Calculating Audit...</p></div> : <>
+                    <div className="text-center group"><p className="text-[11px] font-bold text-[#9AA3B8] uppercase tracking-[0.4em] mb-4">Expenditure Total</p><p className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {auditTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
+                    <div className="flex items-center justify-center gap-6 mt-12 opacity-30"><div className="h-[1px] w-20 bg-gradient-to-r from-transparent to-[#3478F6] rounded-full" /><Sparkles className="h-6 w-6 text-[#3478F6] animate-pulse" /><div className="h-[1px] w-20 bg-gradient-to-l from-transparent to-[#3478F6] rounded-full" /></div>
+                </>}
             </CardContent>
         </Card>
     </div>
