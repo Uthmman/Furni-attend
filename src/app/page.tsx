@@ -864,6 +864,28 @@ export default function DashboardPage() {
     return { weeks: w, months: m };
   }, []);
 
+  const isWeeklyPayWindow = useMemo(() => {
+    try {
+        const weekStart = startOfDay(new Date(selectedWeekStart));
+        const weekEnd = startOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })); // Saturday
+        const windowStart = weekEnd;
+        const windowEnd = endOfDay(addDays(weekEnd, 3)); // End of Tuesday
+        return now >= windowStart && now <= windowEnd;
+    } catch (e) { return false; }
+  }, [selectedWeekStart, now]);
+
+  const isMonthlyPayWindow = useMemo(() => {
+    try {
+        const monthStart = startOfDay(new Date(selectedMonthStart));
+        const eth = toEthiopian(monthStart);
+        const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
+        const monthEnd = startOfDay(addDays(monthStart, daysInMonth - 1)); // Last day of month
+        const windowStart = monthEnd;
+        const windowEnd = endOfDay(addDays(monthEnd, 3)); // 3 days into next month
+        return now >= windowStart && now <= windowEnd;
+    } catch (e) { return false; }
+  }, [selectedMonthStart, now]);
+
   return (
     <div className="flex flex-col gap-8 pb-10">
       <Card className="shadow-lg border-none bg-[#E8ECF6] rounded-[2.5rem] overflow-hidden mb-2 relative">
@@ -1110,14 +1132,16 @@ export default function DashboardPage() {
                                         <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL WEEKLY PAYROLL</p>
                                         <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {weeklySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                     </div>
-                                    <Button 
-                                        onClick={() => handleMarkPaid('Weekly', weeklySummary.data, periodOptions.weeks.find(w => w.value === selectedWeekStart)?.label || selectedWeekStart, selectedWeekStart)}
-                                        disabled={isMarkingPaid || weeklySummary.data.length === 0}
-                                        className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95"
-                                    >
-                                        {isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
-                                        Mark as Paid & Notify Admin
-                                    </Button>
+                                    {isWeeklyPayWindow && (
+                                        <Button 
+                                            onClick={() => handleMarkPaid('Weekly', weeklySummary.data, periodOptions.weeks.find(w => w.value === selectedWeekStart)?.label || selectedWeekStart, selectedWeekStart)}
+                                            disabled={isMarkingPaid || weeklySummary.data.length === 0}
+                                            className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95"
+                                        >
+                                            {isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
+                                            Mark as Paid & Notify Admin
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -1154,14 +1178,16 @@ export default function DashboardPage() {
                                         <p className="text-[11px] font-bold text-[#3478F6] uppercase tracking-[0.2em] mb-2">TOTAL MONTHLY PAYROLL</p>
                                         <p className="text-5xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {monthlySummary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                                     </div>
-                                    <Button 
-                                        onClick={() => handleMarkPaid('Monthly', monthlySummary.data, periodOptions.months.find(m => m.value === selectedMonthStart)?.label || selectedMonthStart, selectedMonthStart)}
-                                        disabled={isMarkingPaid || monthlySummary.data.length === 0}
-                                        className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95"
-                                    >
-                                        {isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
-                                        Mark as Paid & Notify Admin
-                                    </Button>
+                                    {isMonthlyPayWindow && (
+                                        <Button 
+                                            onClick={() => handleMarkPaid('Monthly', monthlySummary.data, periodOptions.months.find(m => m.value === selectedMonthStart)?.label || selectedMonthStart, selectedMonthStart)}
+                                            disabled={isMarkingPaid || monthlySummary.data.length === 0}
+                                            className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95"
+                                        >
+                                            {isMarkingPaid ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />}
+                                            Mark as Paid & Notify Admin
+                                        </Button>
+                                    )}
                                 </div>
                             </div>
                         )}
