@@ -722,7 +722,9 @@ export default function DashboardPage() {
       totalAmount += amount;
 
       // Deterministic ID to prevent duplicates for the same period
-      const payoutId = `payout_${type.toUpperCase()}_${employeeId}_${periodValue}`;
+      // Using slugified label for descriptive uniqueness as requested
+      const periodSlug = periodLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const payoutId = `payout_${type.toUpperCase()}_${employeeId}_${periodSlug}`;
       const recordRef = doc(firestore, 'employeeExpenses', payoutId);
 
       batch.set(recordRef, {
@@ -731,7 +733,8 @@ export default function DashboardPage() {
         employeeName,
         amount,
         type,
-        period: periodValue,
+        period: periodLabel, // Storing human-readable period name as requested
+        periodValue: periodValue, // Keeping technical reference
         periodLabel,
         recordedAt,
         paymentStatus: 'Paid',
@@ -818,7 +821,7 @@ export default function DashboardPage() {
                 if (r.overtimeHours) otAmount += r.overtimeHours * hourly * normalOTRate;
             });
 
-            eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
+            eachDayOfInterval({ start: start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
                 const dayStr = format(day, 'yyyy-MM-dd');
                 const isInactive = empInactiveDate && day >= empInactiveDate;
                 const isBeforeStart = day < empStartDate;
@@ -1238,3 +1241,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
