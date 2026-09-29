@@ -5,9 +5,9 @@ import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
 import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2 } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings } from "@/lib/types";
-import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth } from "date-fns";
+import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
-import { collection, query, where, getDocs, doc, writeBatch } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, writeBatch, getDoc, setDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
@@ -57,7 +57,7 @@ const getEthiopianMonthDays = (year: number, month: number): number => {
 
 const toGregorian = (ethYear: number, ethMonth: number, ethDay: number): Date => {
     let date = new Date(ethYear + 7, ethMonth + 7, ethDay, 12, 0, 0);
-    for (let i = 0; i < 200; i++) {
+    for (let i = 0; i < 300; i++) {
         const eth = toEthiopian(date);
         if (eth.year === ethYear && eth.month === ethMonth && eth.day === ethDay) return startOfDay(date);
         if (eth.year < ethYear || (eth.year === ethYear && eth.month < ethMonth) || (eth.year === ethYear && eth.month === ethMonth && eth.day < ethDay)) date.setDate(date.getDate() + 1);
@@ -245,6 +245,7 @@ export default function DashboardPage() {
   const [unifiedLoading, setUnifiedLoading] = useState(false);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
   const [isMarkingPaid, setIsMarkingPaid] = useState(false);
+  const [isSyncingHistory, setIsSyncingHistory] = useState(false);
   const [activeTab, setActiveTab] = useState("today");
 
   const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), "yyyy-MM-dd"));
@@ -271,7 +272,7 @@ export default function DashboardPage() {
   useEffect(() => { setTitle("Dashboard"); }, [setTitle]);
 
   const todayAttendanceRef = useMemoFirebase(() => {
-    if (!firestore || !user) return null;
+    if (!firestore || !user, selectedDay) return null;
     return collection(firestore, 'attendance', selectedDay, 'records');
   }, [firestore, user, selectedDay]);
   const { data: todayRecords } = useCollection<AttendanceRecord>(todayAttendanceRef);
@@ -361,6 +362,136 @@ export default function DashboardPage() {
     if (allEmployees && allEmployees.length > 0) fetchUnifiedData();
   }, [selectedUnifiedMonth, allEmployees, firestore, user]);
 
+  // Historical Sync Logic
+  useEffect(() => {
+    const runHistoricalSync = async () => {
+        if (!firestore || !user || !allEmployees || allEmployees.length === 0 || isSyncingHistory) return;
+        
+        const initRef = doc(firestore, 'metadata', 'history_sync_v1');
+        const initSnap = await getDoc(initRef);
+        if (initSnap.exists()) return;
+
+        setIsSyncingHistory(true);
+        toast({ title: "Initializing Workshop History", description: "Calculating payroll from Meskerem 2017..." });
+
+        try {
+            const startOfHistory = toGregorian(2017, 1, 1); // Meskerem 1, 2017
+            const today = new Date();
+            const batch = writeBatch(firestore);
+            
+            // 1. Fetch ALL attendance for all employees since Meskerem
+            const allHistoryAttendance: AttendanceRecord[] = [];
+            const fetchPromises = allEmployees.map(async (emp) => {
+                const q = query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', startOfHistory.toISOString()));
+                const snap = await getDocs(q);
+                snap.forEach(d => allHistoryAttendance.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
+            });
+            await Promise.all(fetchPromises);
+
+            // 2. Generate and store Monthly Periods
+            let currentMonthStart = startOfHistory;
+            while (currentMonthStart < today) {
+                const eth = toEthiopian(currentMonthStart);
+                const monthLabel = `${ethiopianDateFormatter(currentMonthStart, { month: 'long' })} ${eth.year}`;
+                const periodValue = format(currentMonthStart, "yyyy-MM-dd");
+                
+                // Only sync if not in current "active" window to avoid overwriting ongoing adjustments
+                // Or just sync everything once. Let's sync everything once as a baseline.
+                
+                const data = activeEmployees.filter(e => e.paymentMethod === 'Monthly').map(emp => {
+                    // Reuse calculation logic for monthly summary
+                    const records = allHistoryAttendance.filter(r => r.employeeId === emp.id);
+                    const start = currentMonthStart;
+                    const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
+                    const units = getMonthlyWorkingUnits(start, daysInMonth);
+                    const hourly = (emp.monthlyRate || 0) / units / 8;
+                    const minuteRate = hourly / 60;
+                    
+                    let lateMins = 0, otHours = 0, otAmount = 0, absentHours = 0, totalDeduction = 0;
+                    const recordedDaysSet = new Set(records.map(r => r.id));
+
+                    records.forEach(r => {
+                        if (!r.id || !isWithinInterval(parse(r.id, "yyyy-MM-dd", new Date()), { start: currentMonthStart, end: endOfDay(addDays(currentMonthStart, daysInMonth - 1)) })) return;
+                        const d = parse(r.id, "yyyy-MM-dd", new Date());
+                        const isSun = getDay(d) === 0, isSat = getDay(d) === 6;
+
+                        if (isSun) {
+                            if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                                let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
+                                otAmount += sH * hourly * sundayOTRate;
+                                otHours += sH;
+                            }
+                        } else {
+                            if (r.morningStatus === 'Absent') { totalDeduction += 4.5 * hourly; absentHours += 4.5; }
+                            if (r.afternoonStatus === 'Absent' && !isSat) { totalDeduction += 3.5 * hourly; absentHours += 3.5; }
+                            if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
+                                otAmount += 3.5 * hourly * normalOTRate;
+                                otHours += 3.5;
+                            }
+                            lateMins += calculateMinutesLate(r);
+                        }
+                        if (r.overtimeHours) { otHours += r.overtimeHours; otAmount += r.overtimeHours * hourly * normalOTRate; }
+                    });
+
+                    const netSalary = (emp.monthlyRate || 0) - totalDeduction - (lateMins * minuteRate) + otAmount;
+                    
+                    const pSlug = monthLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                    const pId = `payout_MONTHLY_${emp.id}_${pSlug}`;
+                    const ref = doc(firestore, 'employeeExpenses', pId);
+                    batch.set(ref, {
+                        id: pId, employeeId: emp.id, employeeName: emp.name, amount: netSalary, type: 'Monthly',
+                        period: monthLabel, periodValue, periodLabel: monthLabel, recordedAt: new Date().toISOString(),
+                        paymentStatus: 'Paid', category: 'Payroll', details: { lateMins, absentHours, overtimeHours: otHours, overtimeAmount: otAmount }
+                    }, { merge: true });
+                });
+
+                currentMonthStart = toGregorian(eth.month === 12 ? eth.year + 1 : eth.year, eth.month === 12 ? 1 : eth.month + 1, 1);
+            }
+
+            // 3. Generate and store Weekly Periods
+            let currentWeekStart = startOfWeek(startOfHistory, { weekStartsOn: 0 });
+            while (currentWeekStart < today) {
+                const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
+                const weekLabel = `Week: ${ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+                const periodValue = format(currentWeekStart, "yyyy-MM-dd");
+
+                activeEmployees.filter(e => e.paymentMethod === 'Weekly').map(emp => {
+                    const records = allHistoryAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: startOfDay(currentWeekStart), end: endOfDay(weekEnd) }));
+                    const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+                    let totalOTHours = records.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+                    let baseHours = records.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
+                    const total = (baseHours * (hourly || 0)) + (totalOTHours * (hourly || 0) * normalOTRate);
+                    const otAmount = totalOTHours * (hourly || 0) * normalOTRate;
+
+                    const pSlug = weekLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                    const pId = `payout_WEEKLY_${emp.id}_${pSlug}`;
+                    const ref = doc(firestore, 'employeeExpenses', pId);
+                    batch.set(ref, {
+                        id: pId, employeeId: emp.id, employeeName: emp.name, amount: total, type: 'Weekly',
+                        period: weekLabel, periodValue, periodLabel: weekLabel, recordedAt: new Date().toISOString(),
+                        paymentStatus: 'Paid', category: 'Payroll', details: { totalHours: baseHours, overtimeHours: totalOTHours, overtimeAmount: otAmount }
+                    }, { merge: true });
+                });
+                currentWeekStart = addDays(currentWeekStart, 7);
+            }
+
+            await batch.commit();
+            await setDoc(initRef, { initializedAt: new Date().toISOString(), by: user.email });
+            toast({ title: "History Initialized", description: "Workshop audit is now up to date since Meskerem." });
+            await sendAdminPayrollSummary(`✅ *HISTORICAL BACKFILL COMPLETE*\n\nWorkshop history has been successfully synchronized starting from Meskerem 2017. All past payouts are now stored in the database.`);
+        } catch (e) {
+            console.error(e);
+            toast({ variant: 'destructive', title: "Sync Error", description: "Historical backfill failed." });
+        } finally {
+            setIsSyncingHistory(false);
+        }
+    };
+    
+    if (allEmployees && allEmployees.length > 0) {
+        runHistoricalSync();
+    }
+  }, [allEmployees, firestore, user]);
+
   const liveTotals = useMemo(() => {
     if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0 };
     
@@ -430,7 +561,6 @@ export default function DashboardPage() {
 
             if (!recordedDaysSet.has(ds)) {
                 if (isInactive || isBeforeStart) return;
-
                 if (getDay(day) === 0) {
                      if (emp.paymentMethod === 'Weekly') weekCost += (emp.dailyRate || 0);
                 }
@@ -682,7 +812,7 @@ export default function DashboardPage() {
             if (r.overtimeHours) { otHours += r.overtimeHours; otAmount += r.overtimeHours * hourly * normalOTRate; }
         });
 
-        eachDayOfInterval({ start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
+        eachDayOfInterval({ start: start, end: addDays(start, daysInMonth - 1) }).forEach(day => {
             const dayStr = format(day, 'yyyy-MM-dd');
             const isInactive = empInactiveDate && day >= empInactiveDate;
             const isBeforeStart = day < employeeStartDate;
@@ -721,10 +851,8 @@ export default function DashboardPage() {
       const amount = item.total || item.amount || 0;
       totalAmount += amount;
 
-      // Deterministic ID to prevent duplicates for the same period
-      // Using slugified label for descriptive uniqueness as requested
-      const periodSlug = periodLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-      const payoutId = `payout_${type.toUpperCase()}_${employeeId}_${periodSlug}`;
+      const pSlug = periodLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+      const payoutId = `payout_${type.toUpperCase()}_${employeeId}_${pSlug}`;
       const recordRef = doc(firestore, 'employeeExpenses', payoutId);
 
       batch.set(recordRef, {
@@ -733,8 +861,8 @@ export default function DashboardPage() {
         employeeName,
         amount,
         type,
-        period: periodLabel, // Storing human-readable period name as requested
-        periodValue: periodValue, // Keeping technical reference
+        period: periodLabel,
+        periodValue: periodValue,
         periodLabel,
         recordedAt,
         paymentStatus: 'Paid',
@@ -805,8 +933,7 @@ export default function DashboardPage() {
                 }
 
                 if (isSun) {
-                    const working = r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent';
-                    if (working) {
+                    if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
                         let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
                         otAmount += sH * hourly * sundayOTRate;
                     }
@@ -1241,4 +1368,3 @@ export default function DashboardPage() {
     </div>
   );
 }
-
