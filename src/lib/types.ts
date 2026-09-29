@@ -52,10 +52,32 @@ export interface PayrollEntry {
   absenceDeduction?: number;
   lateDeduction?: number; 
   overtimeHours?: number;
+  overtimePay?: number;
   absentDates?: string[];
   lateDates?: string[];
   permissionDaysUsed?: number;
 };
+
+export interface EmployeeExpense extends DocumentData {
+  id: string;
+  employeeId: string;
+  employeeName: string;
+  amount: number;
+  type: "Weekly" | "Monthly";
+  period: string;
+  periodLabel: string;
+  recordedAt: string;
+  paymentStatus: string;
+  category: "Payroll";
+  details: {
+    baseAmount: number;
+    overtimeAmount: number;
+    lateDeduction: number;
+    absenceDeduction: number;
+    totalHours?: number;
+    overtimeHours?: number;
+  }
+}
 
 export interface Order extends DocumentData {
     id: string;

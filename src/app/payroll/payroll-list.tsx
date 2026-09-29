@@ -20,7 +20,7 @@ import type { PayrollEntry } from "@/lib/types";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from "next/link";
 import { Button } from '@/components/ui/button';
-import { Copy, Send, Loader2 } from 'lucide-react';
+import { Copy, Send, Loader2, CreditCard } from 'lucide-react';
 import { useCopyToClipboard } from '@/hooks/use-copy-to-clipboard';
 import { useToast } from '@/hooks/use-toast';
 import {
@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { sendAdminPayrollSummary } from './actions';
+import { useFirestore, useUser } from '@/firebase';
+import { collection, doc, writeBatch } from 'firebase/firestore';
 
 interface PayrollListProps {
     title: string;
@@ -49,8 +51,12 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
     const [isSummaryDialogOpen, setIsSummaryDialogOpen] = useState(false);
     const [summaryText, setSummaryText] = useState("");
     const [isSending, setIsSending] = useState(false);
+    const [isRecording, setIsRecording] = useState(false);
+    
     const [_copiedValue, copy] = useCopyToClipboard();
     const { toast } = useToast();
+    const firestore = useFirestore();
+    const { user } = useUser();
 
     const generateSummaryMessage = (entry: PayrollEntry) => {
         let summaryMessage = `💰 *Payroll Summary* for *${entry.employeeName}*\n`;
@@ -129,6 +135,51 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
         }
     };
 
+    const handleRecordPayouts = async () => {
+        if (!firestore || !user || payrollData.length === 0 || !selectedPeriod) return;
+        setIsRecording(true);
+        
+        const batch = writeBatch(firestore);
+        const recordedAt = new Date().toISOString();
+        
+        payrollData.forEach(entry => {
+            // Deterministic ID to prevent duplicates for the same period
+            const payoutId = `payout_${entry.paymentMethod.toUpperCase()}_${entry.employeeId}_${selectedPeriod}`;
+            const recordRef = doc(firestore, 'employeeExpenses', payoutId);
+            
+            const expenseData = {
+                id: payoutId,
+                employeeId: entry.employeeId,
+                employeeName: entry.employeeName,
+                amount: entry.amount,
+                type: entry.paymentMethod,
+                period: selectedPeriod,
+                periodLabel: entry.period,
+                recordedAt: recordedAt,
+                paymentStatus: 'Unpaid',
+                category: 'Payroll',
+                details: {
+                    baseAmount: entry.baseAmount || 0,
+                    overtimeAmount: entry.overtimeAmount || entry.overtimePay || 0,
+                    lateDeduction: entry.lateDeduction || 0,
+                    absenceDeduction: entry.absenceDeduction || 0,
+                    totalHours: entry.totalHours || 0,
+                    overtimeHours: entry.overtimeHours || 0,
+                }
+            };
+            
+            batch.set(recordRef, expenseData, { merge: true });
+        });
+        
+        try {
+            await batch.commit();
+            toast({ title: "Payouts Recorded", description: `Successfully stored ${payrollData.length} records in database.` });
+        } catch (e) {
+            toast({ variant: 'destructive', title: "Recording Failed", description: "Could not store payout records." });
+        } finally {
+            setIsRecording(false);
+        }
+    };
 
     return (
         <>
@@ -147,12 +198,26 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                             </SelectContent>
                         </Select>
                     </div>
-                    {payrollData.length > 0 && (
-                        <Button variant="outline" size="sm" onClick={handleSendListSummary} disabled={isSending} className="gap-2 font-bold text-xs uppercase tracking-tighter">
-                            {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                            Send Report
-                        </Button>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {payrollData.length > 0 && (
+                            <>
+                                <Button 
+                                    variant="outline" 
+                                    size="sm" 
+                                    onClick={handleRecordPayouts} 
+                                    disabled={isRecording || isSending} 
+                                    className="gap-2 font-bold text-xs uppercase tracking-tighter hidden sm:flex"
+                                >
+                                    {isRecording ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />}
+                                    Record Payouts
+                                </Button>
+                                <Button variant="outline" size="sm" onClick={handleSendListSummary} disabled={isSending || isRecording} className="gap-2 font-bold text-xs uppercase tracking-tighter">
+                                    {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                    Send Report
+                                </Button>
+                            </>
+                        )}
+                    </div>
                 </CardHeader>
                 <CardContent>
                     <Table>
