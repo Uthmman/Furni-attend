@@ -7,7 +7,7 @@ import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown
 import type { Employee, AttendanceRecord, PayrollSettings, EmployeeExpense } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
-import { collection, query, where, getDocs, doc, writeBatch, getDoc, setDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, writeBatch, getDoc, setDoc, deleteDoc } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
@@ -370,17 +370,25 @@ export default function DashboardPage() {
     const runHistoricalSync = async () => {
         if (!firestore || !user || !allEmployees || allEmployees.length === 0 || isSyncingHistory) return;
         
-        const initRef = doc(firestore, 'metadata', 'history_sync_v1');
+        const syncKey = 'history_sync_v3';
+        const initRef = doc(firestore, 'metadata', syncKey);
         const initSnap = await getDoc(initRef);
         if (initSnap.exists()) return;
 
         setIsSyncingHistory(true);
-        toast({ title: "Initializing Workshop History", description: "Calculating payroll from Meskerem 2017..." });
+        toast({ title: "Initializing Workshop History", description: "Standardizing payroll ledgers..." });
 
         try {
             const startOfHistory = toGregorian(2017, 1, 1); // Meskerem 1, 2017
             const today = new Date();
+            const thisMonthStart = startOfDay(toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1));
+            const thisWeekStart = startOfDay(startOfWeek(today, { weekStartsOn: 0 }));
             const batch = writeBatch(firestore);
+
+            // Cleanup: Delete any "Unpaid" records that might have been created by previous logic
+            const unpaidQuery = query(collection(firestore, 'employeeExpenses'), where('paymentStatus', '==', 'Unpaid'));
+            const unpaidSnap = await getDocs(unpaidQuery);
+            unpaidSnap.forEach(d => batch.delete(d.ref));
             
             const allHistoryAttendance: AttendanceRecord[] = [];
             const fetchPromises = allEmployees.map(async (emp) => {
@@ -392,16 +400,15 @@ export default function DashboardPage() {
 
             // Monthly History
             let currentMonthStart = startOfHistory;
-            while (currentMonthStart < today) {
+            while (currentMonthStart < thisMonthStart) { // Stop before current ongoing month
                 const eth = toEthiopian(currentMonthStart);
                 const monthLabel = `${ethiopianDateFormatter(currentMonthStart, { month: 'long' })} ${eth.year}`;
                 const periodValue = format(currentMonthStart, "yyyy-MM-dd");
                 const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
                 const units = getMonthlyWorkingUnits(currentMonthStart, daysInMonth);
                 const monthEnd = endOfDay(addDays(currentMonthStart, daysInMonth - 1));
-                const isPastMonth = monthEnd < today;
 
-                activeEmployees.filter(e => e.paymentMethod === 'Monthly').map(emp => {
+                activeEmployees.filter(e => e.paymentMethod === 'Monthly').forEach(emp => {
                     const records = allHistoryAttendance.filter(r => r.employeeId === emp.id && r.id && isWithinInterval(parse(r.id, "yyyy-MM-dd", new Date()), { start: currentMonthStart, end: monthEnd }));
                     const hourly = (emp.monthlyRate || 0) / units / 8;
                     const minuteRate = hourly / 60;
@@ -433,7 +440,7 @@ export default function DashboardPage() {
                     batch.set(doc(firestore, 'employeeExpenses', pId), {
                         id: pId, employeeId: emp.id, employeeName: emp.name, amount: netSalary, type: 'Monthly',
                         period: monthLabel, periodValue, periodLabel: monthLabel, recordedAt: new Date().toISOString(),
-                        paymentStatus: isPastMonth ? 'Paid' : 'Unpaid', category: 'Payroll', details: { lateMins, absentHours, overtimeHours: otHours, overtimeAmount: otAmount }
+                        paymentStatus: 'Paid', category: 'Payroll', details: { lateMins, absentHours, overtimeHours: otHours, overtimeAmount: otAmount }
                     }, { merge: true });
                 });
                 currentMonthStart = toGregorian(eth.month === 12 ? eth.year + 1 : eth.year, eth.month === 12 ? 1 : eth.month + 1, 1);
@@ -441,13 +448,12 @@ export default function DashboardPage() {
 
             // Weekly History
             let currentWeekStart = startOfWeek(startOfHistory, { weekStartsOn: 0 });
-            while (currentWeekStart < today) {
+            while (currentWeekStart < thisWeekStart) { // Stop before current ongoing week
                 const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
                 const weekLabel = `Week: ${ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
                 const periodValue = format(currentWeekStart, "yyyy-MM-dd");
-                const isPastWeek = endOfDay(weekEnd) < today;
 
-                activeEmployees.filter(e => e.paymentMethod === 'Weekly').map(emp => {
+                activeEmployees.filter(e => e.paymentMethod === 'Weekly').forEach(emp => {
                     const records = allHistoryAttendance.filter(r => r.employeeId === emp.id && r.id && isWithinInterval(parse(r.id, "yyyy-MM-dd", new Date()), { start: startOfDay(currentWeekStart), end: endOfDay(weekEnd) }));
                     const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
                     let baseHours = records.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
@@ -459,7 +465,7 @@ export default function DashboardPage() {
                     batch.set(doc(firestore, 'employeeExpenses', pId), {
                         id: pId, employeeId: emp.id, employeeName: emp.name, amount: total, type: 'Weekly',
                         period: weekLabel, periodValue, periodLabel: weekLabel, recordedAt: new Date().toISOString(),
-                        paymentStatus: isPastWeek ? 'Paid' : 'Unpaid', category: 'Payroll', details: { totalHours: baseHours, overtimeHours: otHours, overtimeAmount: otHours * (hourly || 0) * normalOTRate }
+                        paymentStatus: 'Paid', category: 'Payroll', details: { totalHours: baseHours, overtimeHours: otHours, overtimeAmount: otHours * (hourly || 0) * normalOTRate }
                     }, { merge: true });
                 });
                 currentWeekStart = addDays(currentWeekStart, 7);
@@ -467,10 +473,10 @@ export default function DashboardPage() {
 
             await batch.commit();
             await setDoc(initRef, { initializedAt: new Date().toISOString(), by: user.email });
-            toast({ title: "History Synced", description: "All past payouts since Meskerem recorded." });
+            toast({ title: "History Synced", description: "Workshop audit trail populated from Meskerem." });
         } catch (e) {
             console.error(e);
-            toast({ variant: 'destructive', title: "Sync Error", description: "Backfill failed." });
+            toast({ variant: 'destructive', title: "Sync Error", description: "Audit trail standardization failed." });
         } finally { setIsSyncingHistory(false); }
     };
     
