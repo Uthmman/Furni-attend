@@ -339,7 +339,6 @@ export default function DashboardPage() {
     if (allEmployees && allEmployees.length > 0 && activeTab !== 'today') fetchLazyData();
   }, [activeTab, selectedWeekStart, selectedMonthStart, allEmployees, firestore, user]);
 
-  // Unified Audit Fetcher
   useEffect(() => {
     const fetchAuditData = async () => {
         if (!firestore || !user || !selectedUnifiedMonth) return;
@@ -365,18 +364,18 @@ export default function DashboardPage() {
     fetchAuditData();
   }, [selectedUnifiedMonth, firestore, user]);
 
-  // Historical Sync Logic (Meskerem 2017 to Present)
   useEffect(() => {
     const runHistoricalSync = async () => {
         if (!firestore || !user || !allEmployees || allEmployees.length === 0 || isSyncingHistory) return;
         
-        const syncKey = 'history_sync_v3';
+        // Version v4: Enforces settled history only and cleans up any Unpaid records
+        const syncKey = 'history_sync_v4';
         const initRef = doc(firestore, 'metadata', syncKey);
         const initSnap = await getDoc(initRef);
         if (initSnap.exists()) return;
 
         setIsSyncingHistory(true);
-        toast({ title: "Initializing Workshop History", description: "Standardizing payroll ledgers..." });
+        toast({ title: "Optimizing Workshop Records", description: "Standardizing historical payouts..." });
 
         try {
             const startOfHistory = toGregorian(2017, 1, 1); // Meskerem 1, 2017
@@ -385,7 +384,7 @@ export default function DashboardPage() {
             const thisWeekStart = startOfDay(startOfWeek(today, { weekStartsOn: 0 }));
             const batch = writeBatch(firestore);
 
-            // Cleanup: Delete any "Unpaid" records that might have been created by previous logic
+            // Cleanup: Strictly delete any "Unpaid" records to keep ledger manual-only for active periods
             const unpaidQuery = query(collection(firestore, 'employeeExpenses'), where('paymentStatus', '==', 'Unpaid'));
             const unpaidSnap = await getDocs(unpaidQuery);
             unpaidSnap.forEach(d => batch.delete(d.ref));
@@ -398,9 +397,9 @@ export default function DashboardPage() {
             });
             await Promise.all(fetchPromises);
 
-            // Monthly History
+            // Monthly History: Up to but NOT including current month
             let currentMonthStart = startOfHistory;
-            while (currentMonthStart < thisMonthStart) { // Stop before current ongoing month
+            while (currentMonthStart < thisMonthStart) {
                 const eth = toEthiopian(currentMonthStart);
                 const monthLabel = `${ethiopianDateFormatter(currentMonthStart, { month: 'long' })} ${eth.year}`;
                 const periodValue = format(currentMonthStart, "yyyy-MM-dd");
@@ -446,9 +445,9 @@ export default function DashboardPage() {
                 currentMonthStart = toGregorian(eth.month === 12 ? eth.year + 1 : eth.year, eth.month === 12 ? 1 : eth.month + 1, 1);
             }
 
-            // Weekly History
+            // Weekly History: Up to but NOT including current week
             let currentWeekStart = startOfWeek(startOfHistory, { weekStartsOn: 0 });
-            while (currentWeekStart < thisWeekStart) { // Stop before current ongoing week
+            while (currentWeekStart < thisWeekStart) {
                 const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
                 const weekLabel = `Week: ${ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
                 const periodValue = format(currentWeekStart, "yyyy-MM-dd");
@@ -473,10 +472,10 @@ export default function DashboardPage() {
 
             await batch.commit();
             await setDoc(initRef, { initializedAt: new Date().toISOString(), by: user.email });
-            toast({ title: "History Synced", description: "Workshop audit trail populated from Meskerem." });
+            toast({ title: "Ledger Synchronized", description: "Audit trail complete from Meskerem 2017." });
         } catch (e) {
             console.error(e);
-            toast({ variant: 'destructive', title: "Sync Error", description: "Audit trail standardization failed." });
+            toast({ variant: 'destructive', title: "Sync Error", description: "Historical data standardizing failed." });
         } finally { setIsSyncingHistory(false); }
     };
     
