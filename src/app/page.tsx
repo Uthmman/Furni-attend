@@ -347,7 +347,7 @@ export default function DashboardPage() {
         try {
             const periodValue = selectedUnifiedMonth;
             const expensesRef = collection(firestore, 'employeeExpenses');
-            const q = query(expensesRef, where('periodValue', '==', periodValue));
+            const q = query(expensesRef, where('periodValue', '==', periodValue), where('paymentStatus', '==', 'Paid'));
             const snap = await getDocs(q);
             
             let total = 0;
@@ -398,9 +398,11 @@ export default function DashboardPage() {
                 const periodValue = format(currentMonthStart, "yyyy-MM-dd");
                 const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
                 const units = getMonthlyWorkingUnits(currentMonthStart, daysInMonth);
+                const monthEnd = endOfDay(addDays(currentMonthStart, daysInMonth - 1));
+                const isPastMonth = monthEnd < today;
 
                 activeEmployees.filter(e => e.paymentMethod === 'Monthly').map(emp => {
-                    const records = allHistoryAttendance.filter(r => r.employeeId === emp.id && r.id && isWithinInterval(parse(r.id, "yyyy-MM-dd", new Date()), { start: currentMonthStart, end: endOfDay(addDays(currentMonthStart, daysInMonth - 1)) }));
+                    const records = allHistoryAttendance.filter(r => r.employeeId === emp.id && r.id && isWithinInterval(parse(r.id, "yyyy-MM-dd", new Date()), { start: currentMonthStart, end: monthEnd }));
                     const hourly = (emp.monthlyRate || 0) / units / 8;
                     const minuteRate = hourly / 60;
                     
@@ -431,7 +433,7 @@ export default function DashboardPage() {
                     batch.set(doc(firestore, 'employeeExpenses', pId), {
                         id: pId, employeeId: emp.id, employeeName: emp.name, amount: netSalary, type: 'Monthly',
                         period: monthLabel, periodValue, periodLabel: monthLabel, recordedAt: new Date().toISOString(),
-                        paymentStatus: 'Paid', category: 'Payroll', details: { lateMins, absentHours, overtimeHours: otHours, overtimeAmount: otAmount }
+                        paymentStatus: isPastMonth ? 'Paid' : 'Unpaid', category: 'Payroll', details: { lateMins, absentHours, overtimeHours: otHours, overtimeAmount: otAmount }
                     }, { merge: true });
                 });
                 currentMonthStart = toGregorian(eth.month === 12 ? eth.year + 1 : eth.year, eth.month === 12 ? 1 : eth.month + 1, 1);
@@ -443,6 +445,7 @@ export default function DashboardPage() {
                 const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
                 const weekLabel = `Week: ${ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
                 const periodValue = format(currentWeekStart, "yyyy-MM-dd");
+                const isPastWeek = endOfDay(weekEnd) < today;
 
                 activeEmployees.filter(e => e.paymentMethod === 'Weekly').map(emp => {
                     const records = allHistoryAttendance.filter(r => r.employeeId === emp.id && r.id && isWithinInterval(parse(r.id, "yyyy-MM-dd", new Date()), { start: startOfDay(currentWeekStart), end: endOfDay(weekEnd) }));
@@ -456,7 +459,7 @@ export default function DashboardPage() {
                     batch.set(doc(firestore, 'employeeExpenses', pId), {
                         id: pId, employeeId: emp.id, employeeName: emp.name, amount: total, type: 'Weekly',
                         period: weekLabel, periodValue, periodLabel: weekLabel, recordedAt: new Date().toISOString(),
-                        paymentStatus: 'Paid', category: 'Payroll', details: { totalHours: baseHours, overtimeHours: otHours, overtimeAmount: otHours * (hourly || 0) * normalOTRate }
+                        paymentStatus: isPastWeek ? 'Paid' : 'Unpaid', category: 'Payroll', details: { totalHours: baseHours, overtimeHours: otHours, overtimeAmount: otHours * (hourly || 0) * normalOTRate }
                     }, { merge: true });
                 });
                 currentWeekStart = addDays(currentWeekStart, 7);
