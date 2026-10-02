@@ -316,7 +316,8 @@ export default function DashboardPage() {
     toast({ title: "Synchronizing Workshop Ledger", description: "Calculating historical payout records..." });
 
     try {
-        const startOfHistory = toGregorian(2017, 1, 1);
+        // Updated to start from Meskerem 2018 for faster uploads
+        const startOfHistory = toGregorian(2018, 1, 1);
         const today = new Date();
         const thisMonthStart = startOfDay(toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1));
         const thisWeekStart = startOfDay(startOfWeek(today, { weekStartsOn: 0 }));
