@@ -132,106 +132,13 @@ const calculateMinutesLate = (record: AttendanceRecord): number => {
     return Math.round(minutesLate);
 };
 
-const getOverallStatus = (morning: string, afternoon: string): string => {
-    if (morning === 'Permission' || afternoon === 'Permission') return 'Permission';
-    if (morning === 'Absent' && (afternoon === 'Absent' || !afternoon)) return 'Absent';
-    if (morning === 'Late' || afternoon === 'Late') return 'Late';
-    if (morning === 'Present' || afternoon === 'Present') return 'Present';
-    return 'Absent';
-};
-
-const EmployeeCard = ({ 
-    employeeId,
-    name, 
-    paymentMethod, 
-    lateMins, 
-    absentHours, 
-    overtimeHours, 
-    overtimeAmount, 
-    total, 
-    amountLabel, 
-    morning, 
-    afternoon, 
-    status,
-    isToday 
-  }: any) => (
-    <Card className="shadow-sm border-primary/5 hover:border-primary/20 transition-colors">
-        <CardContent className="p-4 space-y-4">
-            <div className="flex justify-between items-start">
-                <Link href={`/employees/${employeeId}`} className="group inline-flex items-center gap-1">
-                    <h3 className="font-semibold text-[#1e293b] text-base group-hover:text-primary transition-colors underline decoration-transparent group-hover:decoration-primary/30 underline-offset-4">{name}</h3>
-                </Link>
-                {isToday ? (
-                  <Badge 
-                    className={cn(
-                        "text-[10px] font-bold h-6 px-3 rounded-full border-none shadow-none",
-                        status === 'Present' && "bg-secondary text-secondary-foreground",
-                        status === 'Late' && "bg-amber-100 text-amber-700",
-                        status === 'Absent' && "bg-destructive/10 text-destructive",
-                        status === 'Permission' && "bg-blue-100 text-blue-700"
-                    )}
-                  >
-                    {status}
-                  </Badge>
-                ) : (
-                  <Badge variant="outline" className="text-[9px] h-4 py-0 px-1.5 font-bold uppercase tracking-tight opacity-60">
-                      {paymentMethod}
-                  </Badge>
-                )}
-            </div>
-            
-            {isToday ? (
-                <div className="bg-muted/20 rounded-full py-2 px-4 flex justify-between items-center text-[10px] sm:text-[11px]">
-                    <div className="flex gap-1.5 items-center">
-                        <span className="text-muted-foreground font-black uppercase tracking-tighter opacity-60">Morning:</span>
-                        <span className="font-bold text-foreground/80">{morning || "—"}</span>
-                    </div>
-                    <div className="flex gap-1.5 items-center">
-                        <span className="text-muted-foreground font-black uppercase tracking-tighter opacity-60">Afternoon:</span>
-                        <span className="font-bold text-foreground/80">{afternoon || "—"}</span>
-                    </div>
-                </div>
-            ) : (
-                <div className="flex gap-2">
-                    <div className="flex-1 bg-muted/20 rounded-full h-8 flex items-center px-4 justify-between">
-                        <span className={cn("text-[11px] font-medium", lateMins > 0 ? "text-amber-600" : "text-muted-foreground/60")}>
-                            {lateMins > 0 ? `Late: ${lateMins}m` : "No late mins"}
-                        </span>
-                        <span className={cn("text-[11px] font-bold", absentHours > 0 ? "text-destructive" : "text-muted-foreground/60")}>
-                            {absentHours > 0 ? `Absent: ${absentHours.toFixed(1)}h` : "Full attendance"}
-                        </span>
-                    </div>
-                </div>
-            )}
-
-            {overtimeHours > 0 && (
-                <div className="bg-primary/5 rounded-full h-8 flex items-center px-4 justify-between">
-                    <span className="text-[11px] font-medium text-primary/80">Overtime:</span>
-                    <span className="text-[11px] font-bold text-primary">
-                        +{overtimeHours.toFixed(1)} hrs (ETB {overtimeAmount.toFixed(2)})
-                    </span>
-                </div>
-            )}
-
-            <div className={cn("flex items-center", isToday ? "justify-end pt-1" : "pt-2 justify-between border-t border-dashed")}>
-                {!isToday && <span className="text-[11px] font-bold text-[#1e293b]">{amountLabel}:</span>}
-                <span className={cn("font-semibold text-primary", isToday ? "text-lg" : "text-xl")}>
-                    ETB {total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
-            </div>
-        </CardContent>
-    </Card>
-  );
-
 export default function DashboardPage() {
   const { setTitle } = usePageTitle();
   const firestore = useFirestore();
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   
-  const [activeTab, setActiveTab] = useState("today");
   const [isSyncingHistory, setIsSyncingHistory] = useState(false);
-  
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
   
@@ -265,7 +172,6 @@ export default function DashboardPage() {
 
   useEffect(() => { setTitle("Dashboard"); }, [setTitle]);
 
-  // Fetch current real-time window for top charts
   useEffect(() => {
     const fetchCurrentMonthData = async () => {
         if (!firestore || !user || !allEmployees || allEmployees.length === 0) return;
@@ -274,24 +180,22 @@ export default function DashboardPage() {
             const nowLocal = new Date();
             const start = startOfDay(subDays(toGregorian(toEthiopian(nowLocal).year, toEthiopian(nowLocal).month, 1), 7));
             const end = endOfDay(nowLocal);
-            const records: AttendanceRecord[] = [];
             
-            for (const emp of allEmployees) {
-                const q = query(
-                    collection(firestore, 'employees', emp.id, 'attendance'), 
-                    where('date', '>=', start.toISOString()), 
-                    where('date', '<=', end.toISOString())
-                );
-                const snap = await getDocs(q);
-                snap.forEach(d => records.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
-            }
+            // Parallel fetch for speed
+            const fetchPromises = allEmployees.map(emp => 
+                getDocs(query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', start.toISOString()), where('date', '<=', end.toISOString())))
+            );
+            const snaps = await Promise.all(fetchPromises);
+            const records: AttendanceRecord[] = [];
+            snaps.forEach((snap, idx) => {
+                snap.forEach(d => records.push({ ...d.data(), employeeId: allEmployees[idx].id, id: d.id } as AttendanceRecord));
+            });
             setAllAttendance(records);
         } catch (e) {} finally { setRealTimeLoading(false); }
     };
     fetchCurrentMonthData();
   }, [allEmployees, firestore, user]);
 
-  // Fetch audit totals from database
   useEffect(() => {
     const fetchAuditData = async () => {
         if (!firestore || !user || !selectedUnifiedMonth) return;
@@ -313,30 +217,32 @@ export default function DashboardPage() {
     if (!firestore || !user || !allEmployees || allEmployees.length === 0 || isSyncingHistory) return;
     
     setIsSyncingHistory(true);
-    toast({ title: "Synchronizing Workshop Ledger", description: "Calculating historical payout records..." });
+    toast({ title: "Synchronizing Workshop Ledger", description: "Processing historical payout records..." });
 
     try {
-        // Updated to start from Meskerem 2018 for faster uploads
-        const startOfHistory = toGregorian(2018, 1, 1);
+        // Start from Meskerem 2017 (current EC year starting Sept 2024)
+        const startOfHistory = toGregorian(2017, 1, 1);
         const today = new Date();
         const thisMonthStart = startOfDay(toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1));
         const thisWeekStart = startOfDay(startOfWeek(today, { weekStartsOn: 0 }));
         const batch = writeBatch(firestore);
 
-        // Fetch absolute history for all staff
+        // Fetch absolute history for all staff in PARALLEL
+        const fetchPromises = allEmployees.map(emp => 
+            getDocs(query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', startOfHistory.toISOString())))
+        );
+        const snaps = await Promise.all(fetchPromises);
         const historyRecords: AttendanceRecord[] = [];
-        for (const emp of allEmployees) {
-            const q = query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', startOfHistory.toISOString()));
-            const snap = await getDocs(q);
-            snap.forEach(d => historyRecords.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
-        }
+        snaps.forEach((snap, idx) => {
+            snap.forEach(d => historyRecords.push({ ...d.data(), employeeId: allEmployees[idx].id, id: d.id } as AttendanceRecord));
+        });
 
-        // Cleanup any existing Unpaid records to prevent UI noise
+        // Cleanup Unpaid records
         const unpaidQuery = query(collection(firestore, 'employeeExpenses'), where('paymentStatus', '==', 'Unpaid'));
         const unpaidSnap = await getDocs(unpaidQuery);
         unpaidSnap.forEach(d => batch.delete(d.ref));
 
-        // Populate Monthly History (Past months only)
+        // Process Monthly History (Completed months)
         let mStep = startOfHistory;
         while (mStep < thisMonthStart) {
             const eth = toEthiopian(mStep);
@@ -381,7 +287,7 @@ export default function DashboardPage() {
             mStep = toGregorian(eth.month === 12 ? eth.year + 1 : eth.year, eth.month === 12 ? 1 : eth.month + 1, 1);
         }
 
-        // Populate Weekly History (Past weeks only)
+        // Process Weekly History (Completed weeks)
         let wStep = startOfWeek(startOfHistory, { weekStartsOn: 0 });
         while (wStep < thisWeekStart) {
             const wEnd = endOfWeek(wStep, { weekStartsOn: 0 });
@@ -406,14 +312,13 @@ export default function DashboardPage() {
         }
 
         await batch.commit();
-        toast({ title: "Ledger Complete", description: "Successfully archived historical payroll records." });
+        toast({ title: "Ledger Complete", description: "Successfully archived finalized payroll records." });
     } catch (e) {
         console.error(e);
         toast({ variant: 'destructive', title: "Sync Failed" });
     } finally { setIsSyncingHistory(false); }
   };
 
-  // Top Row Calculation Helpers
   const liveTotals = useMemo(() => {
     if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0 };
     const nowLocal = new Date();
@@ -520,7 +425,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-8 pb-10">
-      {/* Top Hero Card - Blueprint Aesthetic */}
+      {/* Top Hero Card */}
       <Card className="shadow-lg border-none bg-[#E8ECF6] rounded-[2.5rem] overflow-hidden mb-2 relative">
           <div className="absolute inset-0 opacity-[0.035] pointer-events-none" style={{ backgroundImage: 'linear-gradient(#10192E 1px, transparent 1px), linear-gradient(90deg, #10192E 1px, transparent 1px)', backgroundSize: '22px 22px' }} />
           <CardContent className="p-8 sm:p-10 flex flex-col md:flex-row justify-between items-center gap-8 relative z-10">
