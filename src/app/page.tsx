@@ -3,7 +3,7 @@
 
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2 } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2, History } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings, EmployeeExpense } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
@@ -230,17 +230,11 @@ export default function DashboardPage() {
   const { toast } = useToast();
   
   const [activeTab, setActiveTab] = useState("today");
-  const [isMarkingPaid, setIsMarkingPaid] = useState(false);
   const [isSyncingHistory, setIsSyncingHistory] = useState(false);
   
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
-  const [lazyLoading, setLazyLoading] = useState(false);
-  const [lazyAttendance, setLazyAttendance] = useState<AttendanceRecord[]>([]);
-
-  const [selectedDay, setSelectedDay] = useState<string>(format(new Date(), "yyyy-MM-dd"));
-  const [selectedWeekStart, setSelectedWeekStart] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 0 }), "yyyy-MM-dd"));
-  const [selectedMonthStart, setSelectedMonthStart] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
+  
   const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
   
   const [auditTotal, setAuditTotal] = useState(0);
@@ -315,117 +309,108 @@ export default function DashboardPage() {
     fetchAuditData();
   }, [selectedUnifiedMonth, firestore, user]);
 
-  // V5 Historical Payout Backfill Logic
-  useEffect(() => {
-    const runHistoricalSync = async () => {
-        if (!firestore || !user || !allEmployees || allEmployees.length === 0 || isSyncingHistory) return;
-        
-        const syncKey = 'history_sync_v5'; // Bumped version for fresh scan
-        const initRef = doc(firestore, 'metadata', syncKey);
-        const initSnap = await getDoc(initRef);
-        if (initSnap.exists()) return;
+  const handleManualHistorySync = async () => {
+    if (!firestore || !user || !allEmployees || allEmployees.length === 0 || isSyncingHistory) return;
+    
+    setIsSyncingHistory(true);
+    toast({ title: "Synchronizing Workshop Ledger", description: "Calculating historical payout records..." });
 
-        setIsSyncingHistory(true);
-        toast({ title: "Synchronizing Workshop Ledger", description: "Calculating historical payout records..." });
+    try {
+        const startOfHistory = toGregorian(2017, 1, 1);
+        const today = new Date();
+        const thisMonthStart = startOfDay(toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1));
+        const thisWeekStart = startOfDay(startOfWeek(today, { weekStartsOn: 0 }));
+        const batch = writeBatch(firestore);
 
-        try {
-            const startOfHistory = toGregorian(2017, 1, 1);
-            const today = new Date();
-            const thisMonthStart = startOfDay(toGregorian(toEthiopian(today).year, toEthiopian(today).month, 1));
-            const thisWeekStart = startOfDay(startOfWeek(today, { weekStartsOn: 0 }));
-            const batch = writeBatch(firestore);
+        // Fetch absolute history for all staff
+        const historyRecords: AttendanceRecord[] = [];
+        for (const emp of allEmployees) {
+            const q = query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', startOfHistory.toISOString()));
+            const snap = await getDocs(q);
+            snap.forEach(d => historyRecords.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
+        }
 
-            // Fetch absolute history for all staff
-            const historyRecords: AttendanceRecord[] = [];
-            for (const emp of allEmployees) {
-                const q = query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', startOfHistory.toISOString()));
-                const snap = await getDocs(q);
-                snap.forEach(d => historyRecords.push({ ...d.data(), employeeId: emp.id, id: d.id } as AttendanceRecord));
-            }
+        // Cleanup any existing Unpaid records to prevent UI noise
+        const unpaidQuery = query(collection(firestore, 'employeeExpenses'), where('paymentStatus', '==', 'Unpaid'));
+        const unpaidSnap = await getDocs(unpaidQuery);
+        unpaidSnap.forEach(d => batch.delete(d.ref));
 
-            // Cleanup any existing Unpaid records to prevent UI noise
-            const unpaidQuery = query(collection(firestore, 'employeeExpenses'), where('paymentStatus', '==', 'Unpaid'));
-            const unpaidSnap = await getDocs(unpaidQuery);
-            unpaidSnap.forEach(d => batch.delete(d.ref));
+        // Populate Monthly History (Past months only)
+        let mStep = startOfHistory;
+        while (mStep < thisMonthStart) {
+            const eth = toEthiopian(mStep);
+            const label = `${ethiopianDateFormatter(mStep, { month: 'long' })} ${eth.year}`;
+            const val = format(mStep, "yyyy-MM-dd");
+            const days = getEthiopianMonthDays(eth.year, eth.month);
+            const units = getMonthlyWorkingUnits(mStep, days);
+            const end = endOfDay(addDays(mStep, days - 1));
 
-            // Populate Monthly History (Past months only)
-            let mStep = startOfHistory;
-            while (mStep < thisMonthStart) {
-                const eth = toEthiopian(mStep);
-                const label = `${ethiopianDateFormatter(mStep, { month: 'long' })} ${eth.year}`;
-                const val = format(mStep, "yyyy-MM-dd");
-                const days = getEthiopianMonthDays(eth.year, eth.month);
-                const units = getMonthlyWorkingUnits(mStep, days);
-                const end = endOfDay(addDays(mStep, days - 1));
-
-                allEmployees.filter(e => e.paymentMethod === 'Monthly').forEach(emp => {
-                    const recs = historyRecords.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: mStep, end }));
-                    const hourly = (emp.monthlyRate || 0) / units / 8;
-                    const minuteRate = hourly / 60;
-                    
-                    let lateMins = 0, otH = 0, otA = 0, ded = 0, absH = 0;
-                    recs.forEach(r => {
-                        const d = parse(r.id!, "yyyy-MM-dd", new Date());
-                        if (getDay(d) === 0) {
-                            if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
-                                let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
-                                otA += sH * hourly * sundayOTRate; otH += sH;
-                            }
-                        } else {
-                            if (r.morningStatus === 'Absent') { ded += 4.5 * hourly; absH += 4.5; }
-                            if (r.afternoonStatus === 'Absent' && getDay(d) !== 6) { ded += 3.5 * hourly; absH += 3.5; }
-                            if (getDay(d) === 6 && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
-                                otA += 3.5 * hourly * normalOTRate; otH += 3.5;
-                            }
-                            lateMins += calculateMinutesLate(r);
+            allEmployees.filter(e => e.paymentMethod === 'Monthly').forEach(emp => {
+                const recs = historyRecords.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: mStep, end }));
+                const hourly = (emp.monthlyRate || 0) / units / 8;
+                const minuteRate = hourly / 60;
+                
+                let lateMins = 0, otH = 0, otA = 0, ded = 0, absH = 0;
+                recs.forEach(r => {
+                    const d = parse(r.id!, "yyyy-MM-dd", new Date());
+                    if (getDay(d) === 0) {
+                        if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') {
+                            let sH = (r.morningStatus !== 'Absent' ? 4.5 : 0) + (r.afternoonStatus !== 'Absent' ? 3.5 : 0);
+                            otA += sH * hourly * sundayOTRate; otH += sH;
                         }
-                        if (r.overtimeHours) { otH += r.overtimeHours; otA += r.overtimeHours * hourly * normalOTRate; }
-                    });
-
-                    const net = (emp.monthlyRate || 0) - ded - (lateMins * minuteRate) + otA;
-                    const pId = `payout_MONTHLY_${emp.id}_${label.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
-                    batch.set(doc(firestore, 'employeeExpenses', pId), {
-                        id: pId, employeeId: emp.id, employeeName: emp.name, amount: net, type: 'Monthly',
-                        period: label, periodValue: val, periodLabel: label, recordedAt: new Date().toISOString(),
-                        paymentStatus: 'Paid', category: 'Payroll', details: { lateMins, absentHours: absH, overtimeHours: otH, overtimeAmount: otA }
-                    }, { merge: true });
+                    } else {
+                        if (r.morningStatus === 'Absent') { ded += 4.5 * hourly; absH += 4.5; }
+                        if (r.afternoonStatus === 'Absent' && getDay(d) !== 6) { ded += 3.5 * hourly; absH += 3.5; }
+                        if (getDay(d) === 6 && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) {
+                            otA += 3.5 * hourly * normalOTRate; otH += 3.5;
+                        }
+                        lateMins += calculateMinutesLate(r);
+                    }
+                    if (r.overtimeHours) { otH += r.overtimeHours; otA += r.overtimeHours * hourly * normalOTRate; }
                 });
-                mStep = toGregorian(eth.month === 12 ? eth.year + 1 : eth.year, eth.month === 12 ? 1 : eth.month + 1, 1);
-            }
 
-            // Populate Weekly History (Past weeks only)
-            let wStep = startOfWeek(startOfHistory, { weekStartsOn: 0 });
-            while (wStep < thisWeekStart) {
-                const wEnd = endOfWeek(wStep, { weekStartsOn: 0 });
-                const label = `Week: ${ethiopianDateFormatter(wStep, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(wEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
-                const val = format(wStep, "yyyy-MM-dd");
+                const net = (emp.monthlyRate || 0) - ded - (lateMins * minuteRate) + otA;
+                const pId = `payout_MONTHLY_${emp.id}_${label.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+                batch.set(doc(firestore, 'employeeExpenses', pId), {
+                    id: pId, employeeId: emp.id, employeeName: emp.name, amount: net, type: 'Monthly',
+                    period: label, periodValue: val, periodLabel: label, recordedAt: new Date().toISOString(),
+                    paymentStatus: 'Paid', category: 'Payroll', details: { lateMins, absentHours: absH, overtimeHours: otH, overtimeAmount: otA }
+                }, { merge: true });
+            });
+            mStep = toGregorian(eth.month === 12 ? eth.year + 1 : eth.year, eth.month === 12 ? 1 : eth.month + 1, 1);
+        }
 
-                allEmployees.filter(e => e.paymentMethod === 'Weekly').forEach(emp => {
-                    const recs = historyRecords.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: startOfDay(wStep), end: endOfDay(wEnd) }));
-                    const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-                    let bH = recs.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
-                    let otH = recs.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-                    const total = (bH * (hourly || 0)) + (otH * (hourly || 0) * normalOTRate);
-                    
-                    const pId = `payout_WEEKLY_${emp.id}_${label.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
-                    batch.set(doc(firestore, 'employeeExpenses', pId), {
-                        id: pId, employeeId: emp.id, employeeName: emp.name, amount: total, type: 'Weekly',
-                        period: label, periodValue: val, periodLabel: label, recordedAt: new Date().toISOString(),
-                        paymentStatus: 'Paid', category: 'Payroll', details: { totalHours: bH, overtimeHours: otH, overtimeAmount: otH * (hourly || 0) * normalOTRate }
-                    }, { merge: true });
-                });
-                wStep = addDays(wStep, 7);
-            }
+        // Populate Weekly History (Past weeks only)
+        let wStep = startOfWeek(startOfHistory, { weekStartsOn: 0 });
+        while (wStep < thisWeekStart) {
+            const wEnd = endOfWeek(wStep, { weekStartsOn: 0 });
+            const label = `Week: ${ethiopianDateFormatter(wStep, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(wEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
+            const val = format(wStep, "yyyy-MM-dd");
 
-            await batch.commit();
-            await setDoc(initRef, { initializedAt: new Date().toISOString(), by: user.email });
-            toast({ title: "Ledger Complete", description: "Successfully archived payroll history since Meskerem 2017." });
-        } catch (e) {
-            console.error(e);
-        } finally { setIsSyncingHistory(false); }
-    };
-    runHistoricalSync();
-  }, [allEmployees, firestore, user, normalOTRate, sundayOTRate]);
+            allEmployees.filter(e => e.paymentMethod === 'Weekly').forEach(emp => {
+                const recs = historyRecords.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: startOfDay(wStep), end: endOfDay(wEnd) }));
+                const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
+                let bH = recs.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
+                let otH = recs.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
+                const total = (bH * (hourly || 0)) + (otH * (hourly || 0) * normalOTRate);
+                
+                const pId = `payout_WEEKLY_${emp.id}_${label.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+                batch.set(doc(firestore, 'employeeExpenses', pId), {
+                    id: pId, employeeId: emp.id, employeeName: emp.name, amount: total, type: 'Weekly',
+                    period: label, periodValue: val, periodLabel: label, recordedAt: new Date().toISOString(),
+                    paymentStatus: 'Paid', category: 'Payroll', details: { totalHours: bH, overtimeHours: otH, overtimeAmount: otH * (hourly || 0) * normalOTRate }
+                }, { merge: true });
+            });
+            wStep = addDays(wStep, 7);
+        }
+
+        await batch.commit();
+        toast({ title: "Ledger Complete", description: "Successfully archived historical payroll records." });
+    } catch (e) {
+        console.error(e);
+        toast({ variant: 'destructive', title: "Sync Failed" });
+    } finally { setIsSyncingHistory(false); }
+  };
 
   // Top Row Calculation Helpers
   const liveTotals = useMemo(() => {
@@ -581,15 +566,6 @@ export default function DashboardPage() {
       {/* Grid Summary Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-2">
         <Card className="col-span-2 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
-            <CardContent className="p-6 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                    <div className="bg-[rgba(242,169,59,0.14)] p-4 rounded-2xl text-[#F2A93B] shadow-sm"><Wallet2 className="h-6 w-6" /></div>
-                    <div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Today's Total</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">ETB {liveTotals.today.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
-                </div>
-                <div className={cn("flex items-center gap-1 text-[11px] font-bold", todayTrendPercent >= 0 ? "text-[#34C264]" : "text-[#FF3B30]")}>{todayTrendPercent >= 0 ? <TrendingUp className="h-3.5 w-3.5" /> : <TrendingDown className="h-3.5 w-3.5" />} {Math.abs(todayTrendPercent).toFixed(1)}%</div>
-            </CardContent>
-        </Card>
-        <Card className="col-span-2 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300">
           <CardContent className="p-6 flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="bg-[rgba(52,194,100,0.13)] p-4 rounded-2xl text-[#34C264] shadow-sm"><UserCheck className="h-6 w-6" /></div>
@@ -641,7 +617,20 @@ export default function DashboardPage() {
               </>}
           </CardContent>
       </Card>
+
+      {/* Manual Sync Trigger */}
+      <div className="flex justify-center pt-4">
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleManualHistorySync}
+            disabled={isSyncingHistory || employeesLoading}
+            className="text-[10px] font-black uppercase tracking-[0.2em] text-[#9AA3B8] hover:text-[#3478F6] transition-colors gap-2"
+          >
+            {isSyncingHistory ? <Loader2 className="h-3 w-3 animate-spin" /> : <History className="h-3 w-3" />}
+            {isSyncingHistory ? "Synchronizing Records..." : "Re-sync Historical Ledger"}
+          </Button>
+      </div>
     </div>
   );
 }
-
