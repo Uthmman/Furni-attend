@@ -3,7 +3,7 @@
 
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2, History, Timer, UserX } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2, History, Timer, UserX, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings, EmployeeExpense } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
@@ -143,6 +143,10 @@ export default function DashboardPage() {
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
   
+  // Tab Selectors
+  const [selectedDashboardWeek, setSelectedDashboardWeek] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 0 }), "yyyy-MM-dd"));
+  const [selectedDashboardMonth, setSelectedDashboardMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
+  
   const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
   
   const [auditTotal, setAuditTotal] = useState(0);
@@ -173,21 +177,53 @@ export default function DashboardPage() {
 
   useEffect(() => { setTitle("Dashboard"); }, [setTitle]);
 
+  // Options for selectors
+  const monthOptions = useMemo(() => {
+    const options = [];
+    const today = new Date();
+    for (let i = 0; i < 12; i++) {
+        const d = subMonths(today, i);
+        const eth = toEthiopian(d);
+        const start = toGregorian(eth.year, eth.month, 1);
+        options.push({
+            value: format(start, "yyyy-MM-dd"),
+            label: `${ethiopianDateFormatter(start, { month: 'long' })} ${eth.year}`
+        });
+    }
+    return options;
+  }, []);
+
+  const weekOptions = useMemo(() => {
+    const options = [];
+    const today = new Date();
+    let current = startOfWeek(today, { weekStartsOn: 0 });
+    for (let i = 0; i < 12; i++) {
+        const end = endOfWeek(current, { weekStartsOn: 0 });
+        options.push({
+            value: format(current, "yyyy-MM-dd"),
+            label: `${ethiopianDateFormatter(current, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'short', year: 'numeric' })}`
+        });
+        current = subDays(current, 7);
+    }
+    return options;
+  }, []);
+
   useEffect(() => {
-    const fetchCurrentMonthData = async () => {
+    const fetchRelevantAttendance = async () => {
         if (!firestore || !user || !allEmployees || allEmployees.length === 0) {
             setRealTimeLoading(false);
             return;
         }
         setRealTimeLoading(true);
         try {
-            const nowLocal = new Date();
-            const ethNow = toEthiopian(nowLocal);
-            const start = startOfDay(toGregorian(ethNow.year, ethNow.month, 1));
-            const end = endOfDay(nowLocal);
+            // Determine range to fetch: earliest of selectors to today
+            const weekStart = startOfDay(new Date(selectedDashboardWeek));
+            const monthStart = startOfDay(new Date(selectedDashboardMonth));
+            const rangeStart = weekStart < monthStart ? weekStart : monthStart;
+            const end = endOfDay(new Date());
             
             const fetchPromises = allEmployees.map(emp => 
-                getDocs(query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', start.toISOString()), where('date', '<=', end.toISOString())))
+                getDocs(query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', rangeStart.toISOString()), where('date', '<=', end.toISOString())))
             );
             const snaps = await Promise.all(fetchPromises);
             const records: AttendanceRecord[] = [];
@@ -195,10 +231,12 @@ export default function DashboardPage() {
                 snap.forEach(d => records.push({ ...d.data(), employeeId: allEmployees[idx].id, id: d.id } as AttendanceRecord));
             });
             setAllAttendance(records);
-        } catch (e) {} finally { setRealTimeLoading(false); }
+        } catch (e) {
+            console.error("Fetch error:", e);
+        } finally { setRealTimeLoading(false); }
     };
-    fetchCurrentMonthData();
-  }, [allEmployees, firestore, user]);
+    fetchRelevantAttendance();
+  }, [allEmployees, firestore, user, selectedDashboardWeek, selectedDashboardMonth]);
 
   useEffect(() => {
     const fetchAuditData = async () => {
@@ -218,14 +256,17 @@ export default function DashboardPage() {
 
   const liveTotals = useMemo(() => {
     if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0, staffData: [] };
+    
     const nowLocal = new Date();
     const todayStr = format(nowLocal, "yyyy-MM-dd");
-    const weekStart = startOfDay(startOfWeek(nowLocal, { weekStartsOn: 0 }));
-    const monthStart = startOfDay(toGregorian(toEthiopian(nowLocal).year, toEthiopian(nowLocal).month, 1));
-    const ethNow = toEthiopian(nowLocal);
-    const units = getMonthlyWorkingUnits(monthStart, getEthiopianMonthDays(ethNow.year, ethNow.month));
+    
+    // Period Contexts
+    const dashboardWeekStart = startOfDay(new Date(selectedDashboardWeek));
+    const dashboardMonthStart = startOfDay(new Date(selectedDashboardMonth));
+    const ethDashMonth = toEthiopian(dashboardMonthStart);
+    const dashMonthUnits = getMonthlyWorkingUnits(dashboardMonthStart, getEthiopianMonthDays(ethDashMonth.year, ethDashMonth.month));
 
-    let todayCostGlobal = 0, weekCostGlobal = 0, monthCostGlobal = 0, onSiteCount = 0;
+    let todayCostGlobal = 0, onSiteCount = 0;
     const staffData: any[] = [];
 
     allEmployees.forEach(emp => {
@@ -237,7 +278,7 @@ export default function DashboardPage() {
         const empStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
         const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
 
-        const calcDetailedCost = (r: AttendanceRecord, date: Date) => {
+        const calcDetailedCost = (r: AttendanceRecord, date: Date, unitsForPeriod: number) => {
             const isSun = getDay(date) === 0;
             const isSat = getDay(date) === 6;
             const isInactiveDay = empInactiveDate && date >= empInactiveDate;
@@ -256,8 +297,8 @@ export default function DashboardPage() {
                 
                 return { cost, late: calculateMinutesLate(r), absent, otHours: otH, otPay: otH * (hourly || 0) * normalOTRate };
             } else {
-                const hourly = (emp.monthlyRate || 0) / units / 8;
-                const daily = (emp.monthlyRate || 0) / units;
+                const hourly = (emp.monthlyRate || 0) / unitsForPeriod / 8;
+                const daily = (emp.monthlyRate || 0) / unitsForPeriod;
                 let dedHours = 0;
                 if (r.morningStatus === 'Absent') dedHours += 4.5;
                 if (r.afternoonStatus === 'Absent' && !isSat) dedHours += 3.5;
@@ -281,40 +322,71 @@ export default function DashboardPage() {
 
         empRecords.forEach(r => {
             const d = parse(r.id!, "yyyy-MM-dd", new Date());
-            const details = calcDetailedCost(r, d);
             
+            // Today Calc
             if (isSameDay(d, nowLocal)) {
-                empStats.today.cost += details.cost;
-                todayCostGlobal += details.cost;
+                const ethNow = toEthiopian(nowLocal);
+                const currentMonthUnits = getMonthlyWorkingUnits(startOfMonth(nowLocal), getEthiopianMonthDays(ethNow.year, ethNow.month));
+                const todayDetails = calcDetailedCost(r, d, currentMonthUnits);
+                empStats.today.cost += todayDetails.cost;
+                todayCostGlobal += todayDetails.cost;
             }
-            if (d >= weekStart) {
-                empStats.week.cost += details.cost;
-                empStats.week.late += details.late;
-                empStats.week.absent += details.absent;
-                empStats.week.otHours += details.otHours;
-                empStats.week.otPay += details.otPay;
-                weekCostGlobal += details.cost;
+
+            // Weekly Selector Calc
+            const weekEnd = endOfDay(endOfWeek(dashboardWeekStart, { weekStartsOn: 0 }));
+            if (isWithinInterval(d, { start: dashboardWeekStart, end: weekEnd })) {
+                // For weekly, units are usually calculated in the specific context of the record's month
+                // But simplified here to use record's specific month units for monthly staff
+                const ethRecMonth = toEthiopian(d);
+                const recMonthUnits = getMonthlyWorkingUnits(toGregorian(ethRecMonth.year, ethRecMonth.month, 1), getEthiopianMonthDays(ethRecMonth.year, ethRecMonth.month));
+                const weekDetails = calcDetailedCost(r, d, recMonthUnits);
+                empStats.week.cost += weekDetails.cost;
+                empStats.week.late += weekDetails.late;
+                empStats.week.absent += weekDetails.absent;
+                empStats.week.otHours += weekDetails.otHours;
+                empStats.week.otPay += weekDetails.otPay;
             }
-            if (d >= monthStart) {
-                empStats.month.cost += details.cost;
-                empStats.month.late += details.late;
-                empStats.month.absent += details.absent;
-                empStats.month.otHours += details.otHours;
-                empStats.month.otPay += details.otPay;
-                monthCostGlobal += details.cost;
+
+            // Monthly Selector Calc
+            const monthEnd = endOfDay(addDays(dashboardMonthStart, getEthiopianMonthDays(ethDashMonth.year, ethDashMonth.month) - 1));
+            if (isWithinInterval(d, { start: dashboardMonthStart, end: monthEnd })) {
+                const monthDetails = calcDetailedCost(r, d, dashMonthUnits);
+                empStats.month.cost += monthDetails.cost;
+                empStats.month.late += monthDetails.late;
+                empStats.month.absent += monthDetails.absent;
+                empStats.month.otHours += monthDetails.otHours;
+                empStats.month.otPay += monthDetails.otPay;
             }
         });
         staffData.push(empStats);
     });
 
-    return { today: todayCostGlobal, week: weekCostGlobal, month: monthCostGlobal, onSite: onSiteCount, staffData };
-  }, [allEmployees, allAttendance, realTimeLoading, normalOTRate, sundayOTRate]);
+    return { 
+        today: todayCostGlobal, 
+        week: staffData.filter(s => s.paymentMethod === 'Weekly').reduce((acc, s) => acc + s.week.cost, 0), 
+        month: staffData.filter(s => s.paymentMethod === 'Monthly').reduce((acc, s) => acc + s.month.cost, 0), 
+        onSite: onSiteCount, 
+        staffData 
+    };
+  }, [allEmployees, allAttendance, realTimeLoading, normalOTRate, sundayOTRate, selectedDashboardWeek, selectedDashboardMonth]);
 
   const ethToday = toEthiopian(now);
   const dayOfWeek = getDay(now);
-  const isWeeklyPayWindow = dayOfWeek === 6 || dayOfWeek === 0 || dayOfWeek === 1 || dayOfWeek === 2;
-  const daysInEthMonth = getEthiopianMonthDays(ethToday.year, ethToday.month);
-  const isMonthlyPayWindow = ethToday.day === daysInEthMonth || ethToday.day <= 3;
+  
+  // Weekly pay window logic: Sat to Tue
+  const isWeeklyPayWindow = useMemo(() => {
+    const todayWeekStart = startOfWeek(now, { weekStartsOn: 0 });
+    const selectedWeekIsCurrent = isSameDay(todayWeekStart, new Date(selectedDashboardWeek));
+    return selectedWeekIsCurrent && (dayOfWeek === 6 || dayOfWeek === 0 || dayOfWeek === 1 || dayOfWeek === 2);
+  }, [now, selectedDashboardWeek, dayOfWeek]);
+
+  // Monthly pay window logic: Last day to Day 3
+  const isMonthlyPayWindow = useMemo(() => {
+    const todayMonthStart = toGregorian(ethToday.year, ethToday.month, 1);
+    const selectedMonthIsCurrent = isSameDay(todayMonthStart, new Date(selectedDashboardMonth));
+    const daysInEthMonth = getEthiopianMonthDays(ethToday.year, ethToday.month);
+    return selectedMonthIsCurrent && (ethToday.day === daysInEthMonth || ethToday.day <= 3);
+  }, [ethToday, selectedDashboardMonth]);
 
   const handleMarkAsPaid = async (type: 'Weekly' | 'Monthly') => {
       if (!firestore || !user || !allEmployees || isProcessingPay) return;
@@ -325,13 +397,14 @@ export default function DashboardPage() {
       let periodLabel = "", periodValue = "", totalAmount = 0;
 
       if (type === 'Weekly') {
-          const wStart = startOfDay(startOfWeek(nowLocal, { weekStartsOn: 0 }));
+          const wStart = startOfDay(new Date(selectedDashboardWeek));
           const wEnd = endOfWeek(wStart, { weekStartsOn: 0 });
           periodLabel = `Week: ${ethiopianDateFormatter(wStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(wEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
           periodValue = format(wStart, "yyyy-MM-dd");
       } else {
-          const mStart = toGregorian(ethToday.year, ethToday.month, 1);
-          periodLabel = `${ethiopianDateFormatter(mStart, { month: 'long' })} ${ethToday.year}`;
+          const mStart = startOfDay(new Date(selectedDashboardMonth));
+          const eth = toEthiopian(mStart);
+          periodLabel = `${ethiopianDateFormatter(mStart, { month: 'long' })} ${eth.year}`;
           periodValue = format(mStart, "yyyy-MM-dd");
       }
 
@@ -372,15 +445,6 @@ export default function DashboardPage() {
         const thisWeekStart = startOfDay(startOfWeek(today, { weekStartsOn: 0 }));
         const batch = writeBatch(firestore);
 
-        const fetchPromises = allEmployees.map(emp => 
-            getDocs(query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', startOfHistory.toISOString())))
-        );
-        const snaps = await Promise.all(fetchPromises);
-        const historyRecords: AttendanceRecord[] = [];
-        snaps.forEach((snap, idx) => {
-            snap.forEach(d => historyRecords.push({ ...d.data(), employeeId: allEmployees[idx].id, id: d.id } as AttendanceRecord));
-        });
-
         const unpaidQuery = query(collection(firestore, 'employeeExpenses'), where('paymentStatus', '==', 'Unpaid'));
         const unpaidSnap = await getDocs(unpaidQuery);
         unpaidSnap.forEach(d => batch.delete(d.ref));
@@ -393,8 +457,9 @@ export default function DashboardPage() {
             const days = getEthiopianMonthDays(eth.year, eth.month);
             const units = getMonthlyWorkingUnits(mStep, days);
             const end = endOfDay(addDays(mStep, days - 1));
+            
             allEmployees.filter(e => e.paymentMethod === 'Monthly').forEach(emp => {
-                const recs = historyRecords.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: mStep, end }));
+                const recs = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: mStep, end }));
                 const hourly = (emp.monthlyRate || 0) / units / 8;
                 let ded = 0, otA = 0;
                 recs.forEach(r => {
@@ -415,7 +480,7 @@ export default function DashboardPage() {
             const label = `Week: ${ethiopianDateFormatter(wStep, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(wEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
             const val = format(wStep, "yyyy-MM-dd");
             allEmployees.filter(e => e.paymentMethod === 'Weekly').forEach(emp => {
-                const recs = historyRecords.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: startOfDay(wStep), end: endOfDay(wEnd) }));
+                const recs = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: startOfDay(wStep), end: endOfDay(wEnd) }));
                 const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
                 let bH = recs.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
                 let otH = recs.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
@@ -495,8 +560,8 @@ export default function DashboardPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-2">
         <Card className="col-span-2 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300"><CardContent className="p-6 flex items-center justify-between"><div className="flex items-center gap-4"><div className="bg-[rgba(52,194,100,0.13)] p-4 rounded-2xl text-[#34C264] shadow-sm"><UserCheck className="h-6 w-6" /></div><div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">On-site Staff</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.onSite} <span className="text-[#9AA3B8] font-medium">/ {activeEmployees.length}</span></p></div></div>{liveTotals.onSite === activeEmployees.length && activeEmployees.length > 0 && <Badge className="bg-[rgba(52,194,100,0.13)] text-[#34C264] border-none shadow-none font-bold text-[10px] uppercase tracking-[0.06em] px-2 py-1 h-auto rounded-lg">FULL</Badge>}</CardContent></Card>
-        <Card className="col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square"><CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3"><div className="bg-[rgba(52,120,246,0.11)] p-3 sm:p-4 rounded-2xl text-[#3478F6] shadow-sm"><HandCoins className="h-5 w-5 sm:h-6 sm:w-6" /></div><div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Weekly Est.</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.week.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div></CardContent></Card>
-        <Card className="col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square"><CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3"><div className="bg-[rgba(139,92,246,0.12)] p-3 sm:p-4 rounded-2xl text-[#8B5CF6] shadow-sm"><BarChart3 className="h-5 w-5 sm:h-6 sm:w-6" /></div><div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Monthly Est.</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.month.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div></CardContent></Card>
+        <Card className="col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square"><CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3"><div className="bg-[rgba(52,120,246,0.11)] p-3 sm:p-4 rounded-2xl text-[#3478F6] shadow-sm"><HandCoins className="h-5 w-5 sm:h-6 sm:w-6" /></div><div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Today's Est.</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.today.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div></CardContent></Card>
+        <Card className="col-span-1 rounded-[2rem] border-none shadow-md bg-white overflow-hidden group hover:scale-[1.02] transition-all duration-300 aspect-square"><CardContent className="p-4 flex flex-col items-center text-center justify-center h-full gap-3"><div className="bg-[rgba(139,92,246,0.12)] p-3 sm:p-4 rounded-2xl text-[#8B5CF6] shadow-sm"><BarChart3 className="h-5 w-5 sm:h-6 sm:w-6" /></div><div><p className="text-[10px] font-semibold text-[#9AA3B8] uppercase tracking-[0.12em] mb-1">Monthly Total</p><p className="text-[19px] font-bold text-[#10192E] tracking-tight leading-none font-headline">{liveTotals.month.toLocaleString(undefined, { maximumFractionDigits: 0 })}</p></div></CardContent></Card>
       </div>
 
       <Tabs defaultValue="today" className="w-full">
@@ -515,33 +580,81 @@ export default function DashboardPage() {
         </TabsContent>
 
         <TabsContent value="week" className="space-y-8">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {liveTotals.staffData.map((staff: any) => (
-                    <StaffDetailedCard key={staff.id} staff={staff} view="week" />
-                ))}
-            </div>
-            {isWeeklyPayWindow && (
-                <div className="flex justify-center pt-8">
-                    <Button disabled={isProcessingPay} onClick={() => handleMarkAsPaid('Weekly')} className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95">
-                        {isProcessingPay ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />} Mark as Paid & Notify Admin
-                    </Button>
+            <div className="flex flex-col gap-6">
+                {/* Week Selector and Summary */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-6 rounded-[2rem] shadow-sm border border-[#3478F6]/5 gap-6">
+                    <div className="flex items-center gap-4">
+                         <div className="h-10 w-10 rounded-full bg-[#3478F6]/10 flex items-center justify-center text-[#3478F6]">
+                            <CalendarIcon className="h-5 w-5" />
+                         </div>
+                         <Select value={selectedDashboardWeek} onValueChange={setSelectedDashboardWeek}>
+                            <SelectTrigger className="w-[280px] h-12 bg-[#F8FAFF] border-none font-bold rounded-xl text-sm">
+                                <SelectValue placeholder="Select week" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                                {weekOptions.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium">{opt.label}</SelectItem>)}
+                            </SelectContent>
+                         </Select>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-[10px] font-black text-[#9AA3B8] uppercase tracking-[0.2em] mb-1">Total Weekly Cost</p>
+                        <p className="text-2xl font-black text-[#10192E] tabular-nums font-headline">ETB {liveTotals.week.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    </div>
                 </div>
-            )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {liveTotals.staffData.filter(s => s.paymentMethod === 'Weekly').map((staff: any) => (
+                        <StaffDetailedCard key={staff.id} staff={staff} view="week" />
+                    ))}
+                </div>
+                
+                {isWeeklyPayWindow && (
+                    <div className="flex justify-center pt-8">
+                        <Button disabled={isProcessingPay} onClick={() => handleMarkAsPaid('Weekly')} className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95">
+                            {isProcessingPay ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />} Mark as Paid & Notify Admin
+                        </Button>
+                    </div>
+                )}
+            </div>
         </TabsContent>
 
         <TabsContent value="month" className="space-y-8">
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {liveTotals.staffData.map((staff: any) => (
-                    <StaffDetailedCard key={staff.id} staff={staff} view="month" />
-                ))}
-            </div>
-            {isMonthlyPayWindow && (
-                <div className="flex justify-center pt-8">
-                    <Button disabled={isProcessingPay} onClick={() => handleMarkAsPaid('Monthly')} className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95">
-                         {isProcessingPay ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />} Mark as Paid & Notify Admin
-                    </Button>
+             <div className="flex flex-col gap-6">
+                {/* Month Selector and Summary */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-6 rounded-[2rem] shadow-sm border border-[#8B5CF6]/5 gap-6">
+                    <div className="flex items-center gap-4">
+                         <div className="h-10 w-10 rounded-full bg-[#8B5CF6]/10 flex items-center justify-center text-[#8B5CF6]">
+                            <Wallet2 className="h-5 w-5" />
+                         </div>
+                         <Select value={selectedDashboardMonth} onValueChange={setSelectedDashboardMonth}>
+                            <SelectTrigger className="w-[280px] h-12 bg-[#F8FAFF] border-none font-bold rounded-xl text-sm">
+                                <SelectValue placeholder="Select month" />
+                            </SelectTrigger>
+                            <SelectContent className="rounded-xl">
+                                {monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value} className="font-medium">{opt.label}</SelectItem>)}
+                            </SelectContent>
+                         </Select>
+                    </div>
+                    <div className="text-right">
+                        <p className="text-[10px] font-black text-[#9AA3B8] uppercase tracking-[0.2em] mb-1">Total Monthly Cost</p>
+                        <p className="text-2xl font-black text-[#10192E] tabular-nums font-headline">ETB {liveTotals.month.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    </div>
                 </div>
-            )}
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {liveTotals.staffData.filter(s => s.paymentMethod === 'Monthly').map((staff: any) => (
+                        <StaffDetailedCard key={staff.id} staff={staff} view="month" />
+                    ))}
+                </div>
+
+                {isMonthlyPayWindow && (
+                    <div className="flex justify-center pt-8">
+                        <Button disabled={isProcessingPay} onClick={() => handleMarkAsPaid('Monthly')} className="h-14 px-10 rounded-2xl bg-[#3478F6] hover:bg-[#2860CC] text-white font-bold text-lg shadow-xl shadow-[#3478F6]/20 transition-all active:scale-95">
+                            {isProcessingPay ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <CheckCircle2 className="mr-2 h-5 w-5" />} Mark as Paid & Notify Admin
+                        </Button>
+                    </div>
+                )}
+             </div>
         </TabsContent>
       </Tabs>
 
@@ -552,10 +665,9 @@ export default function DashboardPage() {
                   <Select value={selectedUnifiedMonth} onValueChange={setSelectedUnifiedMonth}>
                       <SelectTrigger className="h-12 bg-white rounded-2xl border-[#E7EBF3] font-bold px-6 shadow-sm"><SelectValue placeholder="Select month" /></SelectTrigger>
                       <SelectContent className="rounded-2xl">
-                          {Array.from({ length: 12 }).map((_, i) => {
-                              const d = subMonths(now, i); const eth = toEthiopian(d); const start = toGregorian(eth.year, eth.month, 1);
-                              return <SelectItem key={i} value={format(start, "yyyy-MM-dd")} className="font-medium py-3">{ethiopianDateFormatter(start, { month: 'long' })} {eth.year}</SelectItem>
-                          })}
+                          {monthOptions.map((opt) => (
+                              <SelectItem key={opt.value} value={opt.value} className="font-medium py-3">{opt.label}</SelectItem>
+                          ))}
                       </SelectContent>
                   </Select>
               </div>
