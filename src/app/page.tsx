@@ -329,7 +329,12 @@ export default function DashboardPage() {
 
         const empStats = { 
             id: emp.id, name: emp.name, paymentMethod: emp.paymentMethod, 
-            today: { cost: 0, isPresent: isPresentToday }, 
+            today: { 
+                cost: 0, 
+                isPresent: isPresentToday,
+                morningStatus: todayRec?.morningStatus || "Absent",
+                afternoonStatus: todayRec?.afternoonStatus || "Absent"
+            }, 
             week: { cost: 0, late: 0, absent: 0, otHours: 0, otPay: 0 }, 
             month: { cost: 0, late: 0, absent: 0, otHours: 0, otPay: 0 } 
         };
@@ -500,7 +505,7 @@ export default function DashboardPage() {
   };
 
   const weeklyChartData = useMemo(() => {
-    if (!allEmployees || realTimeLoading) return [];
+    if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return [];
     const data = [];
     for (let i = 6; i >= 0; i--) {
         const date = subDays(now, i);
@@ -553,7 +558,7 @@ export default function DashboardPage() {
                   <div className="w-full h-[64px] relative">
                       <ResponsiveContainer width="100%" height="100%">
                         <AreaChart data={weeklyChartData}>
-                          <defs><linearGradient id="colorTrend" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3478F6" stopOpacity={0.3}/><stop offset="100%" stopColor="#3478F6" stopOpacity={0}/></linearGradient></defs>
+                          <defs><linearGradient id="colorTrend" x1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3478F6" stopOpacity={0.3}/><stop offset="100%" stopColor="#3478F6" stopOpacity={0}/></linearGradient></defs>
                           <RechartsTooltip content={({ active, payload }) => (active && payload?.length ? <div className="bg-white/90 backdrop-blur-md px-3 py-2 border border-[#E7EBF3] rounded-xl shadow-lg text-[10px] font-bold text-[#3478F6] font-code">ETB {payload[0].value.toLocaleString()}</div> : null)} />
                           <Area type="monotone" dataKey="total" stroke="#3478F6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorTrend)" />
                         </AreaChart>
@@ -709,6 +714,20 @@ export default function DashboardPage() {
 function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week' | 'month' }) {
     const data = staff[view];
     const label = view === 'today' ? "Today's Cost" : (view === 'week' ? "Week To-Date" : "Month To-Date");
+    
+    // logic: hide absent hours for weekly employees in overview
+    const showAbsent = !(staff.paymentMethod === 'Weekly' && (view === 'week' || view === 'month'));
+
+    const getStatusColor = (status: string) => {
+        switch (status) {
+            case 'Present': return 'bg-green-50 text-green-700 border-green-200';
+            case 'Late': return 'bg-amber-50 text-amber-700 border-amber-200';
+            case 'Absent': return 'bg-red-50 text-red-700 border-red-200';
+            case 'Permission': return 'bg-blue-50 text-blue-700 border-blue-200';
+            default: return 'bg-muted text-muted-foreground';
+        }
+    };
+
     return (
         <Card className="rounded-[1.5rem] border-none shadow-sm hover:shadow-md transition-all duration-300 overflow-hidden bg-white ring-1 ring-black/[0.03]">
             <CardContent className="p-5 space-y-4">
@@ -717,10 +736,31 @@ function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week'
                     <Badge variant="secondary" className="bg-[#F8FAFF] text-[#3478F6] text-[8px] font-black uppercase tracking-tighter h-5 px-1.5">{staff.paymentMethod}</Badge>
                 </div>
                 <div className="space-y-2.5">
-                    <div className="bg-[#F8FAFF] rounded-xl p-3 flex justify-between items-center text-[10px] font-bold">
-                        <div className="flex items-center gap-1.5 text-amber-600"><Timer className="h-3 w-3" /><span>{data.late > 0 ? `Late: ${data.late}m` : "No late mins"}</span></div>
-                        <div className="flex items-center gap-1.5 text-red-500"><UserX className="h-3 w-3" /><span>{data.absent > 0 ? `Absent: ${data.absent.toFixed(1)}h` : "Perfect Log"}</span></div>
-                    </div>
+                    {view === 'today' ? (
+                        <div className="bg-[#F8FAFF] rounded-xl p-3 flex justify-around items-center text-[10px] font-bold">
+                            <div className="flex flex-col items-center gap-1">
+                                <span className="text-[7px] text-muted-foreground uppercase tracking-widest opacity-60">Morning</span>
+                                <Badge variant="outline" className={cn("px-2 py-0 h-5 text-[9px] font-black border-none", getStatusColor(data.morningStatus))}>
+                                    {data.morningStatus}
+                                </Badge>
+                            </div>
+                            <div className="h-6 w-px bg-muted/50" />
+                            <div className="flex flex-col items-center gap-1">
+                                <span className="text-[7px] text-muted-foreground uppercase tracking-widest opacity-60">Afternoon</span>
+                                <Badge variant="outline" className={cn("px-2 py-0 h-5 text-[9px] font-black border-none", getStatusColor(data.afternoonStatus))}>
+                                    {data.afternoonStatus}
+                                </Badge>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="bg-[#F8FAFF] rounded-xl p-3 flex justify-between items-center text-[10px] font-bold">
+                            <div className="flex items-center gap-1.5 text-amber-600"><Timer className="h-3 w-3" /><span>{data.late > 0 ? `Late: ${data.late}m` : "No late mins"}</span></div>
+                            {showAbsent && (
+                                <div className="flex items-center gap-1.5 text-red-500"><UserX className="h-3 w-3" /><span>{data.absent > 0 ? `Absent: ${data.absent.toFixed(1)}h` : "Perfect Log"}</span></div>
+                            )}
+                        </div>
+                    )}
+                    
                     <div className="bg-[#3478F6]/5 rounded-xl p-3 flex justify-between items-center text-[10px] font-bold">
                          <div className="flex items-center gap-1.5 text-[#3478F6]"><TrendingUp className="h-3 w-3" /><span>Overtime:</span></div>
                         <span className="text-[#3478F6]">+{data.otHours || 0} hrs (ETB {data.otPay?.toFixed(2) || "0.00"})</span>
