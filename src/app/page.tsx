@@ -430,7 +430,7 @@ export default function DashboardPage() {
   };
 
   const weeklyChartData = useMemo(() => {
-    if (realTimeLoading) return [];
+    if (!allEmployees || realTimeLoading) return [];
     const data = [];
     for (let i = 6; i >= 0; i--) {
         const date = subDays(now, i);
@@ -620,4 +620,3 @@ function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week'
         </Card>
     );
 }
-
