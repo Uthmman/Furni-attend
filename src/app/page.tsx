@@ -333,7 +333,9 @@ export default function DashboardPage() {
                 cost: 0, 
                 isPresent: isPresentToday,
                 morningStatus: todayRec?.morningStatus || "Absent",
-                afternoonStatus: todayRec?.afternoonStatus || "Absent"
+                afternoonStatus: todayRec?.afternoonStatus || "Absent",
+                otHours: 0,
+                otPay: 0
             }, 
             week: { cost: 0, late: 0, absent: 0, otHours: 0, otPay: 0 }, 
             month: { cost: 0, late: 0, absent: 0, otHours: 0, otPay: 0 } 
@@ -346,6 +348,8 @@ export default function DashboardPage() {
                 const currentMonthUnits = getMonthlyWorkingUnits(startOfMonth(nowLocal), getEthiopianMonthDays(ethNow.year, ethNow.month));
                 const todayDetails = calcDetailedCost(r, d, currentMonthUnits);
                 empStats.today.cost += todayDetails.cost;
+                empStats.today.otHours = todayDetails.otHours;
+                empStats.today.otPay = todayDetails.otPay;
                 todayCostGlobal += todayDetails.cost;
             }
             const weekEnd = endOfDay(endOfWeek(dashboardWeekStart, { weekStartsOn: 0 }));
@@ -761,10 +765,12 @@ function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week'
                         </div>
                     )}
                     
-                    <div className="bg-[#3478F6]/5 rounded-xl p-3 flex justify-between items-center text-[10px] font-bold">
-                         <div className="flex items-center gap-1.5 text-[#3478F6]"><TrendingUp className="h-3 w-3" /><span>Overtime:</span></div>
-                        <span className="text-[#3478F6]">+{data.otHours || 0} hrs (ETB {data.otPay?.toFixed(2) || "0.00"})</span>
-                    </div>
+                    {data.otHours > 0 && (
+                        <div className="bg-[#3478F6]/5 rounded-xl p-3 flex justify-between items-center text-[10px] font-bold">
+                             <div className="flex items-center gap-1.5 text-[#3478F6]"><TrendingUp className="h-3 w-3" /><span>Overtime:</span></div>
+                            <span className="text-[#3478F6]">+{data.otHours || 0} hrs (ETB {data.otPay?.toFixed(2) || "0.00"})</span>
+                        </div>
+                    )}
                 </div>
                 <div className="pt-2 flex justify-between items-end border-t border-dashed border-muted">
                     <p className="text-[9px] font-black text-[#9AA3B8] uppercase tracking-widest">{label}</p>
