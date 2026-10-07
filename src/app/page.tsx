@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -13,13 +14,11 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar } from '@/components/ui/calendar';
 import { Area, AreaChart, ResponsiveContainer, Tooltip as RechartsTooltip } from 'recharts';
 import Link from 'next/link';
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { sendAdminPayrollSummary } from "@/app/payroll/actions";
-import { Input } from "@/components/ui/input";
 
 const getDateFromRecord = (date: string | any): Date => {
   if (date?.toDate) return date.toDate();
@@ -280,8 +279,7 @@ export default function DashboardPage() {
             const startG = toGregorian(eth.year, eth.month, 1);
             
             const expensesRef = collection(firestore, 'employeeExpenses');
-            const q = query(expensesRef, where('paymentStatus', '==', 'Paid'));
-            const snap = await getDocs(q);
+            const snap = await getDocs(expensesRef);
             
             let total = 0;
             const filtered: EmployeeExpense[] = [];
@@ -290,7 +288,7 @@ export default function DashboardPage() {
             
             snap.forEach(d => {
                 const data = d.data() as EmployeeExpense;
-                if (data.periodValue >= startStr && data.periodValue <= endStr) {
+                if (data.paymentStatus === 'Paid' && data.periodValue >= startStr && data.periodValue <= endStr) {
                     total += data.amount || 0;
                     filtered.push(data);
                 }
@@ -306,18 +304,17 @@ export default function DashboardPage() {
 
   const auditBreakdown = useMemo(() => {
     const monthlyTotal = auditRecords.filter(r => r.type === 'Monthly').reduce((acc, r) => acc + (r.amount || 0), 0);
-    const weeklyRecords = auditRecords.filter(r => r.type === 'Weekly');
-    const weeksMap: Record<string, number> = {};
-    weeklyRecords.forEach(r => {
-        const p = r.periodLabel || r.period || "Unknown Week";
-        weeksMap[p] = (weeksMap[p] || 0) + (r.amount || 0);
+    const weeklyMap: Record<string, number> = {};
+    auditRecords.filter(r => r.type === 'Weekly').forEach(r => {
+        const label = r.periodLabel || r.period || "Unknown Week";
+        weeklyMap[label] = (weeklyMap[label] || 0) + (r.amount || 0);
     });
-    const weeksList = Object.entries(weeksMap).map(([label, total]) => ({ label, total })).sort((a, b) => b.label.localeCompare(a.label));
-    return { monthlyTotal, weeksList };
+    const weeklyList = Object.entries(weeklyMap).map(([label, total]) => ({ label, total }));
+    return { monthlyTotal, weeklyList };
   }, [auditRecords]);
 
   const liveTotals = useMemo(() => {
-    if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0, staffData: [] };
+    if (!activeEmployees || activeEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0, staffData: [] };
     const nowLocal = new Date();
     const todayStr = format(nowLocal, "yyyy-MM-dd");
     const dashboardWeekEnd = startOfDay(new Date(selectedDashboardWeek));
@@ -330,21 +327,19 @@ export default function DashboardPage() {
     let todayCostGlobal = 0, onSiteCount = 0;
     const staffData: any[] = [];
 
-    allEmployees.forEach(emp => {
+    activeEmployees.forEach(emp => {
         const empRecords = allAttendance.filter(r => r.employeeId === emp.id);
         const todayRec = empRecords.find(r => r.id === todayStr);
         const isPresentToday = !!(todayRec && (todayRec.morningStatus !== 'Absent' || todayRec.afternoonStatus !== 'Absent'));
         if (isPresentToday) onSiteCount++;
 
         const empStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
-        const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
 
         const calcDetailedCost = (r: AttendanceRecord, date: Date, unitsForPeriod: number) => {
             const isSun = getDay(date) === 0;
             const isSat = getDay(date) === 6;
-            const isInactiveDay = empInactiveDate && date >= empInactiveDate;
             const isBeforeStart = date < empStartDate;
-            if (isInactiveDay || isBeforeStart) return { cost: 0, late: 0, absent: (isSun ? 0 : (isSat ? 4.5 : 8)), otHours: 0, otPay: 0, baseHours: 0 };
+            if (isBeforeStart) return { cost: 0, late: 0, absent: (isSun ? 0 : (isSat ? 4.5 : 8)), otHours: 0, otPay: 0, baseHours: 0 };
 
             if (emp.paymentMethod === 'Weekly') {
                 const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
@@ -421,7 +416,7 @@ export default function DashboardPage() {
         onSite: onSiteCount, 
         staffData 
     };
-  }, [allEmployees, allAttendance, realTimeLoading, normalOTRate, sundayOTRate, selectedDashboardWeek, selectedDashboardMonth]);
+  }, [activeEmployees, allAttendance, realTimeLoading, normalOTRate, sundayOTRate, selectedDashboardWeek, selectedDashboardMonth]);
 
   const isWeeklyPayWindow = useMemo(() => {
     const weekEnd = new Date(selectedDashboardWeek);
@@ -436,7 +431,7 @@ export default function DashboardPage() {
   }, [now, selectedDashboardMonth]);
 
   const handleMarkAsPaid = async (type: 'Weekly' | 'Monthly', targetPeriodValue?: string) => {
-      if (!firestore || !user || !allEmployees || isProcessingPay) return;
+      if (!firestore || !user || !activeEmployees || isProcessingPay) return;
       setIsProcessingPay(true);
       const batch = writeBatch(firestore);
       const recordedAt = new Date().toISOString();
@@ -457,7 +452,7 @@ export default function DashboardPage() {
       const periodMonthEth = toEthiopian(endG);
       const periodMonthUnits = getMonthlyWorkingUnits(toGregorian(periodMonthEth.year, periodMonthEth.month, 1), getEthiopianMonthDays(periodMonthEth.year, periodMonthEth.month));
 
-      for (const emp of allEmployees) {
+      for (const emp of activeEmployees) {
           if (type === 'Weekly' && emp.paymentMethod !== 'Weekly') continue;
           if (type === 'Monthly' && emp.paymentMethod !== 'Monthly') continue;
           
@@ -467,15 +462,13 @@ export default function DashboardPage() {
 
           let empCost = 0, empOTPay = 0, empOTHours = 0, empBaseHours = 0;
           const empStartDate = startOfDay(new Date(emp.attendanceStartDate || 0));
-          const empInactiveDate = (emp.status === 'Inactive' && emp.inactiveDate) ? startOfDay(new Date(emp.inactiveDate)) : null;
 
           eachDayOfInterval(interval).forEach(day => {
               const r = recs.find(record => isSameDay(getDateFromRecord(record.date), day));
               const isSun = getDay(day) === 0, isSat = getDay(day) === 6;
-              const isInactive = empInactiveDate && day >= empInactiveDate;
               const isBefore = day < empStartDate;
 
-              if (isInactive || isBefore) return;
+              if (isBefore) return;
 
               if (emp.paymentMethod === 'Weekly') {
                   const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
@@ -499,8 +492,6 @@ export default function DashboardPage() {
                       else if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) otP += 3.5 * hourly * normalOTRate;
                       empCost += (daily - (dedH * hourly) - (lateM * (hourly / 60)) + otP);
                       empOTHours += otH; empOTPay += otP;
-                  } else if (!isSun) {
-                      empCost += 0;
                   }
               }
           });
@@ -526,14 +517,14 @@ export default function DashboardPage() {
   };
 
   const weeklyChartData = useMemo(() => {
-    if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return [];
+    if (!activeEmployees || activeEmployees.length === 0 || realTimeLoading) return [];
     const data = [];
     for (let i = 6; i >= 0; i--) {
         const date = subDays(now, i);
         const dayStr = format(date, "yyyy-MM-dd");
         const ethDay = ethiopianDateFormatter(date, { weekday: 'short' }).toUpperCase();
         let dailyTotal = 0;
-        allEmployees.forEach(emp => {
+        activeEmployees.forEach(emp => {
             const rec = allAttendance.find(r => r.employeeId === emp.id && r.id === dayStr);
             if (rec) {
                 if (emp.paymentMethod === 'Weekly') dailyTotal += (calculateHoursWorked(rec) * (emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0))) + ((rec.overtimeHours || 0) * (emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0)) * normalOTRate);
@@ -543,7 +534,7 @@ export default function DashboardPage() {
         data.push({ name: ethDay, total: dailyTotal });
     }
     return data;
-  }, [allEmployees, allAttendance, realTimeLoading, normalOTRate, now]);
+  }, [activeEmployees, allAttendance, realTimeLoading, normalOTRate, now]);
 
   const todayTrendPercent = useMemo(() => {
     if (weeklyChartData.length < 2) return 0;
@@ -746,7 +737,7 @@ export default function DashboardPage() {
                                 <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Weekly Wages</h4>
                             </div>
                             <div className="grid grid-cols-1 gap-3">
-                                {auditBreakdown.weeksList.length > 0 ? auditBreakdown.weeksList.map((week, idx) => (
+                                {auditBreakdown.weeklyList.length > 0 ? auditBreakdown.weeklyList.map((week, idx) => (
                                     <div key={idx} className="flex justify-between items-center bg-[#F8FAFF] p-4 px-6 rounded-2xl border border-[#3478F6]/10">
                                         <span className="text-[11px] font-bold text-[#10192E] uppercase tracking-wider truncate pr-4">{week.label}</span>
                                         <span className="text-xl font-black text-[#3478F6] shrink-0">ETB {week.total.toLocaleString()}</span>
@@ -833,3 +824,4 @@ function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week'
         </Card>
     );
 }
+
