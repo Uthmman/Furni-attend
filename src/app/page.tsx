@@ -571,12 +571,20 @@ export default function DashboardPage() {
   };
 
   const handleDeleteSpecificPeriod = async (type: string, value: string) => {
-    if (!firestore || !user || isProcessingPay) {
-        console.log("Delete aborted: missing firestore, user, or already processing", { hasFirestore: !!firestore, hasUser: !!user, isProcessingPay });
+    if (!firestore) {
+        toast({ variant: 'destructive', title: "System Error", description: "Database is not connected." });
         return;
     }
     
+    // Check if user is authenticated (AuthGuard usually handles this, but for safety)
+    if (!user) {
+        toast({ variant: 'destructive', title: "Auth Required", description: "Please sign in again." });
+        return;
+    }
+
     const periodKey = `${type}_${value}`;
+    
+    // Confirmation dialog
     if (!window.confirm(`Permanently delete all archived ${type} records for the period ending ${value}? This cannot be undone.`)) {
         return;
     }
@@ -585,42 +593,33 @@ export default function DashboardPage() {
     setIsProcessingPay(true);
     
     try {
-        console.log(`Starting deletion for type: ${type}, periodValue: ${value}`);
-        
-        // Use equality queries which are robust and don't usually require composite indexes if used simply
         const expensesRef = collection(firestore, 'employeeExpenses');
         const q = query(expensesRef, where('periodValue', '==', value));
-        
         const snap = await getDocs(q);
-        console.log(`Found ${snap.docs.length} total records for periodValue ${value}`);
         
-        // Filter by type client-side just in case multiple types share the same periodValue end date
         const targets = snap.docs.filter(d => {
             const data = d.data();
-            return data.type?.toLowerCase() === type.toLowerCase();
+            return String(data.type).toLowerCase() === String(type).toLowerCase();
         });
 
         if (targets.length === 0) {
             toast({ title: "No records found", description: "This period might have already been cleared." });
-            console.log("No matching targets found for deletion.");
         } else {
-            console.log(`Deleting ${targets.length} target records...`);
             const batch = writeBatch(firestore);
             targets.forEach(d => batch.delete(d.ref));
             await batch.commit();
             
             toast({ 
                 title: "Archived Data Removed", 
-                description: `Successfully cleared ${targets.length} ${type.toLowerCase()} records from the ledger.` 
+                description: `Successfully cleared ${targets.length} ${type.toLowerCase()} records.` 
             });
-            console.log("Batch deletion committed successfully.");
         }
-    } catch (e) {
+    } catch (e: any) {
         console.error("Delete operation failed:", e);
         toast({ 
             variant: 'destructive', 
             title: "Delete Failed", 
-            description: "A database error occurred. Check your connection." 
+            description: e.message || "A database error occurred. Check your connection." 
         });
     } finally { 
         setIsProcessingPay(false); 
@@ -973,7 +972,10 @@ export default function DashboardPage() {
                                         variant="ghost" 
                                         size="icon" 
                                         className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
-                                        onClick={() => handleDeleteSpecificPeriod(p.type, p.value)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            handleDeleteSpecificPeriod(p.type, p.value);
+                                        }}
                                         disabled={isProcessingPay}
                                     >
                                         {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
