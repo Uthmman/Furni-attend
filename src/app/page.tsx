@@ -238,7 +238,7 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchArchivedPeriods = async () => {
         if (!firestore || !user) return;
-        const q = query(collection(firestore, 'employeeExpenses'), orderBy('periodValue', 'desc'), limit(100));
+        const q = query(collection(firestore, 'employeeExpenses'), orderBy('periodValue', 'desc'), limit(500));
         const snap = await getDocs(q);
         const periods: Record<string, {label: string, value: string, type: string}> = {};
         snap.forEach(d => {
@@ -273,11 +273,13 @@ export default function DashboardPage() {
     const checkPaidStatus = async () => {
         if (!firestore || !user) return;
         
-        const weekQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardWeek));
+        const expensesRef = collection(firestore, 'employeeExpenses');
+        
+        const weekQuery = query(expensesRef, where('periodValue', '==', selectedDashboardWeek));
         const weekSnap = await getDocs(weekQuery);
         setAlreadyPaidWeek(weekSnap.docs.some(d => d.data().paymentStatus === 'Paid' && d.data().type === 'Weekly'));
 
-        const monthQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardMonth));
+        const monthQuery = query(expensesRef, where('periodValue', '==', selectedDashboardMonth));
         const monthSnap = await getDocs(monthQuery);
         setAlreadyPaidMonth(monthSnap.docs.some(d => d.data().paymentStatus === 'Paid' && d.data().type === 'Monthly'));
     };
@@ -569,35 +571,61 @@ export default function DashboardPage() {
   };
 
   const handleDeleteSpecificPeriod = async (type: string, value: string) => {
-      if (!firestore || !user || isProcessingPay) return;
-      const periodKey = `${type}_${value}`;
-      const isConfirmed = window.confirm(`Permanently delete all archived ${type} records for period ending ${value}? This cannot be undone.`);
-      if (!isConfirmed) return;
+    if (!firestore || !user || isProcessingPay) {
+        console.log("Delete aborted: missing firestore, user, or already processing", { hasFirestore: !!firestore, hasUser: !!user, isProcessingPay });
+        return;
+    }
+    
+    const periodKey = `${type}_${value}`;
+    if (!window.confirm(`Permanently delete all archived ${type} records for the period ending ${value}? This cannot be undone.`)) {
+        return;
+    }
 
-      setDeletingPeriodKey(periodKey);
-      setIsProcessingPay(true);
-      try {
-          const q = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', value));
-          const snap = await getDocs(q);
-          const targets = snap.docs.filter(d => d.data().type === type);
+    setDeletingPeriodKey(periodKey);
+    setIsProcessingPay(true);
+    
+    try {
+        console.log(`Starting deletion for type: ${type}, periodValue: ${value}`);
+        
+        // Use equality queries which are robust and don't usually require composite indexes if used simply
+        const expensesRef = collection(firestore, 'employeeExpenses');
+        const q = query(expensesRef, where('periodValue', '==', value));
+        
+        const snap = await getDocs(q);
+        console.log(`Found ${snap.docs.length} total records for periodValue ${value}`);
+        
+        // Filter by type client-side just in case multiple types share the same periodValue end date
+        const targets = snap.docs.filter(d => {
+            const data = d.data();
+            return data.type?.toLowerCase() === type.toLowerCase();
+        });
 
-          if (targets.length === 0) {
-              toast({ title: "No records found" });
-              setDeletingPeriodKey(null);
-              setIsProcessingPay(false);
-              return;
-          }
-
-          const batch = writeBatch(firestore);
-          targets.forEach(d => batch.delete(d.ref));
-          await batch.commit();
-          toast({ title: "Archived Data Removed", description: `Successfully cleared ${targets.length} records.` });
-      } catch (e) {
-          toast({ variant: 'destructive', title: "Delete Failed", description: "Database error during removal." });
-      } finally { 
-          setIsProcessingPay(false); 
-          setDeletingPeriodKey(null);
-      }
+        if (targets.length === 0) {
+            toast({ title: "No records found", description: "This period might have already been cleared." });
+            console.log("No matching targets found for deletion.");
+        } else {
+            console.log(`Deleting ${targets.length} target records...`);
+            const batch = writeBatch(firestore);
+            targets.forEach(d => batch.delete(d.ref));
+            await batch.commit();
+            
+            toast({ 
+                title: "Archived Data Removed", 
+                description: `Successfully cleared ${targets.length} ${type.toLowerCase()} records from the ledger.` 
+            });
+            console.log("Batch deletion committed successfully.");
+        }
+    } catch (e) {
+        console.error("Delete operation failed:", e);
+        toast({ 
+            variant: 'destructive', 
+            title: "Delete Failed", 
+            description: "A database error occurred. Check your connection." 
+        });
+    } finally { 
+        setIsProcessingPay(false); 
+        setDeletingPeriodKey(null);
+    }
   };
 
   const handleMaintenanceSync = async () => {
