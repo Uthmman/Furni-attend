@@ -7,7 +7,7 @@ import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown
 import type { Employee, AttendanceRecord, PayrollSettings, EmployeeExpense } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
-import { collection, query, where, getDocs, doc, writeBatch, getDoc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, writeBatch, getDoc, setDoc, deleteDoc, orderBy, limit } from "firebase/firestore";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from '@/components/ui/badge';
@@ -220,6 +220,12 @@ export default function DashboardPage() {
     return options;
   }, []);
 
+  const selectedMonthLabel = useMemo(() => {
+    const opt = monthOptions.find(o => o.value === selectedUnifiedMonth);
+    if (!opt) return "";
+    return opt.label;
+  }, [selectedUnifiedMonth, monthOptions]);
+
   useEffect(() => {
     if (syncType === 'Weekly' && weekOptions.length > 0) setSelectedSyncPeriod(weekOptions[0].value);
     if (syncType === 'Monthly' && monthOptions.length > 0) setSelectedSyncPeriod(monthOptions[0].value);
@@ -272,13 +278,24 @@ export default function DashboardPage() {
         if (!firestore || !user || !selectedUnifiedMonth) return;
         setAuditLoading(true);
         try {
+            const endG = startOfDay(new Date(selectedUnifiedMonth));
+            const eth = toEthiopian(endG);
+            const startG = toGregorian(eth.year, eth.month, 1);
+            
             const expensesRef = collection(firestore, 'employeeExpenses');
-            const q = query(expensesRef, where('periodValue', '==', selectedUnifiedMonth), where('paymentStatus', '==', 'Paid'));
+            const q = query(
+                expensesRef, 
+                where('periodValue', '>=', format(startG, "yyyy-MM-dd")), 
+                where('periodValue', '<=', format(endG, "yyyy-MM-dd")),
+                where('paymentStatus', '==', 'Paid')
+            );
             const snap = await getDocs(q);
             let total = 0;
             snap.forEach(d => { total += d.data().amount || 0; });
             setAuditTotal(total);
-        } catch (e) {} finally { setAuditLoading(false); }
+        } catch (e) {
+            console.error("Audit fetch failed", e);
+        } finally { setAuditLoading(false); }
     };
     fetchAuditData();
   }, [selectedUnifiedMonth, firestore, user]);
@@ -560,6 +577,8 @@ export default function DashboardPage() {
     return avg === 0 ? (todayVal > 0 ? 100 : 0) : ((todayVal - avg) / avg) * 100;
   }, [weeklyChartData]);
 
+  if (employeesLoading || isUserLoading) return <div className="h-screen w-full flex items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-[#3478F6]" /></div>;
+
   return (
     <div className="flex flex-col gap-8 pb-10">
       <Card className="shadow-lg border-none bg-[#E8ECF6] rounded-[2.5rem] overflow-hidden mb-2 relative">
@@ -711,7 +730,7 @@ export default function DashboardPage() {
 
       <Card className="shadow-lg border-none rounded-3xl overflow-hidden ring-1 ring-[#10192E]/5 mt-10">
           <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-8 border-b border-[#E7EBF3]">
-              <div className="flex items-center gap-4"><div className="bg-[#3478F6] p-3.5 rounded-2xl text-white shadow-md"><Wallet className="h-7 w-7" /></div><div><CardTitle className="text-2xl font-bold text-[#10192E] tracking-tight font-headline">Historical Workshop Audit</CardTitle><CardDescription className="text-xs font-semibold text-[#9AA3B8] uppercase tracking-widest mt-1">Consolidated monthly expense summary</CardDescription></div></div>
+              <div className="flex items-center gap-4"><div className="bg-[#3478F6] p-3.5 rounded-2xl text-white shadow-md"><Wallet className="h-7 w-7" /></div><div><CardTitle className="text-2xl font-bold text-[#10192E] tracking-tight font-headline">Historical Workshop Audit</CardTitle><CardDescription className="text-xs font-semibold text-[#9AA3B8] uppercase tracking-widest mt-1">Consolidated weekly & monthly records</CardDescription></div></div>
               <div className="w-full sm:w-[280px]">
                   <Select value={selectedUnifiedMonth} onValueChange={setSelectedUnifiedMonth}>
                       <SelectTrigger className="h-12 bg-white rounded-2xl border-[#E7EBF3] font-bold px-6 shadow-sm"><SelectValue placeholder="Select month" /></SelectTrigger>
@@ -724,8 +743,12 @@ export default function DashboardPage() {
               </div>
           </CardHeader>
           <CardContent className="flex flex-col items-center justify-center py-16">
-              {auditLoading ? <div className="flex flex-col items-center gap-4"><Clock className="animate-spin h-10 w-10 text-[#3478F6] opacity-40" /><p className="text-[10px] font-bold text-[#9AA3B8] uppercase tracking-[0.3em]">Calculating Audit...</p></div> : <>
-                  <div className="text-center group"><p className="text-[11px] font-bold text-[#9AA3B8] uppercase tracking-[0.4em] mb-4">Expenditure Total</p><p className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#10192E] tracking-tighter font-headline">ETB {auditTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p></div>
+              {auditLoading ? <div className="flex flex-col items-center gap-4"><Clock className="animate-spin h-10 w-10 text-[#3478F6] opacity-40" /><p className="text-[10px] font-bold text-[#9AA3B8] uppercase tracking-[0.3em]">Calculating Consolidated Ledger...</p></div> : <>
+                  <div className="text-center group">
+                    <p className="text-[11px] font-bold text-[#9AA3B8] uppercase tracking-[0.4em] mb-4">Total Monthly Expenditure</p>
+                    <p className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#10192E] tracking-tighter font-headline mb-2">ETB {auditTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                    <p className="text-[10px] font-black text-[#3478F6] uppercase tracking-[0.2em] opacity-60">{selectedMonthLabel}</p>
+                  </div>
                   <div className="flex items-center justify-center gap-6 mt-12 opacity-30"><div className="h-[1px] w-20 bg-gradient-to-r from-transparent to-[#3478F6] rounded-full" /><Sparkles className="h-6 w-6 text-[#3478F6] animate-pulse" /><div className="h-[1px] w-20 bg-gradient-to-l from-transparent to-[#3478F6] rounded-full" /></div>
               </>}
           </CardContent>
@@ -858,3 +881,4 @@ function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week'
         </Card>
     );
 }
+
