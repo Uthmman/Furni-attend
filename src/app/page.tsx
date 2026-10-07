@@ -772,30 +772,37 @@ export default function DashboardPage() {
                     <p className="text-[10px] font-black text-[#3478F6] uppercase tracking-[0.2em] opacity-60">{selectedMonthLabel}</p>
                   </div>
 
-                  <div className="w-full max-w-2xl mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-[#E7EBF3] pt-12">
+                  <div className="w-full max-w-2xl mt-12 space-y-8 border-t border-[#E7EBF3] pt-12">
+                      {/* Monthly Group */}
+                      {auditBreakdown.monthlyTotal > 0 && (
+                          <div className="space-y-4">
+                              <div className="flex items-center gap-2 mb-2">
+                                  <Wallet2 className="h-4 w-4 text-[#8B5CF6]" />
+                                  <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Monthly Salaries</h4>
+                              </div>
+                              <div className="flex justify-between items-center bg-[#F8FAFF] p-4 px-6 rounded-2xl border border-[#8B5CF6]/10">
+                                  <span className="text-[11px] font-bold text-[#10192E] uppercase tracking-wider">Full-time Staff Payout</span>
+                                  <span className="text-xl font-black text-[#10192E]">ETB {auditBreakdown.monthlyTotal.toLocaleString()}</span>
+                              </div>
+                          </div>
+                      )}
+
+                      {/* Weekly Group */}
                       <div className="space-y-4">
                           <div className="flex items-center gap-2 mb-2">
-                              <Wallet2 className="h-4 w-4 text-[#8B5CF6]" />
-                              <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Monthly Salaries</h4>
-                          </div>
-                          <div className="bg-[#F8FAFF] p-5 rounded-2xl border border-[#8B5CF6]/5">
-                              <p className="text-2xl font-black text-[#10192E] font-headline">ETB {auditBreakdown.monthlyTotal.toLocaleString()}</p>
-                              <p className="text-[9px] font-bold text-[#9AA3B8] uppercase mt-1">Full-time Staff Payout</p>
-                          </div>
-                      </div>
-                      <div className="space-y-4">
-                          <div className="flex items-center gap-2 mb-2">
-                              <Calendar className="h-4 w-4 text-[#3478F6]" />
+                              <CalendarIcon className="h-4 w-4 text-[#3478F6]" />
                               <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Weekly Wages</h4>
                           </div>
-                          <div className="space-y-2">
+                          <div className="grid grid-cols-1 gap-3">
                               {auditBreakdown.weeksList.length > 0 ? auditBreakdown.weeksList.map((week, idx) => (
-                                  <div key={idx} className="flex justify-between items-center bg-[#F8FAFF] p-3 px-4 rounded-xl border border-[#3478F6]/5">
-                                      <span className="text-[10px] font-bold text-[#10192E] truncate pr-4">{week.label}</span>
-                                      <span className="text-[11px] font-black text-[#3478F6] shrink-0">ETB {week.total.toLocaleString()}</span>
+                                  <div key={idx} className="flex justify-between items-center bg-[#F8FAFF] p-4 px-6 rounded-2xl border border-[#3478F6]/10">
+                                      <span className="text-[11px] font-bold text-[#10192E] uppercase tracking-wider truncate pr-4">{week.label}</span>
+                                      <span className="text-xl font-black text-[#3478F6] shrink-0">ETB {week.total.toLocaleString()}</span>
                                   </div>
                               )) : (
-                                  <div className="text-[10px] text-muted-foreground italic p-4 text-center">No weekly payouts archived.</div>
+                                  <div className="text-[10px] text-muted-foreground italic p-8 text-center bg-muted/5 rounded-2xl border border-dashed">
+                                      No weekly payouts archived for this period.
+                                  </div>
                               )}
                           </div>
                       </div>
