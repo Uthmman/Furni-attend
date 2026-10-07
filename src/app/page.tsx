@@ -3,7 +3,7 @@
 
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2, History, Timer, UserX, ChevronLeft, ChevronRight, Settings2, Database, Trash2 } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2, History, Timer, UserX, ChevronLeft, ChevronRight, Settings2, Database, Trash2, XCircle } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings, EmployeeExpense } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
@@ -165,6 +165,7 @@ export default function DashboardPage() {
 
   const [syncType, setSyncType] = useState<'Weekly' | 'Monthly'>('Weekly');
   const [selectedSyncPeriod, setSelectedSyncPeriod] = useState<string>("");
+  const [archivedPeriods, setArchivedPeriods] = useState<{label: string, value: string, type: string}[]>([]);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -214,7 +215,7 @@ export default function DashboardPage() {
         const end = endOfWeek(current, { weekStartsOn: 0 });
         options.push({
             value: format(end, "yyyy-MM-dd"),
-            label: `Week: ${ethiopianDateFormatter(current, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'short', year: 'numeric' })} AM`
+            label: `Week: ${ethiopianDateFormatter(current, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'short', year: 'numeric' })}`
         });
         current = subDays(current, 7);
     }
@@ -233,19 +234,41 @@ export default function DashboardPage() {
   }, [syncType, weekOptions, monthOptions]);
 
   useEffect(() => {
+    const fetchArchivedPeriods = async () => {
+        if (!firestore || !user) return;
+        const q = query(collection(firestore, 'employeeExpenses'), orderBy('periodValue', 'desc'), limit(100));
+        const snap = await getDocs(q);
+        const periods: Record<string, {label: string, value: string, type: string}> = {};
+        snap.forEach(d => {
+            const data = d.data();
+            const key = `${data.type}_${data.periodValue}`;
+            if (!periods[key]) {
+                periods[key] = {
+                    label: data.periodLabel || data.period || data.periodValue,
+                    value: data.periodValue,
+                    type: data.type
+                };
+            }
+        });
+        setArchivedPeriods(Object.values(periods).sort((a, b) => b.value.localeCompare(a.value)));
+    };
+    fetchArchivedPeriods();
+  }, [firestore, user, isProcessingPay]);
+
+  useEffect(() => {
     const checkPaidStatus = async () => {
         if (!firestore || !user) return;
         
         const weekQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardWeek));
         const weekSnap = await getDocs(weekQuery);
-        setAlreadyPaidWeek(weekSnap.docs.some(d => d.data().paymentStatus === 'Paid'));
+        setAlreadyPaidWeek(weekSnap.docs.some(d => d.data().paymentStatus === 'Paid' && d.data().type === 'Weekly'));
 
         const monthQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardMonth));
         const monthSnap = await getDocs(monthQuery);
-        setAlreadyPaidMonth(monthSnap.docs.some(d => d.data().paymentStatus === 'Paid'));
+        setAlreadyPaidMonth(monthSnap.docs.some(d => d.data().paymentStatus === 'Paid' && d.data().type === 'Monthly'));
     };
     checkPaidStatus();
-  }, [firestore, user, selectedDashboardWeek, selectedDashboardMonth]);
+  }, [firestore, user, selectedDashboardWeek, selectedDashboardMonth, isProcessingPay]);
 
   useEffect(() => {
     const fetchRelevantAttendance = async () => {
@@ -308,14 +331,14 @@ export default function DashboardPage() {
         } finally { setAuditLoading(false); }
     };
     fetchAuditData();
-  }, [selectedUnifiedMonth, firestore, user]);
+  }, [selectedUnifiedMonth, firestore, user, isProcessingPay]);
 
   const auditBreakdown = useMemo(() => {
     const monthlyTotal = auditRecords.filter(r => r.type === 'Monthly').reduce((acc, r) => acc + (r.amount || 0), 0);
     const weeklyRecords = auditRecords.filter(r => r.type === 'Weekly');
     const weeksMap: Record<string, number> = {};
     weeklyRecords.forEach(r => {
-        const p = r.period || r.periodLabel || "Unknown Week";
+        const p = r.periodLabel || r.period || "Unknown Week";
         weeksMap[p] = (weeksMap[p] || 0) + (r.amount || 0);
     });
     const weeksList = Object.entries(weeksMap).map(([label, total]) => ({ label, total })).sort((a, b) => b.label.localeCompare(a.label));
@@ -527,49 +550,38 @@ export default function DashboardPage() {
       try {
           await batch.commit();
           await sendAdminPayrollSummary(reportMsg);
-          if (!targetPeriodValue) {
-             if (type === 'Weekly') setAlreadyPaidWeek(true); else setAlreadyPaidMonth(true);
-          }
           toast({ title: "Ledger Updated", description: `Period finalized and archived.` });
       } catch (e) { toast({ variant: 'destructive', title: "Sync Failed" }); } finally { setIsProcessingPay(false); }
+  };
+
+  const handleDeleteSpecificPeriod = async (type: string, value: string) => {
+      if (!firestore || !user || isProcessingPay) return;
+      const isConfirmed = window.confirm(`Permanently delete all archived ${type} records for period ending ${value}? This cannot be undone.`);
+      if (!isConfirmed) return;
+
+      setIsProcessingPay(true);
+      try {
+          const q = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', value));
+          const snap = await getDocs(q);
+          const targets = snap.docs.filter(d => d.data().type === type);
+
+          if (targets.length === 0) {
+              toast({ title: "No records found" });
+              return;
+          }
+
+          const batch = writeBatch(firestore);
+          targets.forEach(d => batch.delete(d.ref));
+          await batch.commit();
+          toast({ title: "Archived Data Removed", description: `Successfully cleared ${targets.length} records.` });
+      } catch (e) {
+          toast({ variant: 'destructive', title: "Delete Failed" });
+      } finally { setIsProcessingPay(false); }
   };
 
   const handleMaintenanceSync = async () => {
       if (!selectedSyncPeriod) return;
       handleMarkAsPaid(syncType, selectedSyncPeriod);
-  };
-
-  const handleDeletePeriod = async () => {
-    if (!firestore || !user || !selectedSyncPeriod || isProcessingPay) return;
-    
-    const isConfirmed = window.confirm(`Are you sure you want to delete the ${syncType} ledger entries for the period ending ${selectedSyncPeriod}? This cannot be undone.`);
-    if (!isConfirmed) return;
-
-    setIsProcessingPay(true);
-    try {
-        const expensesRef = collection(firestore, 'employeeExpenses');
-        const q = query(expensesRef, where('periodValue', '==', selectedSyncPeriod));
-        const snap = await getDocs(q);
-        const targets = snap.docs.filter(d => d.data().type === syncType);
-
-        if (targets.length === 0) {
-            toast({ title: "No records found", description: "There are no saved payouts for this specific period." });
-            return;
-        }
-
-        const batch = writeBatch(firestore);
-        targets.forEach(d => batch.delete(d.ref));
-        await batch.commit();
-        
-        if (syncType === 'Weekly' && selectedSyncPeriod === selectedDashboardWeek) setAlreadyPaidWeek(false);
-        if (syncType === 'Monthly' && selectedSyncPeriod === selectedDashboardMonth) setAlreadyPaidMonth(false);
-        
-        toast({ title: "Ledger Cleared", description: `Successfully removed ${targets.length} records for ${selectedSyncPeriod}.` });
-    } catch (e) {
-        toast({ variant: 'destructive', title: "Delete Failed" });
-    } finally {
-        setIsProcessingPay(false);
-    }
   };
 
   const weeklyChartData = useMemo(() => {
@@ -861,7 +873,7 @@ export default function DashboardPage() {
                       <Button 
                         variant="ghost" 
                         size="sm" 
-                        onClick={handleDeletePeriod} 
+                        onClick={() => handleDeleteSpecificPeriod(syncType, selectedSyncPeriod)} 
                         disabled={isProcessingPay || employeesLoading} 
                         className="flex-1 lg:flex-none h-11 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-destructive hover:bg-destructive/10 border border-destructive/20 transition-colors gap-2 rounded-xl"
                       >
@@ -870,6 +882,33 @@ export default function DashboardPage() {
                       </Button>
                   </div>
               </div>
+
+              {archivedPeriods.length > 0 && (
+                <div className="space-y-4 pt-4 border-t border-dashed">
+                    <div className="flex items-center gap-2 text-[#9AA3B8] mb-2">
+                        <History className="h-4 w-4" />
+                        <h4 className="text-[10px] font-black uppercase tracking-widest text-[#10192E]">Archived Ledger History (Separated for Delete)</h4>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                        {archivedPeriods.map((p, idx) => (
+                            <div key={idx} className="flex items-center justify-between bg-white p-3 rounded-xl shadow-sm border border-primary/5 group">
+                                <div className="min-w-0">
+                                    <p className={cn("text-[8px] font-black uppercase leading-none mb-1", p.type === 'Weekly' ? "text-[#3478F6]" : "text-[#8B5CF6]")}>{p.type}</p>
+                                    <p className="text-[10px] font-bold text-[#10192E] truncate pr-2">{p.label}</p>
+                                </div>
+                                <Button 
+                                    variant="ghost" 
+                                    size="icon" 
+                                    className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
+                                    onClick={() => handleDeleteSpecificPeriod(p.type, p.value)}
+                                >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+              )}
           </CardContent>
       </Card>
     </div>
