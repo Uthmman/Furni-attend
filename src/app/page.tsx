@@ -3,7 +3,7 @@
 
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2, History, Timer, UserX, ChevronLeft, ChevronRight, Settings2, Database } from "lucide-react";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2, History, Timer, UserX, ChevronLeft, ChevronRight, Settings2, Database, Trash2 } from "lucide-react";
 import type { Employee, AttendanceRecord, PayrollSettings, EmployeeExpense } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
@@ -138,7 +138,6 @@ export default function DashboardPage() {
   const { user, isUserLoading } = useUser();
   const { toast } = useToast();
   
-  const [isSyncingHistory, setIsSyncingHistory] = useState(false);
   const [isProcessingPay, setIsProcessingPay] = useState(false);
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
@@ -163,7 +162,6 @@ export default function DashboardPage() {
   const [alreadyPaidWeek, setAlreadyPaidWeek] = useState(false);
   const [alreadyPaidMonth, setAlreadyPaidMonth] = useState(false);
 
-  // Maintenance Sync State
   const [syncType, setSyncType] = useState<'Weekly' | 'Monthly'>('Weekly');
   const [selectedSyncPeriod, setSelectedSyncPeriod] = useState<string>("");
 
@@ -354,6 +352,7 @@ export default function DashboardPage() {
                 const todayDetails = calcDetailedCost(r, d, currentMonthUnits);
                 empStats.today.cost = todayDetails.cost;
                 empStats.today.otPay = todayDetails.otPay;
+                empStats.today.otHours = todayDetails.otHours;
                 todayCostGlobal += todayDetails.cost;
             }
             if (isWithinInterval(d, { start: dashboardWeekStart, end: endOfDay(dashboardWeekEnd) })) {
@@ -417,7 +416,6 @@ export default function DashboardPage() {
       let reportMsg = `💰 *PAYROLL FINALIZED: ${type.toUpperCase()}*\n📅 Period: ${periodLabel}\n\n`;
       let totalAmount = 0;
 
-      // Calculation logic for the targeted period
       const endG = startOfDay(new Date(periodValue));
       const startG = type === 'Weekly' ? subDays(endG, 6) : toGregorian(toEthiopian(endG).year, toEthiopian(endG).month, 1);
       const interval = { start: startOfDay(startG), end: endOfDay(endG) };
@@ -467,7 +465,7 @@ export default function DashboardPage() {
                       empCost += (daily - (dedH * hourly) - (lateM * (hourly / 60)) + otP);
                       empOTHours += otH; empOTPay += otP;
                   } else if (!isSun) {
-                      empCost += 0; // Missing log counts as absence in monthly
+                      empCost += 0;
                   }
               }
           });
@@ -498,6 +496,41 @@ export default function DashboardPage() {
   const handleMaintenanceSync = async () => {
       if (!selectedSyncPeriod) return;
       handleMarkAsPaid(syncType, selectedSyncPeriod);
+  };
+
+  const handleDeletePeriod = async () => {
+    if (!firestore || !user || !selectedSyncPeriod || isProcessingPay) return;
+    
+    const isConfirmed = window.confirm(`Are you sure you want to delete the ${syncType} ledger entries for the period ending ${selectedSyncPeriod}? This cannot be undone.`);
+    if (!isConfirmed) return;
+
+    setIsProcessingPay(true);
+    try {
+        const expensesRef = collection(firestore, 'employeeExpenses');
+        const q = query(expensesRef, 
+            where('periodValue', '==', selectedSyncPeriod),
+            where('type', '==', syncType)
+        );
+        const snap = await getDocs(q);
+        
+        if (snap.empty) {
+            toast({ title: "No records found", description: "There are no saved payouts for this specific period." });
+            return;
+        }
+
+        const batch = writeBatch(firestore);
+        snap.forEach(d => batch.delete(d.ref));
+        await batch.commit();
+        
+        if (syncType === 'Weekly' && selectedSyncPeriod === selectedDashboardWeek) setAlreadyPaidWeek(false);
+        if (syncType === 'Monthly' && selectedSyncPeriod === selectedDashboardMonth) setAlreadyPaidMonth(false);
+        
+        toast({ title: "Ledger Cleared", description: `Successfully removed ${snap.size} records for ${selectedSyncPeriod}.` });
+    } catch (e) {
+        toast({ variant: 'destructive', title: "Delete Failed" });
+    } finally {
+        setIsProcessingPay(false);
+    }
   };
 
   const weeklyChartData = useMemo(() => {
@@ -698,19 +731,18 @@ export default function DashboardPage() {
           </CardContent>
       </Card>
 
-      {/* Targeted Period Sync Utility */}
       <Card className="shadow-lg border-none rounded-3xl overflow-hidden bg-muted/20 border border-dashed border-primary/20">
           <CardContent className="p-8 space-y-6">
               <div className="flex items-center gap-4 text-[#9AA3B8]">
                   <Database className="h-5 w-5" />
                   <div>
                       <h3 className="text-sm font-black uppercase tracking-widest text-[#10192E]">Ledger Maintenance</h3>
-                      <p className="text-[10px] font-bold">Synchronize a specific period to the workshop history.</p>
+                      <p className="text-[10px] font-bold">Manage database records for a specific period.</p>
                   </div>
               </div>
               
-              <div className="flex flex-col sm:flex-row items-center gap-4">
-                  <div className="grid grid-cols-2 gap-2 w-full sm:w-auto">
+              <div className="flex flex-col lg:flex-row items-center gap-4">
+                  <div className="grid grid-cols-2 gap-2 w-full lg:w-auto">
                     <Select value={syncType} onValueChange={(v) => setSyncType(v as any)}>
                         <SelectTrigger className="h-11 bg-white rounded-xl font-bold border-none shadow-sm">
                             <SelectValue placeholder="Type" />
@@ -732,16 +764,29 @@ export default function DashboardPage() {
                     </Select>
                   </div>
                   
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={handleMaintenanceSync} 
-                    disabled={isProcessingPay || employeesLoading} 
-                    className="w-full sm:w-auto h-11 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#3478F6] hover:bg-[#3478F6]/10 border border-[#3478F6]/20 transition-colors gap-2 rounded-xl"
-                  >
-                    {isProcessingPay ? <Loader2 className="h-3 w-3 animate-spin" /> : <History className="h-3 w-3" />} 
-                    Force Sync {syncType} Period
-                  </Button>
+                  <div className="flex items-center gap-2 w-full lg:w-auto">
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={handleMaintenanceSync} 
+                        disabled={isProcessingPay || employeesLoading} 
+                        className="flex-1 lg:flex-none h-11 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#3478F6] hover:bg-[#3478F6]/10 border border-[#3478F6]/20 transition-colors gap-2 rounded-xl"
+                      >
+                        {isProcessingPay ? <Loader2 className="h-3 w-3 animate-spin" /> : <History className="h-3 w-3" />} 
+                        Force Sync
+                      </Button>
+                      
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={handleDeletePeriod} 
+                        disabled={isProcessingPay || employeesLoading} 
+                        className="flex-1 lg:flex-none h-11 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-destructive hover:bg-destructive/10 border border-destructive/20 transition-colors gap-2 rounded-xl"
+                      >
+                        {isProcessingPay ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} 
+                        Delete Records
+                      </Button>
+                  </div>
               </div>
           </CardContent>
       </Card>
@@ -752,7 +797,8 @@ export default function DashboardPage() {
 function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week' | 'month' }) {
     const data = staff[view];
     const label = view === 'today' ? "Today's Cost" : (view === 'week' ? "Week To-Date" : "Month To-Date");
-    const showAbsent = !(staff.paymentMethod === 'Weekly' && (view === 'week' || view === 'month'));
+    const isWeekly = staff.paymentMethod === 'Weekly';
+    const showAbsent = !(isWeekly && (view === 'week' || view === 'month'));
 
     const getStatusColor = (status: string) => {
         switch (status) {
