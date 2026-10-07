@@ -234,12 +234,15 @@ export default function DashboardPage() {
   useEffect(() => {
     const checkPaidStatus = async () => {
         if (!firestore || !user) return;
-        const weekQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardWeek), where('paymentStatus', '==', 'Paid'));
+        
+        // Single field queries to avoid composite index requirements
+        const weekQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardWeek));
         const weekSnap = await getDocs(weekQuery);
-        setAlreadyPaidWeek(!weekSnap.empty);
-        const monthQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardMonth), where('paymentStatus', '==', 'Paid'));
+        setAlreadyPaidWeek(weekSnap.docs.some(d => d.data().paymentStatus === 'Paid'));
+
+        const monthQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardMonth));
         const monthSnap = await getDocs(monthQuery);
-        setAlreadyPaidMonth(!monthSnap.empty);
+        setAlreadyPaidMonth(monthSnap.docs.some(d => d.data().paymentStatus === 'Paid'));
     };
     checkPaidStatus();
   }, [firestore, user, selectedDashboardWeek, selectedDashboardMonth]);
@@ -282,16 +285,22 @@ export default function DashboardPage() {
             const eth = toEthiopian(endG);
             const startG = toGregorian(eth.year, eth.month, 1);
             
+            // Simplified query to avoid composite index requirement for range + status
             const expensesRef = collection(firestore, 'employeeExpenses');
-            const q = query(
-                expensesRef, 
-                where('periodValue', '>=', format(startG, "yyyy-MM-dd")), 
-                where('periodValue', '<=', format(endG, "yyyy-MM-dd")),
-                where('paymentStatus', '==', 'Paid')
-            );
+            const q = query(expensesRef, where('paymentStatus', '==', 'Paid'));
             const snap = await getDocs(q);
+            
             let total = 0;
-            snap.forEach(d => { total += d.data().amount || 0; });
+            const startStr = format(startG, "yyyy-MM-dd");
+            const endStr = format(endG, "yyyy-MM-dd");
+            
+            snap.forEach(d => {
+                const data = d.data();
+                // Filter by date range in memory to avoid index error
+                if (data.periodValue >= startStr && data.periodValue <= endStr) {
+                    total += data.amount || 0;
+                }
+            });
             setAuditTotal(total);
         } catch (e) {
             console.error("Audit fetch failed", e);
@@ -524,25 +533,26 @@ export default function DashboardPage() {
     setIsProcessingPay(true);
     try {
         const expensesRef = collection(firestore, 'employeeExpenses');
-        const q = query(expensesRef, 
-            where('periodValue', '==', selectedSyncPeriod),
-            where('type', '==', syncType)
-        );
+        // Simplified query to avoid composite index requirement
+        const q = query(expensesRef, where('periodValue', '==', selectedSyncPeriod));
         const snap = await getDocs(q);
         
-        if (snap.empty) {
+        // Filter by type in memory
+        const targets = snap.docs.filter(d => d.data().type === syncType);
+
+        if (targets.length === 0) {
             toast({ title: "No records found", description: "There are no saved payouts for this specific period." });
             return;
         }
 
         const batch = writeBatch(firestore);
-        snap.forEach(d => batch.delete(d.ref));
+        targets.forEach(d => batch.delete(d.ref));
         await batch.commit();
         
         if (syncType === 'Weekly' && selectedSyncPeriod === selectedDashboardWeek) setAlreadyPaidWeek(false);
         if (syncType === 'Monthly' && selectedSyncPeriod === selectedDashboardMonth) setAlreadyPaidMonth(false);
         
-        toast({ title: "Ledger Cleared", description: `Successfully removed ${snap.size} records for ${selectedSyncPeriod}.` });
+        toast({ title: "Ledger Cleared", description: `Successfully removed ${targets.length} records for ${selectedSyncPeriod}.` });
     } catch (e) {
         toast({ variant: 'destructive', title: "Delete Failed" });
     } finally {
@@ -881,4 +891,3 @@ function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week'
         </Card>
     );
 }
-
