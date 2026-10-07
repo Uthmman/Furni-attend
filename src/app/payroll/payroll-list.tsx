@@ -117,7 +117,8 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
         setIsSending(true);
         
         let listSummary = `📊 *${title} Summary*\n`;
-        listSummary += `📅 Period: ${periodOptions.find(o => o.value === selectedPeriod)?.label || selectedPeriod}\n\n`;
+        const pLabel = periodOptions.find(o => o.value === selectedPeriod)?.label || selectedPeriod || "";
+        listSummary += `📅 Period: ${pLabel}\n\n`;
         
         payrollData.forEach(entry => {
             listSummary += `• *${entry.employeeName}*: ETB ${entry.amount.toFixed(2)}\n`;
@@ -143,7 +144,6 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
         const recordedAt = new Date().toISOString();
         
         payrollData.forEach(entry => {
-            // Using slugified label for descriptive uniqueness as requested
             const periodSlug = entry.period.replace(/[^a-z0-9]/gi, '_').toLowerCase();
             const payoutId = `payout_${entry.paymentMethod.toUpperCase()}_${entry.employeeId}_${periodSlug}`;
             const recordRef = doc(firestore, 'employeeExpenses', payoutId);
@@ -154,19 +154,17 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
                 employeeName: entry.employeeName,
                 amount: entry.amount,
                 type: entry.paymentMethod,
-                period: entry.period, // Storing human-readable period name as requested
-                periodValue: selectedPeriod, // Keeping technical reference
+                period: entry.period,
                 periodLabel: entry.period,
+                periodValue: selectedPeriod,
                 recordedAt: recordedAt,
-                paymentStatus: 'Unpaid',
+                paymentStatus: 'Paid',
                 category: 'Payroll',
                 details: {
-                    baseAmount: entry.baseAmount || 0,
+                    baseAmount: entry.baseAmount || entry.baseSalary || 0,
                     overtimeAmount: entry.overtimeAmount || entry.overtimePay || 0,
-                    lateDeduction: entry.lateDeduction || 0,
-                    absenceDeduction: entry.absenceDeduction || 0,
-                    totalHours: entry.totalHours || 0,
                     overtimeHours: entry.overtimeHours || 0,
+                    totalHours: entry.totalHours || 0,
                 }
             };
             
@@ -342,4 +340,3 @@ export function PayrollList({ title, payrollData, periodOptions, selectedPeriod,
         </>
     );
 }
-

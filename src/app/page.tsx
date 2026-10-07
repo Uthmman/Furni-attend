@@ -143,7 +143,6 @@ export default function DashboardPage() {
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
   
-  // Tab Selectors (Values are last day of period Gregorian)
   const [selectedDashboardWeek, setSelectedDashboardWeek] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 0 }), "yyyy-MM-dd"));
   const [selectedDashboardMonth, setSelectedDashboardMonth] = useState<string>(() => {
     const eth = toEthiopian(new Date());
@@ -188,7 +187,6 @@ export default function DashboardPage() {
 
   useEffect(() => { setTitle("Dashboard"); }, [setTitle]);
 
-  // Options for selectors using end-of-period as values
   const monthOptions = useMemo(() => {
     const options = [];
     const today = new Date();
@@ -213,7 +211,7 @@ export default function DashboardPage() {
         const end = endOfWeek(current, { weekStartsOn: 0 });
         options.push({
             value: format(end, "yyyy-MM-dd"),
-            label: `${ethiopianDateFormatter(current, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'short', year: 'numeric' })}`
+            label: `Week: ${ethiopianDateFormatter(current, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'short', year: 'numeric' })} AM`
         });
         current = subDays(current, 7);
     }
@@ -223,13 +221,9 @@ export default function DashboardPage() {
   useEffect(() => {
     const checkPaidStatus = async () => {
         if (!firestore || !user) return;
-        
-        // Check week
         const weekQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardWeek), where('paymentStatus', '==', 'Paid'));
         const weekSnap = await getDocs(weekQuery);
         setAlreadyPaidWeek(!weekSnap.empty);
-
-        // Check month
         const monthQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardMonth), where('paymentStatus', '==', 'Paid'));
         const monthSnap = await getDocs(monthQuery);
         setAlreadyPaidMonth(!monthSnap.empty);
@@ -245,17 +239,13 @@ export default function DashboardPage() {
         }
         setRealTimeLoading(true);
         try {
-            // selectedDashboardWeek/Month are now the end-dates
             const weekEnd = startOfDay(new Date(selectedDashboardWeek));
             const weekStart = subDays(weekEnd, 6);
-            
             const monthEnd = startOfDay(new Date(selectedDashboardMonth));
             const ethM = toEthiopian(monthEnd);
             const monthStart = toGregorian(ethM.year, ethM.month, 1);
-            
             const rangeStart = weekStart < monthStart ? weekStart : monthStart;
             const end = endOfDay(new Date());
-            
             const fetchPromises = allEmployees.map(emp => 
                 getDocs(query(collection(firestore, 'employees', emp.id, 'attendance'), where('date', '>=', rangeStart.toISOString()), where('date', '<=', end.toISOString())))
             );
@@ -265,9 +255,7 @@ export default function DashboardPage() {
                 snap.forEach(d => records.push({ ...d.data(), employeeId: allEmployees[idx].id, id: d.id } as AttendanceRecord));
             });
             setAllAttendance(records);
-        } catch (e) {
-            console.error("Fetch error:", e);
-        } finally { setRealTimeLoading(false); }
+        } catch (e) { console.error("Fetch error:", e); } finally { setRealTimeLoading(false); }
     };
     fetchRelevantAttendance();
   }, [allEmployees, firestore, user, selectedDashboardWeek, selectedDashboardMonth]);
@@ -290,13 +278,10 @@ export default function DashboardPage() {
 
   const liveTotals = useMemo(() => {
     if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0, staffData: [] };
-    
     const nowLocal = new Date();
     const todayStr = format(nowLocal, "yyyy-MM-dd");
-    
     const dashboardWeekEnd = startOfDay(new Date(selectedDashboardWeek));
     const dashboardWeekStart = subDays(dashboardWeekEnd, 6);
-    
     const dashboardMonthEnd = startOfDay(new Date(selectedDashboardMonth));
     const ethDashMonth = toEthiopian(dashboardMonthEnd);
     const dashboardMonthStart = toGregorian(ethDashMonth.year, ethDashMonth.month, 1);
@@ -319,7 +304,7 @@ export default function DashboardPage() {
             const isSat = getDay(date) === 6;
             const isInactiveDay = empInactiveDate && date >= empInactiveDate;
             const isBeforeStart = date < empStartDate;
-            if (isInactiveDay || isBeforeStart) return { cost: 0, late: 0, absent: (isSun ? 0 : (isSat ? 4.5 : 8)), otHours: 0, otPay: 0 };
+            if (isInactiveDay || isBeforeStart) return { cost: 0, late: 0, absent: (isSun ? 0 : (isSat ? 4.5 : 8)), otHours: 0, otPay: 0, baseHours: 0 };
 
             if (emp.paymentMethod === 'Weekly') {
                 const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
@@ -329,7 +314,7 @@ export default function DashboardPage() {
                 if (isSun && r.morningStatus !== 'Absent') cost += 8 * (hourly || 0) * (sundayOTRate - 1);
                 const expected = isSun ? 0 : (isSat ? 4.5 : 8);
                 const absent = Math.max(0, expected - hrs);
-                return { cost, late: calculateMinutesLate(r), absent, otHours: otH, otPay: otH * (hourly || 0) * normalOTRate };
+                return { cost, late: calculateMinutesLate(r), absent, otHours: otH, otPay: otH * (hourly || 0) * normalOTRate, baseHours: hrs };
             } else {
                 const hourly = (emp.monthlyRate || 0) / unitsForPeriod / 8;
                 const daily = (emp.monthlyRate || 0) / unitsForPeriod;
@@ -341,22 +326,15 @@ export default function DashboardPage() {
                 let otP = otH * hourly * normalOTRate;
                 if (isSun && (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent')) otP += 8 * hourly * sundayOTRate;
                 else if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) otP += 3.5 * hourly * normalOTRate;
-                return { cost: daily - (dedHours * hourly) - (lateMins * (hourly / 60)) + otP, late: lateMins, absent: dedHours, otHours: otH, otPay: otP };
+                return { cost: daily - (dedHours * hourly) - (lateMins * (hourly / 60)) + otP, late: lateMins, absent: dedHours, otHours: otH, otPay: otP, baseHours: isSun ? 0 : (isSat ? 4.5 : 8) - dedHours };
             }
         };
 
         const empStats = { 
             id: emp.id, name: emp.name, paymentMethod: emp.paymentMethod, 
-            today: { 
-                cost: 0, 
-                isPresent: isPresentToday,
-                morningStatus: todayRec?.morningStatus || "Absent",
-                afternoonStatus: todayRec?.afternoonStatus || "Absent",
-                otHours: 0,
-                otPay: 0
-            }, 
-            week: { cost: 0, late: 0, absent: 0, otHours: 0, otPay: 0 }, 
-            month: { cost: 0, late: 0, absent: 0, otHours: 0, otPay: 0 } 
+            today: { cost: 0, isPresent: isPresentToday, morningStatus: todayRec?.morningStatus || "Absent", afternoonStatus: todayRec?.afternoonStatus || "Absent", otHours: todayRec?.overtimeHours || 0, otPay: 0 }, 
+            week: { cost: 0, late: 0, absent: 0, otHours: 0, otPay: 0, totalHours: 0 }, 
+            month: { cost: 0, late: 0, absent: 0, otHours: 0, otPay: 0, totalHours: 0 } 
         };
 
         empRecords.forEach(r => {
@@ -365,8 +343,7 @@ export default function DashboardPage() {
                 const ethNow = toEthiopian(nowLocal);
                 const currentMonthUnits = getMonthlyWorkingUnits(startOfMonth(nowLocal), getEthiopianMonthDays(ethNow.year, ethNow.month));
                 const todayDetails = calcDetailedCost(r, d, currentMonthUnits);
-                empStats.today.cost += todayDetails.cost;
-                empStats.today.otHours = todayDetails.otHours;
+                empStats.today.cost = todayDetails.cost;
                 empStats.today.otPay = todayDetails.otPay;
                 todayCostGlobal += todayDetails.cost;
             }
@@ -379,6 +356,7 @@ export default function DashboardPage() {
                 empStats.week.absent += weekDetails.absent;
                 empStats.week.otHours += weekDetails.otHours;
                 empStats.week.otPay += weekDetails.otPay;
+                empStats.week.totalHours += weekDetails.baseHours;
             }
             if (isWithinInterval(d, { start: dashboardMonthStart, end: endOfDay(dashboardMonthEnd) })) {
                 const monthDetails = calcDetailedCost(r, d, dashMonthUnits);
@@ -387,6 +365,7 @@ export default function DashboardPage() {
                 empStats.month.absent += monthDetails.absent;
                 empStats.month.otHours += monthDetails.otHours;
                 empStats.month.otPay += monthDetails.otPay;
+                empStats.month.totalHours += monthDetails.baseHours;
             }
         });
         staffData.push(empStats);
@@ -401,10 +380,9 @@ export default function DashboardPage() {
     };
   }, [allEmployees, allAttendance, realTimeLoading, normalOTRate, sundayOTRate, selectedDashboardWeek, selectedDashboardMonth]);
 
-  // Pay window logic: Using selectedDashboardWeek/Month which are now end-of-period
   const isWeeklyPayWindow = useMemo(() => {
     const weekEnd = new Date(selectedDashboardWeek);
-    const payEnd = addDays(weekEnd, 3); // Tue
+    const payEnd = addDays(weekEnd, 3);
     return isWithinInterval(now, { start: startOfDay(weekEnd), end: endOfDay(payEnd) });
   }, [now, selectedDashboardWeek]);
 
@@ -419,32 +397,48 @@ export default function DashboardPage() {
       setIsProcessingPay(true);
       const batch = writeBatch(firestore);
       const recordedAt = new Date().toISOString();
-      let periodLabel = "", periodValue = "", totalAmount = 0;
+      let periodLabel = "", periodValue = "";
 
       if (type === 'Weekly') {
-          const wEnd = startOfDay(new Date(selectedDashboardWeek));
-          const wStart = subDays(wEnd, 6);
-          periodLabel = `Week: ${ethiopianDateFormatter(wStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(wEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
-          periodValue = selectedDashboardWeek; // Already the last day Gregorian
+          periodLabel = weekOptions.find(o => o.value === selectedDashboardWeek)?.label || selectedDashboardWeek;
+          periodValue = selectedDashboardWeek;
       } else {
-          const mEnd = startOfDay(new Date(selectedDashboardMonth));
-          const eth = toEthiopian(mEnd);
-          const mStart = toGregorian(eth.year, eth.month, 1);
-          periodLabel = `${ethiopianDateFormatter(mStart, { month: 'long' })} ${eth.year}`;
-          periodValue = selectedDashboardMonth; // Already the last day Gregorian
+          periodLabel = monthOptions.find(o => o.value === selectedDashboardMonth)?.label || selectedDashboardMonth;
+          periodValue = selectedDashboardMonth;
       }
 
       let reportMsg = `💰 *PAYROLL FINALIZED: ${type.toUpperCase()}*\n📅 Period: ${periodLabel}\n\n`;
+      let totalAmount = 0;
+
       allEmployees.forEach(emp => {
           if (type === 'Weekly' && emp.paymentMethod !== 'Weekly') return;
           if (type === 'Monthly' && emp.paymentMethod !== 'Monthly') return;
           const stats = liveTotals.staffData.find(s => s.id === emp.id);
           const amt = type === 'Weekly' ? stats?.week.cost : stats?.month.cost;
-          if (!amt) return;
-          const payoutId = `payout_${type.toUpperCase()}_${emp.id}_${periodLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+          if (amt === undefined) return;
+
+          const periodSlug = periodLabel.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+          const payoutId = `payout_${type.toUpperCase()}_${emp.id}_${periodSlug}`;
+          const periodStats = type === 'Weekly' ? stats.week : stats.month;
+
           batch.set(doc(firestore, 'employeeExpenses', payoutId), {
-              id: payoutId, employeeId: emp.id, employeeName: emp.name, amount: amt, type,
-              period: periodLabel, periodValue, recordedAt, paymentStatus: 'Paid', category: 'Payroll'
+              id: payoutId,
+              employeeId: emp.id,
+              employeeName: emp.name,
+              amount: amt,
+              type,
+              period: periodLabel,
+              periodLabel: periodLabel,
+              periodValue,
+              recordedAt,
+              paymentStatus: 'Paid',
+              category: 'Payroll',
+              details: {
+                  baseAmount: amt - (periodStats.otPay || 0),
+                  overtimeAmount: periodStats.otPay || 0,
+                  overtimeHours: periodStats.otHours || 0,
+                  totalHours: periodStats.totalHours || 0,
+              }
           });
           totalAmount += amt;
           reportMsg += `• *${emp.name}*: ETB ${amt.toLocaleString()}\n`;
@@ -479,21 +473,38 @@ export default function DashboardPage() {
             const label = `${ethiopianDateFormatter(mStep, { month: 'long' })} ${eth.year}`;
             const days = getEthiopianMonthDays(eth.year, eth.month);
             const end = endOfDay(addDays(mStep, days - 1));
-            const val = format(end, "yyyy-MM-dd"); // Storage as last day
+            const val = format(end, "yyyy-MM-dd");
             const units = getMonthlyWorkingUnits(mStep, days);
             
             allEmployees.filter(e => e.paymentMethod === 'Monthly').forEach(emp => {
                 const recs = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: mStep, end }));
                 const hourly = (emp.monthlyRate || 0) / units / 8;
-                let ded = 0, otA = 0;
+                let ded = 0, otA = 0, otH_total = 0, baseH_total = 0;
                 recs.forEach(r => {
                     const d = parse(r.id!, "yyyy-MM-dd", new Date());
-                    if (getDay(d) === 0) { if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') otA += 8 * hourly * sundayOTRate; } 
-                    else { if (r.morningStatus === 'Absent') ded += 4.5 * hourly; if (r.afternoonStatus === 'Absent' && getDay(d) !== 6) ded += 3.5 * hourly; ded += calculateMinutesLate(r) * (hourly / 60); if (getDay(d) === 6 && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) otA += 3.5 * hourly * normalOTRate; }
-                    if (r.overtimeHours) otA += r.overtimeHours * hourly * normalOTRate;
+                    const isSat = getDay(d) === 6;
+                    if (getDay(d) === 0) { 
+                        if (r.morningStatus !== 'Absent' || r.afternoonStatus !== 'Absent') { otA += 8 * hourly * sundayOTRate; otH_total += 8; }
+                    } else {
+                        let dailyDed = 0;
+                        if (r.morningStatus === 'Absent') dailyDed += 4.5 * hourly;
+                        if (r.afternoonStatus === 'Absent' && !isSat) dailyDed += 3.5 * hourly;
+                        dailyDed += calculateMinutesLate(r) * (hourly / 60);
+                        ded += dailyDed;
+                        baseH_total += isSat ? 4.5 : 8;
+                        if (isSat && (r.afternoonStatus === 'Present' || r.afternoonStatus === 'Late')) { otA += 3.5 * hourly * normalOTRate; otH_total += 3.5; }
+                    }
+                    if (r.overtimeHours) { otA += r.overtimeHours * hourly * normalOTRate; otH_total += r.overtimeHours; }
                 });
-                const pId = `payout_MONTHLY_${emp.id}_${label.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
-                batch.set(doc(firestore, 'employeeExpenses', pId), { id: pId, employeeId: emp.id, employeeName: emp.name, amount: (emp.monthlyRate || 0) - ded + otA, type: 'Monthly', period: label, periodValue: val, recordedAt: new Date().toISOString(), paymentStatus: 'Paid', category: 'Payroll' }, { merge: true });
+                const amt = (emp.monthlyRate || 0) - ded + otA;
+                const slug = label.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                const pId = `payout_MONTHLY_${emp.id}_${slug}`;
+                batch.set(doc(firestore, 'employeeExpenses', pId), {
+                    id: pId, employeeId: emp.id, employeeName: emp.name, amount: amt, type: 'Monthly',
+                    period: label, periodLabel: label, periodValue: val, recordedAt: new Date().toISOString(),
+                    paymentStatus: 'Paid', category: 'Payroll',
+                    details: { baseAmount: (emp.monthlyRate || 0) - ded, overtimeAmount: otA, overtimeHours: otH_total, totalHours: baseH_total }
+                }, { merge: true });
             });
             mStep = toGregorian(eth.month === 12 ? eth.year + 1 : eth.year, eth.month === 12 ? 1 : eth.month + 1, 1);
         }
@@ -501,15 +512,28 @@ export default function DashboardPage() {
         let wStep = startOfWeek(startOfHistory, { weekStartsOn: 0 });
         while (wStep < thisWeekStart) {
             const wEnd = endOfWeek(wStep, { weekStartsOn: 0 });
-            const label = `Week: ${ethiopianDateFormatter(wStep, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(wEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
-            const val = format(wEnd, "yyyy-MM-dd"); // Storage as Saturday
+            const label = `Week: ${ethiopianDateFormatter(wStep, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(wEnd, { day: 'numeric', month: 'short', year: 'numeric' })} AM`;
+            const val = format(wEnd, "yyyy-MM-dd");
             allEmployees.filter(e => e.paymentMethod === 'Weekly').forEach(emp => {
                 const recs = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: startOfDay(wStep), end: endOfDay(wEnd) }));
                 const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-                let bH = recs.reduce((acc, r) => acc + calculateHoursWorked(r), 0);
-                let otH = recs.reduce((acc, r) => acc + (r.overtimeHours || 0), 0);
-                const pId = `payout_WEEKLY_${emp.id}_${label.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
-                batch.set(doc(firestore, 'employeeExpenses', pId), { id: pId, employeeId: emp.id, employeeName: emp.name, amount: (bH * (hourly || 0)) + (otH * (hourly || 0) * normalOTRate), type: 'Weekly', period: label, periodValue: val, recordedAt: new Date().toISOString(), paymentStatus: 'Paid', category: 'Payroll' }, { merge: true });
+                let bH = 0, otH = 0, otP = 0;
+                recs.forEach(r => {
+                    const d = parse(r.id!, "yyyy-MM-dd", new Date());
+                    const worked = calculateHoursWorked(r);
+                    const ot = r.overtimeHours || 0;
+                    bH += worked; otH += ot; otP += ot * (hourly || 0) * normalOTRate;
+                    if (getDay(d) === 0 && r.morningStatus !== 'Absent') otP += 8 * (hourly || 0) * (sundayOTRate - 1);
+                });
+                const amt = (bH * (hourly || 0)) + otP;
+                const slug = label.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+                const pId = `payout_WEEKLY_${emp.id}_${slug}`;
+                batch.set(doc(firestore, 'employeeExpenses', pId), {
+                    id: pId, employeeId: emp.id, employeeName: emp.name, amount: amt, type: 'Weekly',
+                    period: label, periodLabel: label, periodValue: val, recordedAt: new Date().toISOString(),
+                    paymentStatus: 'Paid', category: 'Payroll',
+                    details: { baseAmount: bH * (hourly || 0), overtimeAmount: otP, overtimeHours: otH, totalHours: bH }
+                }, { merge: true });
             });
             wStep = addDays(wStep, 7);
         }
@@ -728,8 +752,6 @@ export default function DashboardPage() {
 function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week' | 'month' }) {
     const data = staff[view];
     const label = view === 'today' ? "Today's Cost" : (view === 'week' ? "Week To-Date" : "Month To-Date");
-    
-    // logic: hide absent hours for weekly employees in overview
     const showAbsent = !(staff.paymentMethod === 'Weekly' && (view === 'week' || view === 'month'));
 
     const getStatusColor = (status: string) => {
