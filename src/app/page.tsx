@@ -139,6 +139,7 @@ export default function DashboardPage() {
   const { toast } = useToast();
   
   const [isProcessingPay, setIsProcessingPay] = useState(false);
+  const [deletingPeriodKey, setDeletingPeriodKey] = useState<string | null>(null);
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
   
@@ -166,6 +167,7 @@ export default function DashboardPage() {
   const [syncType, setSyncType] = useState<'Weekly' | 'Monthly'>('Weekly');
   const [selectedSyncPeriod, setSelectedSyncPeriod] = useState<string>("");
   const [archivedPeriods, setArchivedPeriods] = useState<{label: string, value: string, type: string}[]>([]);
+  const [archiveFilterMonth, setArchiveFilterMonth] = useState<string>("all");
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -254,6 +256,18 @@ export default function DashboardPage() {
     };
     fetchArchivedPeriods();
   }, [firestore, user, isProcessingPay]);
+
+  const filteredArchivedPeriods = useMemo(() => {
+    if (archiveFilterMonth === "all") return archivedPeriods;
+    const filterEnd = startOfDay(new Date(archiveFilterMonth));
+    const eth = toEthiopian(filterEnd);
+    const filterStart = toGregorian(eth.year, eth.month, 1);
+    
+    return archivedPeriods.filter(p => {
+        const pDate = startOfDay(new Date(p.value));
+        return pDate >= filterStart && pDate <= filterEnd;
+    });
+  }, [archivedPeriods, archiveFilterMonth]);
 
   useEffect(() => {
     const checkPaidStatus = async () => {
@@ -556,9 +570,11 @@ export default function DashboardPage() {
 
   const handleDeleteSpecificPeriod = async (type: string, value: string) => {
       if (!firestore || !user || isProcessingPay) return;
+      const periodKey = `${type}_${value}`;
       const isConfirmed = window.confirm(`Permanently delete all archived ${type} records for period ending ${value}? This cannot be undone.`);
       if (!isConfirmed) return;
 
+      setDeletingPeriodKey(periodKey);
       setIsProcessingPay(true);
       try {
           const q = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', value));
@@ -567,6 +583,8 @@ export default function DashboardPage() {
 
           if (targets.length === 0) {
               toast({ title: "No records found" });
+              setDeletingPeriodKey(null);
+              setIsProcessingPay(false);
               return;
           }
 
@@ -575,8 +593,11 @@ export default function DashboardPage() {
           await batch.commit();
           toast({ title: "Archived Data Removed", description: `Successfully cleared ${targets.length} records.` });
       } catch (e) {
-          toast({ variant: 'destructive', title: "Delete Failed" });
-      } finally { setIsProcessingPay(false); }
+          toast({ variant: 'destructive', title: "Delete Failed", description: "Database error during removal." });
+      } finally { 
+          setIsProcessingPay(false); 
+          setDeletingPeriodKey(null);
+      }
   };
 
   const handleMaintenanceSync = async () => {
@@ -785,38 +806,38 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="w-full max-w-2xl mt-12 space-y-8 border-t border-[#E7EBF3] pt-12">
-                      {/* Monthly Group */}
-                      {auditBreakdown.monthlyTotal > 0 && (
-                          <div className="space-y-4">
-                              <div className="flex items-center gap-2 mb-2">
-                                  <Wallet2 className="h-4 w-4 text-[#8B5CF6]" />
-                                  <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Monthly Salaries</h4>
-                              </div>
-                              <div className="flex justify-between items-center bg-[#F8FAFF] p-4 px-6 rounded-2xl border border-[#8B5CF6]/10">
-                                  <span className="text-[11px] font-bold text-[#10192E] uppercase tracking-wider">Full-time Staff Payout</span>
-                                  <span className="text-xl font-black text-[#10192E]">ETB {auditBreakdown.monthlyTotal.toLocaleString()}</span>
-                              </div>
-                          </div>
-                      )}
+                      <div className="flex flex-col gap-6">
+                        {auditBreakdown.monthlyTotal > 0 && (
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 mb-2">
+                                    <Wallet2 className="h-4 w-4 text-[#8B5CF6]" />
+                                    <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Monthly Salaries</h4>
+                                </div>
+                                <div className="flex justify-between items-center bg-[#F8FAFF] p-4 px-6 rounded-2xl border border-[#8B5CF6]/10">
+                                    <span className="text-[11px] font-bold text-[#10192E] uppercase tracking-wider">Full-time Staff Payout</span>
+                                    <span className="text-xl font-black text-[#10192E]">ETB {auditBreakdown.monthlyTotal.toLocaleString()}</span>
+                                </div>
+                            </div>
+                        )}
 
-                      {/* Weekly Group */}
-                      <div className="space-y-4">
-                          <div className="flex items-center gap-2 mb-2">
-                              <CalendarIcon className="h-4 w-4 text-[#3478F6]" />
-                              <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Weekly Wages</h4>
-                          </div>
-                          <div className="grid grid-cols-1 gap-3">
-                              {auditBreakdown.weeksList.length > 0 ? auditBreakdown.weeksList.map((week, idx) => (
-                                  <div key={idx} className="flex justify-between items-center bg-[#F8FAFF] p-4 px-6 rounded-2xl border border-[#3478F6]/10">
-                                      <span className="text-[11px] font-bold text-[#10192E] uppercase tracking-wider truncate pr-4">{week.label}</span>
-                                      <span className="text-xl font-black text-[#3478F6] shrink-0">ETB {week.total.toLocaleString()}</span>
-                                  </div>
-                              )) : (
-                                  <div className="text-[10px] text-muted-foreground italic p-8 text-center bg-muted/5 rounded-2xl border border-dashed">
-                                      No weekly payouts archived for this period.
-                                  </div>
-                              )}
-                          </div>
+                        <div className="space-y-4">
+                            <div className="flex items-center gap-2 mb-2">
+                                <CalendarIcon className="h-4 w-4 text-[#3478F6]" />
+                                <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Weekly Wages</h4>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3">
+                                {auditBreakdown.weeksList.length > 0 ? auditBreakdown.weeksList.map((week, idx) => (
+                                    <div key={idx} className="flex justify-between items-center bg-[#F8FAFF] p-4 px-6 rounded-2xl border border-[#3478F6]/10">
+                                        <span className="text-[11px] font-bold text-[#10192E] uppercase tracking-wider truncate pr-4">{week.label}</span>
+                                        <span className="text-xl font-black text-[#3478F6] shrink-0">ETB {week.total.toLocaleString()}</span>
+                                    </div>
+                                )) : (
+                                    <div className="text-[10px] text-muted-foreground italic p-8 text-center bg-muted/5 rounded-2xl border border-dashed">
+                                        No weekly payouts archived for this period.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
                       </div>
                   </div>
 
@@ -884,28 +905,59 @@ export default function DashboardPage() {
               </div>
 
               {archivedPeriods.length > 0 && (
-                <div className="space-y-4 pt-4 border-t border-dashed">
-                    <div className="flex items-center gap-2 text-[#9AA3B8] mb-2">
-                        <History className="h-4 w-4" />
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-[#10192E]">Archived Ledger History (Separated for Delete)</h4>
+                <div className="space-y-6 pt-6 border-t border-dashed">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-2 text-[#9AA3B8]">
+                            <History className="h-4 w-4" />
+                            <h4 className="text-[10px] font-black uppercase tracking-widest text-[#10192E]">Archived Ledger History</h4>
+                        </div>
+                        <div className="flex items-center gap-2">
+                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">Filter Month:</span>
+                             <Select value={archiveFilterMonth} onValueChange={setArchiveFilterMonth}>
+                                <SelectTrigger className="w-[180px] h-9 bg-white text-xs font-bold rounded-lg border-none shadow-sm">
+                                    <SelectValue placeholder="All Months" />
+                                </SelectTrigger>
+                                <SelectContent className="rounded-lg">
+                                    <SelectItem value="all" className="text-xs font-bold">Show All History</SelectItem>
+                                    {monthOptions.map(opt => (
+                                        <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                             </Select>
+                        </div>
                     </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {archivedPeriods.map((p, idx) => (
-                            <div key={idx} className="flex items-center justify-between bg-white p-3 rounded-xl shadow-sm border border-primary/5 group">
-                                <div className="min-w-0">
-                                    <p className={cn("text-[8px] font-black uppercase leading-none mb-1", p.type === 'Weekly' ? "text-[#3478F6]" : "text-[#8B5CF6]")}>{p.type}</p>
-                                    <p className="text-[10px] font-bold text-[#10192E] truncate pr-2">{p.label}</p>
+                        {filteredArchivedPeriods.length > 0 ? filteredArchivedPeriods.map((p, idx) => {
+                            const pKey = `${p.type}_${p.value}`;
+                            const isDeleting = deletingPeriodKey === pKey;
+                            
+                            return (
+                                <div key={idx} className={cn(
+                                    "flex items-center justify-between bg-white p-3 rounded-xl shadow-sm border border-primary/5 group transition-all",
+                                    isDeleting && "opacity-50 scale-95"
+                                )}>
+                                    <div className="min-w-0">
+                                        <p className={cn("text-[8px] font-black uppercase leading-none mb-1", p.type === 'Weekly' ? "text-[#3478F6]" : "text-[#8B5CF6]")}>{p.type}</p>
+                                        <p className="text-[10px] font-bold text-[#10192E] truncate pr-2" title={p.label}>{p.label}</p>
+                                    </div>
+                                    <Button 
+                                        variant="ghost" 
+                                        size="icon" 
+                                        className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
+                                        onClick={() => handleDeleteSpecificPeriod(p.type, p.value)}
+                                        disabled={isProcessingPay}
+                                    >
+                                        {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                    </Button>
                                 </div>
-                                <Button 
-                                    variant="ghost" 
-                                    size="icon" 
-                                    className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
-                                    onClick={() => handleDeleteSpecificPeriod(p.type, p.value)}
-                                >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                </Button>
+                            );
+                        }) : (
+                            <div className="col-span-full py-12 text-center border-2 border-dashed rounded-2xl bg-white/50">
+                                <History className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
+                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">No archived records found for this month.</p>
                             </div>
-                        ))}
+                        )}
                     </div>
                 </div>
               )}
