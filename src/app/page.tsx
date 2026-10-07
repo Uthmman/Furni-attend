@@ -156,6 +156,7 @@ export default function DashboardPage() {
   });
   
   const [auditTotal, setAuditTotal] = useState(0);
+  const [auditRecords, setAuditRecords] = useState<EmployeeExpense[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [now, setNow] = useState(new Date());
 
@@ -235,7 +236,6 @@ export default function DashboardPage() {
     const checkPaidStatus = async () => {
         if (!firestore || !user) return;
         
-        // Single field queries to avoid composite index requirements
         const weekQuery = query(collection(firestore, 'employeeExpenses'), where('periodValue', '==', selectedDashboardWeek));
         const weekSnap = await getDocs(weekQuery);
         setAlreadyPaidWeek(weekSnap.docs.some(d => d.data().paymentStatus === 'Paid'));
@@ -285,29 +285,42 @@ export default function DashboardPage() {
             const eth = toEthiopian(endG);
             const startG = toGregorian(eth.year, eth.month, 1);
             
-            // Simplified query to avoid composite index requirement for range + status
             const expensesRef = collection(firestore, 'employeeExpenses');
             const q = query(expensesRef, where('paymentStatus', '==', 'Paid'));
             const snap = await getDocs(q);
             
             let total = 0;
+            const filtered: EmployeeExpense[] = [];
             const startStr = format(startG, "yyyy-MM-dd");
             const endStr = format(endG, "yyyy-MM-dd");
             
             snap.forEach(d => {
-                const data = d.data();
-                // Filter by date range in memory to avoid index error
+                const data = d.data() as EmployeeExpense;
                 if (data.periodValue >= startStr && data.periodValue <= endStr) {
                     total += data.amount || 0;
+                    filtered.push(data);
                 }
             });
             setAuditTotal(total);
+            setAuditRecords(filtered);
         } catch (e) {
             console.error("Audit fetch failed", e);
         } finally { setAuditLoading(false); }
     };
     fetchAuditData();
   }, [selectedUnifiedMonth, firestore, user]);
+
+  const auditBreakdown = useMemo(() => {
+    const monthlyTotal = auditRecords.filter(r => r.type === 'Monthly').reduce((acc, r) => acc + (r.amount || 0), 0);
+    const weeklyRecords = auditRecords.filter(r => r.type === 'Weekly');
+    const weeksMap: Record<string, number> = {};
+    weeklyRecords.forEach(r => {
+        const p = r.period || r.periodLabel || "Unknown Week";
+        weeksMap[p] = (weeksMap[p] || 0) + (r.amount || 0);
+    });
+    const weeksList = Object.entries(weeksMap).map(([label, total]) => ({ label, total })).sort((a, b) => b.label.localeCompare(a.label));
+    return { monthlyTotal, weeksList };
+  }, [auditRecords]);
 
   const liveTotals = useMemo(() => {
     if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0, staffData: [] };
@@ -371,7 +384,9 @@ export default function DashboardPage() {
         };
 
         empRecords.forEach(r => {
-            const d = parse(r.id!, "yyyy-MM-dd", new Date());
+            const dStr = r.id;
+            if (!dStr) return;
+            const d = parse(dStr, "yyyy-MM-dd", new Date());
             if (isSameDay(d, nowLocal)) {
                 const ethNow = toEthiopian(nowLocal);
                 const currentMonthUnits = getMonthlyWorkingUnits(startOfMonth(nowLocal), getEthiopianMonthDays(ethNow.year, ethNow.month));
@@ -470,7 +485,7 @@ export default function DashboardPage() {
 
               if (emp.paymentMethod === 'Weekly') {
                   const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
-                  const hrs = r ? calculateHoursWorked(r) : (isSun ? 0 : 0);
+                  const hrs = r ? calculateHoursWorked(r) : 0;
                   const otH = r?.overtimeHours || 0;
                   empBaseHours += hrs; empOTHours += otH;
                   let daily = (hrs * (hourly || 0)) + (otH * (hourly || 0) * normalOTRate);
@@ -533,11 +548,8 @@ export default function DashboardPage() {
     setIsProcessingPay(true);
     try {
         const expensesRef = collection(firestore, 'employeeExpenses');
-        // Simplified query to avoid composite index requirement
         const q = query(expensesRef, where('periodValue', '==', selectedSyncPeriod));
         const snap = await getDocs(q);
-        
-        // Filter by type in memory
         const targets = snap.docs.filter(d => d.data().type === syncType);
 
         if (targets.length === 0) {
@@ -759,6 +771,36 @@ export default function DashboardPage() {
                     <p className="text-3xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-[#10192E] tracking-tighter font-headline mb-2">ETB {auditTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                     <p className="text-[10px] font-black text-[#3478F6] uppercase tracking-[0.2em] opacity-60">{selectedMonthLabel}</p>
                   </div>
+
+                  <div className="w-full max-w-2xl mt-12 grid grid-cols-1 md:grid-cols-2 gap-8 border-t border-[#E7EBF3] pt-12">
+                      <div className="space-y-4">
+                          <div className="flex items-center gap-2 mb-2">
+                              <Wallet2 className="h-4 w-4 text-[#8B5CF6]" />
+                              <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Monthly Salaries</h4>
+                          </div>
+                          <div className="bg-[#F8FAFF] p-5 rounded-2xl border border-[#8B5CF6]/5">
+                              <p className="text-2xl font-black text-[#10192E] font-headline">ETB {auditBreakdown.monthlyTotal.toLocaleString()}</p>
+                              <p className="text-[9px] font-bold text-[#9AA3B8] uppercase mt-1">Full-time Staff Payout</p>
+                          </div>
+                      </div>
+                      <div className="space-y-4">
+                          <div className="flex items-center gap-2 mb-2">
+                              <Calendar className="h-4 w-4 text-[#3478F6]" />
+                              <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Weekly Wages</h4>
+                          </div>
+                          <div className="space-y-2">
+                              {auditBreakdown.weeksList.length > 0 ? auditBreakdown.weeksList.map((week, idx) => (
+                                  <div key={idx} className="flex justify-between items-center bg-[#F8FAFF] p-3 px-4 rounded-xl border border-[#3478F6]/5">
+                                      <span className="text-[10px] font-bold text-[#10192E] truncate pr-4">{week.label}</span>
+                                      <span className="text-[11px] font-black text-[#3478F6] shrink-0">ETB {week.total.toLocaleString()}</span>
+                                  </div>
+                              )) : (
+                                  <div className="text-[10px] text-muted-foreground italic p-4 text-center">No weekly payouts archived.</div>
+                              )}
+                          </div>
+                      </div>
+                  </div>
+
                   <div className="flex items-center justify-center gap-6 mt-12 opacity-30"><div className="h-[1px] w-20 bg-gradient-to-r from-transparent to-[#3478F6] rounded-full" /><Sparkles className="h-6 w-6 text-[#3478F6] animate-pulse" /><div className="h-[1px] w-20 bg-gradient-to-l from-transparent to-[#3478F6] rounded-full" /></div>
               </>}
           </CardContent>
