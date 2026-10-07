@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useMemo, useEffect, useState } from 'react';
@@ -140,7 +139,6 @@ export default function DashboardPage() {
   const { toast } = useToast();
   
   const [isProcessingPay, setIsProcessingPay] = useState(false);
-  const [deletingPeriodKey, setDeletingPeriodKey] = useState<string | null>(null);
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
   
@@ -164,11 +162,6 @@ export default function DashboardPage() {
 
   const [alreadyPaidWeek, setAlreadyPaidWeek] = useState(false);
   const [alreadyPaidMonth, setAlreadyPaidMonth] = useState(false);
-
-  const [syncType, setSyncType] = useState<'Weekly' | 'Monthly'>('Weekly');
-  const [selectedSyncPeriod, setSelectedSyncPeriod] = useState<string>("");
-  const [archivedPeriods, setArchivedPeriods] = useState<{label: string, value: string, type: string}[]>([]);
-  const [archiveFilterMonth, setArchiveFilterMonth] = useState<string>("all");
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
@@ -230,45 +223,6 @@ export default function DashboardPage() {
     if (!opt) return "";
     return opt.label;
   }, [selectedUnifiedMonth, monthOptions]);
-
-  useEffect(() => {
-    if (syncType === 'Weekly' && weekOptions.length > 0) setSelectedSyncPeriod(weekOptions[0].value);
-    if (syncType === 'Monthly' && monthOptions.length > 0) setSelectedSyncPeriod(monthOptions[0].value);
-  }, [syncType, weekOptions, monthOptions]);
-
-  useEffect(() => {
-    const fetchArchivedPeriods = async () => {
-        if (!firestore || !user) return;
-        const q = query(collection(firestore, 'employeeExpenses'), orderBy('periodValue', 'desc'), limit(500));
-        const snap = await getDocs(q);
-        const periods: Record<string, {label: string, value: string, type: string}> = {};
-        snap.forEach(d => {
-            const data = d.data();
-            const key = `${data.type}_${data.periodValue}`;
-            if (!periods[key]) {
-                periods[key] = {
-                    label: data.periodLabel || data.period || data.periodValue,
-                    value: data.periodValue,
-                    type: data.type
-                };
-            }
-        });
-        setArchivedPeriods(Object.values(periods).sort((a, b) => b.value.localeCompare(a.value)));
-    };
-    fetchArchivedPeriods();
-  }, [firestore, user, isProcessingPay]);
-
-  const filteredArchivedPeriods = useMemo(() => {
-    if (archiveFilterMonth === "all") return archivedPeriods;
-    const filterEnd = startOfDay(new Date(archiveFilterMonth));
-    const eth = toEthiopian(filterEnd);
-    const filterStart = toGregorian(eth.year, eth.month, 1);
-    
-    return archivedPeriods.filter(p => {
-        const pDate = startOfDay(new Date(p.value));
-        return pDate >= filterStart && pDate <= filterEnd;
-    });
-  }, [archivedPeriods, archiveFilterMonth]);
 
   useEffect(() => {
     const checkPaidStatus = async () => {
@@ -571,65 +525,6 @@ export default function DashboardPage() {
       } catch (e) { toast({ variant: 'destructive', title: "Sync Failed" }); } finally { setIsProcessingPay(false); }
   };
 
-  const handleDeleteSpecificPeriod = async (type: string, value: string) => {
-    if (!firestore) {
-        toast({ variant: 'destructive', title: "System Error", description: "Database is not connected." });
-        return;
-    }
-    
-    if (!user) {
-        toast({ variant: 'destructive', title: "Auth Required", description: "Please sign in again." });
-        return;
-    }
-
-    const periodKey = `${type}_${value}`;
-    
-    if (!window.confirm(`Permanently delete all archived ${type} records for the period ending ${value}? This cannot be undone.`)) {
-        return;
-    }
-
-    setDeletingPeriodKey(periodKey);
-    setIsProcessingPay(true);
-    
-    try {
-        const expensesRef = collection(firestore, 'employeeExpenses');
-        const snap = await getDocs(expensesRef);
-        
-        const targets = snap.docs.filter(d => {
-            const data = d.data();
-            return String(data.type).toLowerCase() === String(type).toLowerCase() && data.periodValue === value;
-        });
-
-        if (targets.length === 0) {
-            toast({ title: "No records found", description: "This period might have already been cleared." });
-        } else {
-            const batch = writeBatch(firestore);
-            targets.forEach(d => batch.delete(d.ref));
-            await batch.commit();
-            
-            toast({ 
-                title: "Archived Data Removed", 
-                description: `Successfully cleared ${targets.length} ${type.toLowerCase()} records.` 
-            });
-        }
-    } catch (e: any) {
-        console.error("Delete operation failed:", e);
-        toast({ 
-            variant: 'destructive', 
-            title: "Delete Failed", 
-            description: e.message || "A database error occurred. Check your connection." 
-        });
-    } finally { 
-        setIsProcessingPay(false); 
-        setDeletingPeriodKey(null);
-    }
-  };
-
-  const handleMaintenanceSync = async () => {
-      if (!selectedSyncPeriod) return;
-      handleMarkAsPaid(syncType, selectedSyncPeriod);
-  };
-
   const weeklyChartData = useMemo(() => {
     if (!allEmployees || allEmployees.length === 0 || realTimeLoading) return [];
     const data = [];
@@ -868,127 +763,6 @@ export default function DashboardPage() {
 
                   <div className="flex items-center justify-center gap-6 mt-12 opacity-30"><div className="h-[1px] w-20 bg-gradient-to-r from-transparent to-[#3478F6] rounded-full" /><Sparkles className="h-6 w-6 text-[#3478F6] animate-pulse" /><div className="h-[1px] w-20 bg-gradient-to-l from-transparent to-[#3478F6] rounded-full" /></div>
               </>}
-          </CardContent>
-      </Card>
-
-      <Card className="shadow-lg border-none rounded-3xl overflow-hidden bg-muted/20 border border-dashed border-primary/20">
-          <CardContent className="p-8 space-y-6">
-              <div className="flex items-center gap-4 text-[#9AA3B8]">
-                  <Database className="h-5 w-5" />
-                  <div>
-                      <h3 className="text-sm font-black uppercase tracking-widest text-[#10192E]">Ledger Maintenance</h3>
-                      <p className="text-[10px] font-bold">Manage database records for a specific period.</p>
-                  </div>
-              </div>
-              
-              <div className="flex flex-col lg:flex-row items-center gap-4">
-                  <div className="grid grid-cols-2 gap-2 w-full lg:w-auto">
-                    <Select value={syncType} onValueChange={(v) => setSyncType(v as any)}>
-                        <SelectTrigger className="h-11 bg-white rounded-xl font-bold border-none shadow-sm">
-                            <SelectValue placeholder="Type" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                            <SelectItem value="Weekly" className="font-bold">Weekly</SelectItem>
-                            <SelectItem value="Monthly" className="font-bold">Monthly</SelectItem>
-                        </SelectContent>
-                    </Select>
-                    <Select value={selectedSyncPeriod} onValueChange={setSelectedSyncPeriod}>
-                        <SelectTrigger className="h-11 bg-white rounded-xl font-bold border-none shadow-sm min-w-[180px]">
-                            <SelectValue placeholder="Select Period" />
-                        </SelectTrigger>
-                        <SelectContent className="rounded-xl">
-                            {(syncType === 'Weekly' ? weekOptions : monthOptions).map(opt => (
-                                <SelectItem key={opt.value} value={opt.value} className="font-medium">{opt.label}</SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                  </div>
-                  
-                  <div className="flex items-center gap-2 w-full lg:w-auto">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={handleMaintenanceSync} 
-                        disabled={isProcessingPay || employeesLoading} 
-                        className="flex-1 lg:flex-none h-11 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-[#3478F6] hover:bg-[#3478F6]/10 border border-[#3478F6]/20 transition-colors gap-2 rounded-xl"
-                      >
-                        {isProcessingPay ? <Loader2 className="h-3 w-3 animate-spin" /> : <History className="h-3 w-3" />} 
-                        Force Sync
-                      </Button>
-                      
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => handleDeleteSpecificPeriod(syncType, selectedSyncPeriod)} 
-                        disabled={isProcessingPay || employeesLoading} 
-                        className="flex-1 lg:flex-none h-11 px-6 text-[10px] font-black uppercase tracking-[0.2em] text-destructive hover:bg-destructive/10 border border-destructive/20 transition-colors gap-2 rounded-xl"
-                      >
-                        {isProcessingPay ? <Loader2 className="h-3 w-3 animate-spin" /> : <Trash2 className="h-3 w-3" />} 
-                        Delete Records
-                      </Button>
-                  </div>
-              </div>
-
-              {archivedPeriods.length > 0 && (
-                <div className="space-y-6 pt-6 border-t border-dashed">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 text-[#9AA3B8]">
-                            <History className="h-4 w-4" />
-                            <h4 className="text-[10px] font-black uppercase tracking-widest text-[#10192E]">Archived Ledger History</h4>
-                        </div>
-                        <div className="flex items-center gap-2">
-                             <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-tight">Filter Month:</span>
-                             <Select value={archiveFilterMonth} onValueChange={setArchiveFilterMonth}>
-                                <SelectTrigger className="w-[180px] h-9 bg-white text-xs font-bold rounded-lg border-none shadow-sm">
-                                    <SelectValue placeholder="All Months" />
-                                </SelectTrigger>
-                                <SelectContent className="rounded-lg">
-                                    <SelectItem value="all" className="text-xs font-bold">Show All History</SelectItem>
-                                    {monthOptions.map(opt => (
-                                        <SelectItem key={opt.value} value={opt.value} className="text-xs">{opt.label}</SelectItem>
-                                    ))}
-                                </SelectContent>
-                             </Select>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                        {filteredArchivedPeriods.length > 0 ? filteredArchivedPeriods.map((p, idx) => {
-                            const pKey = `${p.type}_${p.value}`;
-                            const isDeleting = deletingPeriodKey === pKey;
-                            
-                            return (
-                                <div key={idx} className={cn(
-                                    "flex items-center justify-between bg-white p-3 rounded-xl shadow-sm border border-primary/5 group transition-all",
-                                    isDeleting && "opacity-50 scale-95"
-                                )}>
-                                    <div className="min-w-0">
-                                        <p className={cn("text-[8px] font-black uppercase leading-none mb-1", p.type === 'Weekly' ? "text-[#3478F6]" : "text-[#8B5CF6]")}>{p.type}</p>
-                                        <p className="text-[10px] font-bold text-[#10192E] truncate pr-2" title={p.label}>{p.label}</p>
-                                    </div>
-                                    <Button 
-                                        variant="ghost" 
-                                        size="icon" 
-                                        className="h-8 w-8 text-destructive hover:bg-destructive/10 shrink-0 opacity-40 group-hover:opacity-100 transition-opacity"
-                                        onClick={(e) => {
-                                            e.preventDefault();
-                                            handleDeleteSpecificPeriod(p.type, p.value);
-                                        }}
-                                        disabled={isProcessingPay}
-                                    >
-                                        {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
-                                    </Button>
-                                </div>
-                            );
-                        }) : (
-                            <div className="col-span-full py-12 text-center border-2 border-dashed rounded-2xl bg-white/50">
-                                <History className="h-8 w-8 text-muted-foreground/20 mx-auto mb-2" />
-                                <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">No archived records found for this month.</p>
-                            </div>
-                        )}
-                    </div>
-                </div>
-              )}
           </CardContent>
       </Card>
     </div>
