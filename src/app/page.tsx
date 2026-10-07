@@ -170,9 +170,6 @@ export default function DashboardPage() {
   const [archivedPeriods, setArchivedPeriods] = useState<{label: string, value: string, type: string}[]>([]);
   const [archiveFilterMonth, setArchiveFilterMonth] = useState<string>("all");
 
-  const [isMaintenanceUnlocked, setIsMaintenanceUnlocked] = useState(false);
-  const [maintenancePassword, setMaintenancePassword] = useState("");
-
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 1000);
     return () => clearInterval(timer);
@@ -874,8 +871,8 @@ export default function DashboardPage() {
           </CardContent>
       </Card>
 
-      <Card className="shadow-lg border-none rounded-3xl overflow-hidden bg-muted/20 border border-dashed border-primary/20 relative">
-          <CardContent className={cn("p-8 space-y-6 transition-all duration-700", !isMaintenanceUnlocked && "blur-xl grayscale select-none pointer-events-none opacity-40")}>
+      <Card className="shadow-lg border-none rounded-3xl overflow-hidden bg-muted/20 border border-dashed border-primary/20">
+          <CardContent className="p-8 space-y-6">
               <div className="flex items-center gap-4 text-[#9AA3B8]">
                   <Database className="h-5 w-5" />
                   <div>
@@ -993,36 +990,6 @@ export default function DashboardPage() {
                 </div>
               )}
           </CardContent>
-
-          {!isMaintenanceUnlocked && (
-              <div className="absolute inset-0 z-50 flex items-center justify-center p-6 bg-background/5 backdrop-blur-[2px]">
-                  <div className="bg-white p-8 rounded-[2.5rem] shadow-2xl border border-primary/10 flex flex-col items-center gap-6 max-w-sm w-full animate-in zoom-in-95 fade-in duration-500">
-                      <div className="h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center text-primary shadow-inner">
-                          <Database className="h-8 w-8" />
-                      </div>
-                      <div className="text-center space-y-1">
-                          <h3 className="text-lg font-black text-[#10192E] uppercase tracking-widest">Admin Access</h3>
-                          <p className="text-xs font-bold text-muted-foreground uppercase tracking-tight">Enter Password to Unlock Maintenance</p>
-                      </div>
-                      <div className="w-full space-y-4">
-                          <Input 
-                              type="password" 
-                              placeholder="••••••••" 
-                              className="h-14 text-center text-2xl font-black tracking-[0.3em] rounded-2xl border-none bg-[#F8FAFF] shadow-inner focus-visible:ring-2 focus-visible:ring-primary/20"
-                              value={maintenancePassword}
-                              onChange={(e) => {
-                                  setMaintenancePassword(e.target.value);
-                                  if (e.target.value === "87654321") {
-                                      setIsMaintenanceUnlocked(true);
-                                      toast({ title: "Access Granted", description: "Ledger maintenance tools enabled." });
-                                  }
-                              }}
-                          />
-                          <p className="text-[10px] text-center text-muted-foreground/60 font-bold uppercase tracking-widest leading-relaxed">Required for modifying historical ledger records</p>
-                      </div>
-                  </div>
-              </div>
-          )}
       </Card>
     </div>
   );
