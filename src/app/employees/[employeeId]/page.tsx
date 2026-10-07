@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { format, isWithinInterval, parse, isValid, addDays, startOfWeek, endOfWeek, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay } from "date-fns";
+import { format, isWithinInterval, parse, isValid, addDays, startOfWeek, endOfWeek, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays } from "date-fns";
 import { Timestamp } from "firebase/firestore";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -211,8 +211,10 @@ export default function EmployeeProfilePage() {
         for(let i=0; i < 12; i++){
             const ethDate = toEthiopian(currentMonthStart);
             const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
+            const end = addDays(monthStart, getEthiopianMonthDays(ethDate.year, ethDate.month) - 1);
             if (monthStart < addDays(firstAttendanceDate, -31)) break;
-            options.push({ value: format(monthStart, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethDate.year}` });
+            // Using end day as value
+            options.push({ value: format(end, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethDate.year}` });
             currentMonthStart = toGregorian(ethDate.month === 1 ? ethDate.year - 1 : ethDate.year, ethDate.month === 1 ? 12 : ethDate.month - 1, 1);
         }
     } else {
@@ -220,7 +222,8 @@ export default function EmployeeProfilePage() {
         for(let i=0; i<12; i++){
             const weekEnd = endOfWeek(currentWeekStart, { weekStartsOn: 0 });
             if (weekEnd < firstAttendanceDate) break;
-            options.push({ value: format(currentWeekStart, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}` });
+            // Using Saturday as value
+            options.push({ value: format(weekEnd, "yyyy-MM-dd"), label: `${ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}` });
             currentWeekStart = addDays(currentWeekStart, -7);
         }
     }
@@ -229,21 +232,19 @@ export default function EmployeeProfilePage() {
 
   const displayedHistory = useMemo(() => {
     if (!selectedPeriod || !employee) return [];
-    const startDate = startOfDay(new Date(selectedPeriod));
+    const endDate = startOfDay(new Date(selectedPeriod));
     let interval;
     const today = startOfDay(new Date());
 
     if (employee.paymentMethod === 'Weekly') {
-      const weekStart = startOfWeek(startDate, { weekStartsOn: 0 });
-      const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 });
-      const actualEnd = weekEnd > today ? today : weekEnd;
+      const weekStart = subDays(endDate, 6);
+      const actualEnd = endDate > today ? today : endDate;
       interval = { start: startOfDay(weekStart), end: endOfDay(actualEnd) };
     } else {
-      const ethDate = toEthiopian(startDate);
-      const daysInMonthCount = getEthiopianMonthDays(ethDate.year, ethDate.month);
-      const monthEnd = addDays(startDate, daysInMonthCount - 1);
-      const actualEnd = monthEnd > today ? today : monthEnd;
-      interval = { start: startOfDay(startDate), end: endOfDay(actualEnd) };
+      const ethDate = toEthiopian(endDate);
+      const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
+      const actualEnd = endDate > today ? today : endDate;
+      interval = { start: startOfDay(monthStart), end: endOfDay(actualEnd) };
     }
 
     const days = eachDayOfInterval(interval);
@@ -289,10 +290,11 @@ export default function EmployeeProfilePage() {
 
     if (employee.paymentMethod === 'Monthly') {
         const baseSalary = employee.monthlyRate || 0;
-        const startDate = startOfDay(new Date(selectedPeriod));
-        const ethDate = toEthiopian(startDate);
+        const monthEnd = startOfDay(new Date(selectedPeriod));
+        const ethDate = toEthiopian(monthEnd);
+        const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
         const daysInMonthCount = getEthiopianMonthDays(ethDate.year, ethDate.month);
-        const workingUnits = getMonthlyWorkingUnits(startDate, daysInMonthCount);
+        const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
         const hourlyRateCalc = baseSalary / workingUnits / 8;
         const minuteRate = hourlyRateCalc / 60;
         
@@ -306,7 +308,7 @@ export default function EmployeeProfilePage() {
         const allowedPermissionDates = new Set(Array.from(permissionDatesInYear).sort().slice(0, 15));
 
         let totalHoursAbsent = 0; let otPayTotal = 0; let otHoursTotal = 0;
-        const interval = { start: startDate, end: endOfDay(addDays(startDate, daysInMonthCount - 1)) };
+        const interval = { start: monthStart, end: endOfDay(monthEnd) };
         const recordsInPeriod = employeeAttendance.filter(r => isWithinInterval(r.date, interval));
         const recordedDates = new Set(recordsInPeriod.map(r => format(r.date, 'yyyy-MM-dd')));
 
@@ -406,8 +408,9 @@ export default function EmployeeProfilePage() {
     } else {
       const hourly = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
       const minuteRate = (hourly || 0) / 60;
-      const weekStart = startOfWeek(new Date(selectedPeriod), { weekStartsOn: 0 });
-      const interval = { start: startOfDay(weekStart), end: endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 })) };
+      const weekEnd = startOfDay(new Date(selectedPeriod));
+      const weekStart = subDays(weekEnd, 6);
+      const interval = { start: startOfDay(weekStart), end: endOfDay(weekEnd) };
       const records = employeeAttendance.filter(r => isWithinInterval(r.date, interval));
       const recordedDates = new Set(records.map(r => format(r.date, 'yyyy-MM-dd')));
 

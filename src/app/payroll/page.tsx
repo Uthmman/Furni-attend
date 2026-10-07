@@ -101,7 +101,6 @@ const getMonthlyWorkingUnits = (monthStart: Date, daysInMonth: number) => {
         if (d >= 1 && d <= 5) weekdays++;
         else if (d === 6) saturdays++;
     });
-    // Saturdays counted as 0.5625 units for Monthly staff payout logic
     return weekdays + (saturdays * 0.5625);
 };
 
@@ -109,7 +108,7 @@ const calculateHoursWorked = (record: AttendanceRecord): number => {
     if (!record) return 0;
     const recordDate = getDateFromRecord(record.date);
 
-    if (getDay(recordDate) === 0) { // Sunday check
+    if (getDay(recordDate) === 0) {
         if (record.morningStatus !== 'Absent' || record.afternoonStatus !== 'Absent') return 8;
         return 0;
     }
@@ -240,9 +239,11 @@ export default function PayrollPage() {
         for(let i=0; i < 12; i++){
             const ethDate = toEthiopian(currentMonthStart);
             const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
+            const end = addDays(monthStart, getEthiopianMonthDays(ethDate.year, ethDate.month) - 1);
             if (monthStart < addDays(earliestAttendance, -31)) break;
             const monthName = ethiopianDateFormatter(monthStart, { month: 'long' });
-            mOptions.push({ value: format(monthStart, "yyyy-MM-dd"), label: `${monthName} ${ethDate.year}` });
+            // Using last day of month as value
+            mOptions.push({ value: format(end, "yyyy-MM-dd"), label: `${monthName} ${ethDate.year}` });
             const prevMonthDate = addDays(monthStart, -5);
             const prevEthDate = toEthiopian(prevMonthDate);
             currentMonthStart = toGregorian(prevEthDate.year, prevEthDate.month, 1);
@@ -257,7 +258,8 @@ export default function PayrollPage() {
             if (weekEnd < earliestAttendance) break;
             const startDayEth = ethiopianDateFormatter(currentWeekStart, { day: 'numeric', month: 'short' });
             const endDayEth = ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' });
-            wOptions.push({ value: format(currentWeekStart, "yyyy-MM-dd"), label: `${startDayEth} - ${endDayEth}` });
+            // Using Saturday as value
+            wOptions.push({ value: format(weekEnd, "yyyy-MM-dd"), label: `${startDayEth} - ${endDayEth}` });
             currentWeekStart = addDays(currentWeekStart, -7);
         }
         setWeekOptions(wOptions);
@@ -272,15 +274,15 @@ export default function PayrollPage() {
     const normalOTRate = settings?.normalOvertimeRate || 1.5;
 
     const weekly: PayrollEntry[] = [];
-    const weekStart = startOfDay(selectedWeek);
-    const weekEnd = endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
+    const weekEnd = startOfDay(selectedWeek);
+    const weekStart = subDays(weekEnd, 6);
     const weekPeriodLabel = `${ethiopianDateFormatter(weekStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(weekEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
     
     employees.filter(employee => employee.paymentMethod === 'Weekly').forEach(employee => {
         const hourlyRate = employee.hourlyRate || (employee.dailyRate ? employee.dailyRate / 8 : 0);
         if (!hourlyRate) return;
 
-        const period = { start: weekStart, end: weekEnd };
+        const period = { start: weekStart, end: endOfDay(weekEnd) };
         const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
         
         const relevantRecords = allAttendance.filter(r => 
@@ -361,8 +363,9 @@ export default function PayrollPage() {
     const sundayOTRate = settings?.sundayOvertimeRate || 2.0;
 
     const monthly: PayrollEntry[] = [];
-    const monthStart = startOfDay(selectedMonth);
-    const ethDate = toEthiopian(monthStart);
+    const monthEnd = startOfDay(selectedMonth);
+    const ethDate = toEthiopian(monthEnd);
+    const monthStart = toGregorian(ethDate.year, ethDate.month, 1);
     const monthPeriodLabel = `${ethiopianDateFormatter(monthStart, { month: 'long' })} ${ethDate.year}`;
     const daysInMonth = getEthiopianMonthDays(ethDate.year, ethDate.month);
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonth);
@@ -385,13 +388,12 @@ export default function PayrollPage() {
         const sortedPermissionDates = Array.from(permissionDatesInYear).sort();
         const allowedPermissionDates = new Set(sortedPermissionDates.slice(0, 15));
         
-        const monthEnd = endOfDay(addDays(monthStart, daysInMonth - 1));
         const empInactiveDate = (employee.status === 'Inactive' && employee.inactiveDate) ? startOfDay(new Date(employee.inactiveDate)) : null;
         
         const hourlyRate = baseSalary / workingUnits / 8;
         const minuteRate = hourlyRate / 60;
 
-        const calculationPeriod = { start: monthStart, end: monthEnd };
+        const calculationPeriod = { start: monthStart, end: endOfDay(monthEnd) };
         const allRecordsForMonth = allAttendance.filter(r => 
             r.employeeId === employee.id && 
             isValid(getDateFromRecord(r.date)) && 
@@ -496,12 +498,12 @@ export default function PayrollPage() {
   const monthlyExpenseHistoryData = useMemo(() => {
     if (!employees || !allAttendance || !selectedMonth) return { monthly: [], totalMonthly: 0 };
 
-    const monthStart = startOfDay(selectedMonth);
-    const ethSelected = toEthiopian(monthStart);
+    const monthEnd = startOfDay(selectedMonth);
+    const ethSelected = toEthiopian(monthEnd);
+    const monthStart = toGregorian(ethSelected.year, ethSelected.month, 1);
     const daysInMonthCount = getEthiopianMonthDays(ethSelected.year, ethSelected.month);
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
-    const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
-    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    const daysInMonth = eachDayOfInterval({ start: monthStart, end: endOfDay(monthEnd) });
 
     let totalMonthlyExpense = 0;
     const monthlyData: {name: string, monthly: number}[] = [];
@@ -546,9 +548,9 @@ export default function PayrollPage() {
   const weeklyExpenseHistoryData = useMemo(() => {
     if (!employees || !allAttendance || !selectedWeek) return { weekly: [], totalWeekly: 0 };
 
-    const weekStart = startOfDay(selectedWeek);
-    const weekEnd = endOfDay(endOfWeek(weekStart, { weekStartsOn: 0 }));
-    const daysInWeek = eachDayOfInterval({ start: weekStart, end: weekEnd });
+    const weekEnd = startOfDay(selectedWeek);
+    const weekStart = subDays(weekEnd, 6);
+    const daysInWeek = eachDayOfInterval({ start: weekStart, end: endOfDay(weekEnd) });
 
     let totalWeeklyExpense = 0;
     const weeklyData: {name: string, weekly: number}[] = [];
@@ -594,12 +596,12 @@ export default function PayrollPage() {
   const totalExpenseHistoryData = useMemo(() => {
     if (!selectedMonth || !employees || !allAttendance) return { total: [], overallTotal: 0 };
 
-    const monthStart = startOfDay(selectedMonth);
-    const ethSelected = toEthiopian(monthStart);
+    const monthEnd = startOfDay(selectedMonth);
+    const ethSelected = toEthiopian(monthEnd);
+    const monthStart = toGregorian(ethSelected.year, ethSelected.month, 1);
     const daysInMonthCount = getEthiopianMonthDays(ethSelected.year, ethSelected.month);
     const workingUnits = getMonthlyWorkingUnits(monthStart, daysInMonthCount);
-    const monthEnd = endOfDay(addDays(monthStart, daysInMonthCount - 1));
-    const daysInMonth = eachDayOfInterval({ start: monthStart, end: monthEnd });
+    const daysInMonth = eachDayOfInterval({ start: monthStart, end: endOfDay(monthEnd) });
 
     let overallTotal = 0;
     const totalData: {name: string, total: number}[] = [];

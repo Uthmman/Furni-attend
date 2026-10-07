@@ -143,11 +143,19 @@ export default function DashboardPage() {
   const [allAttendance, setAllAttendance] = useState<AttendanceRecord[]>([]);
   const [realTimeLoading, setRealTimeLoading] = useState(true);
   
-  // Tab Selectors
-  const [selectedDashboardWeek, setSelectedDashboardWeek] = useState<string>(format(startOfWeek(new Date(), { weekStartsOn: 0 }), "yyyy-MM-dd"));
-  const [selectedDashboardMonth, setSelectedDashboardMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
+  // Tab Selectors (Values are last day of period Gregorian)
+  const [selectedDashboardWeek, setSelectedDashboardWeek] = useState<string>(format(endOfWeek(new Date(), { weekStartsOn: 0 }), "yyyy-MM-dd"));
+  const [selectedDashboardMonth, setSelectedDashboardMonth] = useState<string>(() => {
+    const eth = toEthiopian(new Date());
+    const start = toGregorian(eth.year, eth.month, 1);
+    return format(addDays(start, getEthiopianMonthDays(eth.year, eth.month) - 1), "yyyy-MM-dd");
+  });
   
-  const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(format(toGregorian(toEthiopian(new Date()).year, toEthiopian(new Date()).month, 1), "yyyy-MM-dd"));
+  const [selectedUnifiedMonth, setSelectedUnifiedMonth] = useState<string>(() => {
+    const eth = toEthiopian(new Date());
+    const start = toGregorian(eth.year, eth.month, 1);
+    return format(addDays(start, getEthiopianMonthDays(eth.year, eth.month) - 1), "yyyy-MM-dd");
+  });
   
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditLoading, setAuditLoading] = useState(false);
@@ -180,7 +188,7 @@ export default function DashboardPage() {
 
   useEffect(() => { setTitle("Dashboard"); }, [setTitle]);
 
-  // Options for selectors
+  // Options for selectors using end-of-period as values
   const monthOptions = useMemo(() => {
     const options = [];
     const today = new Date();
@@ -188,8 +196,9 @@ export default function DashboardPage() {
         const d = subMonths(today, i);
         const eth = toEthiopian(d);
         const start = toGregorian(eth.year, eth.month, 1);
+        const end = addDays(start, getEthiopianMonthDays(eth.year, eth.month) - 1);
         options.push({
-            value: format(start, "yyyy-MM-dd"),
+            value: format(end, "yyyy-MM-dd"),
             label: `${ethiopianDateFormatter(start, { month: 'long' })} ${eth.year}`
         });
     }
@@ -203,7 +212,7 @@ export default function DashboardPage() {
     for (let i = 0; i < 12; i++) {
         const end = endOfWeek(current, { weekStartsOn: 0 });
         options.push({
-            value: format(current, "yyyy-MM-dd"),
+            value: format(end, "yyyy-MM-dd"),
             label: `${ethiopianDateFormatter(current, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(end, { day: 'numeric', month: 'short', year: 'numeric' })}`
         });
         current = subDays(current, 7);
@@ -236,8 +245,14 @@ export default function DashboardPage() {
         }
         setRealTimeLoading(true);
         try {
-            const weekStart = startOfDay(new Date(selectedDashboardWeek));
-            const monthStart = startOfDay(new Date(selectedDashboardMonth));
+            // selectedDashboardWeek/Month are now the end-dates
+            const weekEnd = startOfDay(new Date(selectedDashboardWeek));
+            const weekStart = subDays(weekEnd, 6);
+            
+            const monthEnd = startOfDay(new Date(selectedDashboardMonth));
+            const ethM = toEthiopian(monthEnd);
+            const monthStart = toGregorian(ethM.year, ethM.month, 1);
+            
             const rangeStart = weekStart < monthStart ? weekStart : monthStart;
             const end = endOfDay(new Date());
             
@@ -279,9 +294,12 @@ export default function DashboardPage() {
     const nowLocal = new Date();
     const todayStr = format(nowLocal, "yyyy-MM-dd");
     
-    const dashboardWeekStart = startOfDay(new Date(selectedDashboardWeek));
-    const dashboardMonthStart = startOfDay(new Date(selectedDashboardMonth));
-    const ethDashMonth = toEthiopian(dashboardMonthStart);
+    const dashboardWeekEnd = startOfDay(new Date(selectedDashboardWeek));
+    const dashboardWeekStart = subDays(dashboardWeekEnd, 6);
+    
+    const dashboardMonthEnd = startOfDay(new Date(selectedDashboardMonth));
+    const ethDashMonth = toEthiopian(dashboardMonthEnd);
+    const dashboardMonthStart = toGregorian(ethDashMonth.year, ethDashMonth.month, 1);
     const dashMonthUnits = getMonthlyWorkingUnits(dashboardMonthStart, getEthiopianMonthDays(ethDashMonth.year, ethDashMonth.month));
 
     let todayCostGlobal = 0, onSiteCount = 0;
@@ -352,8 +370,7 @@ export default function DashboardPage() {
                 empStats.today.otPay = todayDetails.otPay;
                 todayCostGlobal += todayDetails.cost;
             }
-            const weekEnd = endOfDay(endOfWeek(dashboardWeekStart, { weekStartsOn: 0 }));
-            if (isWithinInterval(d, { start: dashboardWeekStart, end: weekEnd })) {
+            if (isWithinInterval(d, { start: dashboardWeekStart, end: endOfDay(dashboardWeekEnd) })) {
                 const ethRecMonth = toEthiopian(d);
                 const recMonthUnits = getMonthlyWorkingUnits(toGregorian(ethRecMonth.year, ethRecMonth.month, 1), getEthiopianMonthDays(ethRecMonth.year, ethRecMonth.month));
                 const weekDetails = calcDetailedCost(r, d, recMonthUnits);
@@ -363,8 +380,7 @@ export default function DashboardPage() {
                 empStats.week.otHours += weekDetails.otHours;
                 empStats.week.otPay += weekDetails.otPay;
             }
-            const monthEnd = endOfDay(addDays(dashboardMonthStart, getEthiopianMonthDays(ethDashMonth.year, ethDashMonth.month) - 1));
-            if (isWithinInterval(d, { start: dashboardMonthStart, end: monthEnd })) {
+            if (isWithinInterval(d, { start: dashboardMonthStart, end: endOfDay(dashboardMonthEnd) })) {
                 const monthDetails = calcDetailedCost(r, d, dashMonthUnits);
                 empStats.month.cost += monthDetails.cost;
                 empStats.month.late += monthDetails.late;
@@ -385,23 +401,15 @@ export default function DashboardPage() {
     };
   }, [allEmployees, allAttendance, realTimeLoading, normalOTRate, sundayOTRate, selectedDashboardWeek, selectedDashboardMonth]);
 
-  const ethToday = toEthiopian(now);
-  const dayOfWeek = getDay(now);
-  
-  // Revised Weekly pay window logic: Selected Sat to following Tue
+  // Pay window logic: Using selectedDashboardWeek/Month which are now end-of-period
   const isWeeklyPayWindow = useMemo(() => {
-    const weekStart = new Date(selectedDashboardWeek);
-    const weekEnd = endOfWeek(weekStart, { weekStartsOn: 0 }); // Sat
+    const weekEnd = new Date(selectedDashboardWeek);
     const payEnd = addDays(weekEnd, 3); // Tue
     return isWithinInterval(now, { start: startOfDay(weekEnd), end: endOfDay(payEnd) });
   }, [now, selectedDashboardWeek]);
 
-  // Revised Monthly pay window logic: Last day of selected month to Day 3 of next
   const isMonthlyPayWindow = useMemo(() => {
-    const monthStart = new Date(selectedDashboardMonth);
-    const eth = toEthiopian(monthStart);
-    const daysInMonth = getEthiopianMonthDays(eth.year, eth.month);
-    const monthEnd = addDays(monthStart, daysInMonth - 1);
+    const monthEnd = new Date(selectedDashboardMonth);
     const payEnd = addDays(monthEnd, 3);
     return isWithinInterval(now, { start: startOfDay(monthEnd), end: endOfDay(payEnd) });
   }, [now, selectedDashboardMonth]);
@@ -414,15 +422,16 @@ export default function DashboardPage() {
       let periodLabel = "", periodValue = "", totalAmount = 0;
 
       if (type === 'Weekly') {
-          const wStart = startOfDay(new Date(selectedDashboardWeek));
-          const wEnd = endOfWeek(wStart, { weekStartsOn: 0 });
+          const wEnd = startOfDay(new Date(selectedDashboardWeek));
+          const wStart = subDays(wEnd, 6);
           periodLabel = `Week: ${ethiopianDateFormatter(wStart, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(wEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
-          periodValue = format(wStart, "yyyy-MM-dd");
+          periodValue = selectedDashboardWeek; // Already the last day Gregorian
       } else {
-          const mStart = startOfDay(new Date(selectedDashboardMonth));
-          const eth = toEthiopian(mStart);
+          const mEnd = startOfDay(new Date(selectedDashboardMonth));
+          const eth = toEthiopian(mEnd);
+          const mStart = toGregorian(eth.year, eth.month, 1);
           periodLabel = `${ethiopianDateFormatter(mStart, { month: 'long' })} ${eth.year}`;
-          periodValue = format(mStart, "yyyy-MM-dd");
+          periodValue = selectedDashboardMonth; // Already the last day Gregorian
       }
 
       let reportMsg = `💰 *PAYROLL FINALIZED: ${type.toUpperCase()}*\n📅 Period: ${periodLabel}\n\n`;
@@ -468,10 +477,11 @@ export default function DashboardPage() {
         while (mStep < thisMonthStart) {
             const eth = toEthiopian(mStep);
             const label = `${ethiopianDateFormatter(mStep, { month: 'long' })} ${eth.year}`;
-            const val = format(mStep, "yyyy-MM-dd");
             const days = getEthiopianMonthDays(eth.year, eth.month);
-            const units = getMonthlyWorkingUnits(mStep, days);
             const end = endOfDay(addDays(mStep, days - 1));
+            const val = format(end, "yyyy-MM-dd"); // Storage as last day
+            const units = getMonthlyWorkingUnits(mStep, days);
+            
             allEmployees.filter(e => e.paymentMethod === 'Monthly').forEach(emp => {
                 const recs = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: mStep, end }));
                 const hourly = (emp.monthlyRate || 0) / units / 8;
@@ -492,7 +502,7 @@ export default function DashboardPage() {
         while (wStep < thisWeekStart) {
             const wEnd = endOfWeek(wStep, { weekStartsOn: 0 });
             const label = `Week: ${ethiopianDateFormatter(wStep, { day: 'numeric', month: 'short' })} - ${ethiopianDateFormatter(wEnd, { day: 'numeric', month: 'short', year: 'numeric' })}`;
-            const val = format(wStep, "yyyy-MM-dd");
+            const val = format(wEnd, "yyyy-MM-dd"); // Storage as Saturday
             allEmployees.filter(e => e.paymentMethod === 'Weekly').forEach(emp => {
                 const recs = allAttendance.filter(r => r.employeeId === emp.id && isWithinInterval(parse(r.id!, "yyyy-MM-dd", new Date()), { start: startOfDay(wStep), end: endOfDay(wEnd) }));
                 const hourly = emp.hourlyRate || (emp.dailyRate ? emp.dailyRate / 8 : 0);
