@@ -3,8 +3,8 @@
 
 import { useMemo, useEffect, useState } from 'react';
 import { usePageTitle } from "@/components/page-title-provider";
-import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2, History, Timer, UserX, ChevronLeft, ChevronRight, Settings2, Database, Trash2, XCircle } from "lucide-react";
-import type { Employee, AttendanceRecord, PayrollSettings, EmployeeExpense } from "@/lib/types";
+import { Users, UserCheck, Wallet, CalendarDays, Clock, TrendingUp, TrendingDown, HandCoins, Calendar as CalendarIcon, Wallet2, BarChart3, Sparkles, CheckCircle2, Loader2, History, Timer, UserX, ChevronLeft, ChevronRight, Settings2, Database, Trash2, XCircle, ShoppingCart } from "lucide-react";
+import type { Employee, AttendanceRecord, PayrollSettings, EmployeeExpense, Expense } from "@/lib/types";
 import { format, isValid, startOfWeek, endOfWeek, isWithinInterval, addDays, parse, getDay, eachDayOfInterval, startOfDay, endOfDay, isSameDay, subDays, startOfMonth, subMonths } from "date-fns";
 import { useCollection, useFirestore, useMemoFirebase, useUser, useDoc } from "@/firebase";
 import { collection, query, where, getDocs, doc, writeBatch, getDoc, setDoc, deleteDoc, orderBy, limit } from "firebase/firestore";
@@ -156,6 +156,7 @@ export default function DashboardPage() {
   
   const [auditTotal, setAuditTotal] = useState(0);
   const [auditRecords, setAuditRecords] = useState<EmployeeExpense[]>([]);
+  const [supplyExpenses, setSupplyExpenses] = useState<Expense[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [now, setNow] = useState(new Date());
 
@@ -277,24 +278,39 @@ export default function DashboardPage() {
             const endG = startOfDay(new Date(selectedUnifiedMonth));
             const eth = toEthiopian(endG);
             const startG = toGregorian(eth.year, eth.month, 1);
-            
-            const expensesRef = collection(firestore, 'employeeExpenses');
-            const snap = await getDocs(expensesRef);
-            
-            let total = 0;
-            const filtered: EmployeeExpense[] = [];
             const startStr = format(startG, "yyyy-MM-dd");
             const endStr = format(endG, "yyyy-MM-dd");
             
-            snap.forEach(d => {
+            // 1. Fetch Employee Payouts
+            const empExpRef = collection(firestore, 'employeeExpenses');
+            const empSnap = await getDocs(empExpRef);
+            const filteredEmp: EmployeeExpense[] = [];
+            empSnap.forEach(d => {
                 const data = d.data() as EmployeeExpense;
                 if (data.paymentStatus === 'Paid' && data.periodValue >= startStr && data.periodValue <= endStr) {
-                    total += data.amount || 0;
-                    filtered.push(data);
+                    filteredEmp.push(data);
                 }
             });
+
+            // 2. Fetch Stock Purchase Expenses
+            const genExpRef = collection(firestore, 'expenses');
+            const genSnap = await getDocs(genExpRef);
+            const filteredSupply: Expense[] = [];
+            genSnap.forEach(d => {
+                const data = d.data() as Expense;
+                const recDate = format(new Date(data.recordedAt), "yyyy-MM-dd");
+                if (data.category === 'Stock Purchase' && recDate >= startStr && recDate <= endStr) {
+                    filteredSupply.push(data);
+                }
+            });
+
+            setAuditRecords(filteredEmp);
+            setSupplyExpenses(filteredSupply);
+            
+            const total = filteredEmp.reduce((acc, r) => acc + (r.amount || 0), 0) + 
+                          filteredSupply.reduce((acc, r) => acc + (r.amount || 0), 0);
             setAuditTotal(total);
-            setAuditRecords(filtered);
+
         } catch (e) {
             console.error("Audit fetch failed", e);
         } finally { setAuditLoading(false); }
@@ -304,14 +320,17 @@ export default function DashboardPage() {
 
   const auditBreakdown = useMemo(() => {
     const monthlyTotal = auditRecords.filter(r => r.type === 'Monthly').reduce((acc, r) => acc + (r.amount || 0), 0);
+    const supplyTotal = supplyExpenses.reduce((acc, r) => acc + (r.amount || 0), 0);
+    
     const weeklyMap: Record<string, number> = {};
     auditRecords.filter(r => r.type === 'Weekly').forEach(r => {
         const label = r.periodLabel || r.period || "Unknown Week";
         weeklyMap[label] = (weeklyMap[label] || 0) + (r.amount || 0);
     });
     const weeklyList = Object.entries(weeklyMap).map(([label, total]) => ({ label, total }));
-    return { monthlyTotal, weeklyList };
-  }, [auditRecords]);
+    
+    return { monthlyTotal, weeklyList, supplyTotal };
+  }, [auditRecords, supplyExpenses]);
 
   const liveTotals = useMemo(() => {
     if (!activeEmployees || activeEmployees.length === 0 || realTimeLoading) return { today: 0, week: 0, month: 0, onSite: 0, staffData: [] };
@@ -717,37 +736,52 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="w-full max-w-2xl mt-12 space-y-8 border-t border-[#E7EBF3] pt-12">
-                      <div className="flex flex-col gap-6">
-                        {auditBreakdown.monthlyTotal > 0 && (
-                            <div className="space-y-4">
-                                <div className="flex items-center gap-2 mb-2">
-                                    <Wallet2 className="h-4 w-4 text-[#8B5CF6]" />
-                                    <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Monthly Salaries</h4>
-                                </div>
-                                <div className="flex justify-between items-center bg-[#F8FAFF] p-4 px-6 rounded-2xl border border-[#8B5CF6]/10">
-                                    <span className="text-[11px] font-bold text-[#10192E] uppercase tracking-wider">Full-time Staff Payout</span>
-                                    <span className="text-xl font-black text-[#10192E]">ETB {auditBreakdown.monthlyTotal.toLocaleString()}</span>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Payroll Breakdown */}
+                        <div className="space-y-6">
                             <div className="flex items-center gap-2 mb-2">
-                                <CalendarIcon className="h-4 w-4 text-[#3478F6]" />
-                                <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Weekly Wages</h4>
+                                <Users className="h-4 w-4 text-[#8B5CF6]" />
+                                <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Labor Payouts</h4>
                             </div>
-                            <div className="grid grid-cols-1 gap-3">
-                                {auditBreakdown.weeklyList.length > 0 ? auditBreakdown.weeklyList.map((week, idx) => (
-                                    <div key={idx} className="flex justify-between items-center bg-[#F8FAFF] p-4 px-6 rounded-2xl border border-[#3478F6]/10">
-                                        <span className="text-[11px] font-bold text-[#10192E] uppercase tracking-wider truncate pr-4">{week.label}</span>
-                                        <span className="text-xl font-black text-[#3478F6] shrink-0">ETB {week.total.toLocaleString()}</span>
+                            
+                            {auditBreakdown.monthlyTotal > 0 && (
+                                <div className="flex justify-between items-center bg-[#F8FAFF] p-4 px-5 rounded-2xl border border-[#8B5CF6]/10">
+                                    <span className="text-[10px] font-bold text-[#10192E] uppercase tracking-wider">Monthly Salaries</span>
+                                    <span className="text-lg font-black text-[#10192E]">ETB {auditBreakdown.monthlyTotal.toLocaleString()}</span>
+                                </div>
+                            )}
+
+                            {auditBreakdown.weeklyList.length > 0 ? auditBreakdown.weeklyList.map((week, idx) => (
+                                <div key={idx} className="flex justify-between items-center bg-[#F8FAFF] p-4 px-5 rounded-2xl border border-[#3478F6]/10">
+                                    <span className="text-[10px] font-bold text-[#10192E] uppercase tracking-wider truncate pr-4">{week.label}</span>
+                                    <span className="text-lg font-black text-[#3478F6] shrink-0">ETB {week.total.toLocaleString()}</span>
+                                </div>
+                            )) : (
+                                !auditBreakdown.monthlyTotal && (
+                                    <div className="text-[9px] text-muted-foreground italic p-6 text-center bg-muted/5 rounded-2xl border border-dashed">
+                                        No labor records found.
                                     </div>
-                                )) : (
-                                    <div className="text-[10px] text-muted-foreground italic p-8 text-center bg-muted/5 rounded-2xl border border-dashed">
-                                        No weekly payouts archived for this period.
-                                    </div>
-                                )}
+                                )
+                            )}
+                        </div>
+
+                        {/* Supplies Breakdown */}
+                        <div className="space-y-6">
+                            <div className="flex items-center gap-2 mb-2">
+                                <ShoppingCart className="h-4 w-4 text-green-600" />
+                                <h4 className="text-[10px] font-black uppercase text-[#10192E] tracking-widest">Supply Purchases</h4>
                             </div>
+                            
+                            {auditBreakdown.supplyTotal > 0 ? (
+                                <div className="flex justify-between items-center bg-green-50/30 p-4 px-5 rounded-2xl border border-green-600/10">
+                                    <span className="text-[10px] font-bold text-[#10192E] uppercase tracking-wider">Restock Costs</span>
+                                    <span className="text-lg font-black text-green-600">ETB {auditBreakdown.supplyTotal.toLocaleString()}</span>
+                                </div>
+                            ) : (
+                                <div className="text-[9px] text-muted-foreground italic p-6 text-center bg-muted/5 rounded-2xl border border-dashed">
+                                    No supply expenses found.
+                                </div>
+                            )}
                         </div>
                       </div>
                   </div>
@@ -824,4 +858,3 @@ function StaffDetailedCard({ staff, view }: { staff: any, view: 'today' | 'week'
         </Card>
     );
 }
-

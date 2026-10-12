@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -53,7 +54,7 @@ import {
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
-import type { Item, StockAdjustment } from "@/lib/types";
+import type { Item, StockAdjustment, Expense } from "@/lib/types";
 import { ItemForm } from "./item-form";
 import { AdjustmentDialog } from "./adjustment-dialog";
 import { CategoryManager } from "./category-manager";
@@ -155,6 +156,18 @@ export default function StorePage() {
 
   const { data: adjustments, isLoading: adjustmentsLoading } = useCollection<StockAdjustment>(adjustmentsCollectionRef);
 
+  // New: Fetch actual expenses to ensure financial ledger accuracy
+  const expensesCollectionRef = useMemoFirebase(() => {
+    if (!firestore || isUserLoading || !user) return null;
+    return query(
+      collection(firestore, "expenses"),
+      orderBy("recordedAt", "desc"),
+      limit(500)
+    );
+  }, [firestore, user, isUserLoading]);
+
+  const { data: expenses, isLoading: expensesLoading } = useCollection<Expense>(expensesCollectionRef);
+
   const filteredItems = useMemo(() => {
     if (!items) return [];
     return items
@@ -163,18 +176,12 @@ export default function StorePage() {
         (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
       )
       .sort((a, b) => {
-        // Low stock calculation (Threshold 0 means only alert at 0, no banners)
         const aThreshold = a.lowStockThreshold ?? 5;
         const bThreshold = b.lowStockThreshold ?? 5;
-        
         const aIsLow = a.stockLevel <= aThreshold;
         const bIsLow = b.stockLevel <= bThreshold;
-        
-        // Prioritize low stock items
         if (aIsLow && !bIsLow) return -1;
         if (!aIsLow && bIsLow) return 1;
-        
-        // Secondary sort by name
         return a.name.localeCompare(b.name);
       });
   }, [items, searchQuery]);
@@ -182,26 +189,15 @@ export default function StorePage() {
   const groupedAdjustments = useMemo(() => {
     if (!adjustments) return [];
     const groups: { date: string, formatted: string, items: StockAdjustment[] }[] = [];
-    
     adjustments.forEach(adj => {
         const d = adj.adjustmentDate ? new Date(adj.adjustmentDate) : new Date();
         const dateKey = format(d, "yyyy-MM-dd");
         const formatted = format(d, "MMMM d, yyyy");
-        
         const existing = groups.find(g => g.date === dateKey);
-        if (existing) {
-            existing.items.push(adj);
-        } else {
-            groups.push({ date: dateKey, formatted, items: [adj] });
-        }
+        if (existing) existing.items.push(adj);
+        else groups.push({ date: dateKey, formatted, items: [adj] });
     });
-    
     return groups;
-  }, [adjustments]);
-
-  const purchaseHistory = useMemo(() => {
-    if (!adjustments) return [];
-    return adjustments.filter(adj => adj.type === "In");
   }, [adjustments]);
 
   const monthOptions = useMemo(() => {
@@ -209,25 +205,21 @@ export default function StorePage() {
     const now = new Date();
     for (let i = 0; i < 12; i++) {
         const d = subMonths(now, i);
-        options.push({
-            value: format(d, "yyyy-MM"),
-            label: format(d, "MMMM yyyy")
-        });
+        options.push({ value: format(d, "yyyy-MM"), label: format(d, "MMMM yyyy") });
     }
     return options;
   }, []);
 
+  // Filter based on the actual expenses collection
   const filteredPurchaseHistory = useMemo(() => {
-    if (!purchaseHistory) return [];
-    if (selectedCostMonth === "all") return purchaseHistory;
-    return purchaseHistory.filter(buy => {
-        if (!buy.adjustmentDate) return false;
-        return format(new Date(buy.adjustmentDate), "yyyy-MM") === selectedCostMonth;
-    });
-  }, [purchaseHistory, selectedCostMonth]);
+    if (!expenses) return [];
+    const purchases = expenses.filter(e => e.category === "Stock Purchase");
+    if (selectedCostMonth === "all") return purchases;
+    return purchases.filter(e => format(new Date(e.recordedAt), "yyyy-MM") === selectedCostMonth);
+  }, [expenses, selectedCostMonth]);
 
   const totalFilteredSpending = useMemo(() => {
-    return filteredPurchaseHistory.reduce((acc, curr) => acc + (curr.totalPrice || 0), 0);
+    return filteredPurchaseHistory.reduce((acc, curr) => acc + (curr.amount || 0), 0);
   }, [filteredPurchaseHistory]);
 
   const handleEditItem = (e: React.MouseEvent, item: Item) => {
@@ -247,7 +239,6 @@ export default function StorePage() {
     e.stopPropagation();
     setItemToDelete(itemId);
     setDeleteCountdown(3);
-    
     const timer = setInterval(() => {
       setDeleteCountdown((prev) => {
         if (prev <= 1) {
@@ -258,7 +249,6 @@ export default function StorePage() {
         return prev - 1;
       });
     }, 1000);
-    
     deleteTimerRef.current = timer;
   };
 
@@ -274,9 +264,7 @@ export default function StorePage() {
     if (!firestore) return;
     setItemToDelete(null);
     setDeleteCountdown(0);
-
     toast({ title: "Item Deleted", description: "The supply record has been removed." });
-
     try {
         await deleteDoc(doc(firestore, "items", itemId));
     } catch (e) {
@@ -285,15 +273,12 @@ export default function StorePage() {
   };
 
   useEffect(() => {
-    return () => {
-      if (deleteTimerRef.current) clearInterval(deleteTimerRef.current);
-    };
+    return () => { if (deleteTimerRef.current) clearInterval(deleteTimerRef.current); };
   }, []);
 
   const renderPriceHistory = (item: Item) => {
     const history = (item.priceHistory || []).slice().reverse();
     const isThisItemDeleting = itemToDelete === item.id;
-    
     return (
       <div className="flex flex-col max-h-[400px] overflow-y-auto">
         <div className="p-4 bg-primary/5 border-b sticky top-0 z-20 flex items-center justify-between">
@@ -333,7 +318,6 @@ export default function StorePage() {
             </AlertDialog>
           </div>
         </div>
-        
         <div className="divide-y">
             {history.length > 0 ? (
                 history.map((record, idx) => (
@@ -353,7 +337,7 @@ export default function StorePage() {
     );
   };
 
-  const isLoadingData = itemsLoading || adjustmentsLoading || isUserLoading;
+  const isLoadingData = itemsLoading || adjustmentsLoading || expensesLoading || isUserLoading;
 
   if (isLoadingData) {
     return (
@@ -369,85 +353,39 @@ export default function StorePage() {
   return (
     <div className="flex flex-col gap-6 relative min-h-[calc(100vh-200px)] pb-24">
       <div className="fixed bottom-24 right-6 flex flex-col gap-3 z-50 md:bottom-12 md:right-12">
-        <Button 
-          size="lg" 
-          className="rounded-full shadow-2xl bg-green-600 hover:bg-green-700 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110"
-          onClick={() => handleAdjustStock(null, null, "In")}
-          title="Log Purchase / Restock"
-        >
+        <Button size="lg" className="rounded-full shadow-2xl bg-green-600 hover:bg-green-700 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110" onClick={() => handleAdjustStock(null, null, "In")} title="Log Purchase / Restock">
           <PlusCircle className="h-8 w-8" />
-          <span className="absolute right-full mr-3 bg-card border px-3 py-1.5 rounded-lg text-sm font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-            Log Purchase
-          </span>
+          <span className="absolute right-full mr-3 bg-card border px-3 py-1.5 rounded-lg text-sm font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Log Purchase</span>
         </Button>
-        <Button 
-          size="lg" 
-          className="rounded-full shadow-2xl bg-destructive hover:bg-destructive/90 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110"
-          onClick={() => handleAdjustStock(null, null, "Out")}
-          title="Log Usage"
-        >
+        <Button size="lg" className="rounded-full shadow-2xl bg-destructive hover:bg-destructive/90 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110" onClick={() => handleAdjustStock(null, null, "Out")} title="Log Usage">
           <MinusCircle className="h-8 w-8" />
-          <span className="absolute right-full mr-3 bg-card border px-3 py-1.5 rounded-lg text-sm font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-            Log Usage
-          </span>
+          <span className="absolute right-full mr-3 bg-card border px-3 py-1.5 rounded-lg text-sm font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Log Usage</span>
         </Button>
       </div>
 
-      <ItemForm 
-        isOpen={isItemFormOpen} 
-        setIsOpen={setIsItemFormOpen} 
-        item={selectedItem} 
-        onClose={() => setSelectedItem(null)} 
-      />
-      <AdjustmentDialog 
-        isOpen={isAdjustmentOpen} 
-        setIsOpen={setIsAdjustmentOpen} 
-        items={items || []}
-        preSelectedItem={selectedItem} 
-        forcedType={adjustmentType}
-        onClose={() => { setSelectedItem(null); setAdjustmentType(null); }} 
-      />
-      <CategoryManager 
-        isOpen={isCatManagerOpen} 
-        setIsOpen={setIsCategoryManagerOpen} 
-      />
+      <ItemForm isOpen={isItemFormOpen} setIsOpen={setIsItemFormOpen} item={selectedItem} onClose={() => setSelectedItem(null)} />
+      <AdjustmentDialog isOpen={isAdjustmentOpen} setIsOpen={setIsAdjustmentOpen} items={items || []} preSelectedItem={selectedItem} forcedType={adjustmentType} onClose={() => { setSelectedItem(null); setAdjustmentType(null); }} />
+      <CategoryManager isOpen={isCatManagerOpen} setIsOpen={setIsCategoryManagerOpen} />
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-1">
         <div className="relative w-full sm:w-80">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input 
-            placeholder="Search supplies..." 
-            className="pl-10 h-11 bg-background border-primary/20 shadow-sm"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+          <Input placeholder="Search supplies..." className="pl-10 h-11 bg-background border-primary/20 shadow-sm" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
         {activeTab === "items" && (
           <div className="flex items-center gap-2 w-full sm:w-auto animate-in fade-in slide-in-from-right-2 duration-300">
-            <Button variant="outline" className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsCategoryManagerOpen(true)}>
-              <Tag className="h-4 w-4" /> Manage Categories
-            </Button>
-            <Button className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsItemFormOpen(true)}>
-              <Plus className="h-4 w-4" /> Add Item
-            </Button>
+            <Button variant="outline" className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsCategoryManagerOpen(true)}><Tag className="h-4 w-4" /> Manage Categories</Button>
+            <Button className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsItemFormOpen(true)}><Plus className="h-4 w-4" /> Add Item</Button>
           </div>
         )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="mb-6 h-12 p-1 bg-muted/50 w-full flex overflow-x-auto justify-start sm:justify-center gap-1">
-          <TabsTrigger value="inventory" className="flex items-center gap-2 px-3">
-            <Package className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Stock</span>
-          </TabsTrigger>
-          <TabsTrigger value="items" className="flex items-center gap-2 px-3">
-            <Settings2 className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Registry</span>
-          </TabsTrigger>
-          <TabsTrigger value="history" className="flex items-center gap-2 px-3">
-            <History className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Log</span>
-          </TabsTrigger>
-          <TabsTrigger value="expenses" className="flex items-center gap-2 px-3">
-            <CreditCard className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Costs</span>
-          </TabsTrigger>
+          <TabsTrigger value="inventory" className="flex items-center gap-2 px-3"><Package className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Stock</span></TabsTrigger>
+          <TabsTrigger value="items" className="flex items-center gap-2 px-3"><Settings2 className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Registry</span></TabsTrigger>
+          <TabsTrigger value="history" className="flex items-center gap-2 px-3"><History className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Log</span></TabsTrigger>
+          <TabsTrigger value="expenses" className="flex items-center gap-2 px-3"><CreditCard className="h-4 w-4 shrink-0" /> <span className="text-sm font-bold tracking-tight">Costs</span></TabsTrigger>
         </TabsList>
 
         <TabsContent value="inventory" className="space-y-6">
@@ -456,7 +394,6 @@ export default function StorePage() {
                const threshold = item.lowStockThreshold ?? 5;
                const isLowStock = item.stockLevel <= threshold;
                const showBanner = isLowStock && item.lowStockThreshold !== 0;
-               
                return (
                  <Card key={item.id} className="overflow-hidden shadow-md group border-primary/5 transition-all">
                     <CardContent className="p-4">
@@ -464,26 +401,15 @@ export default function StorePage() {
                           <div className="flex items-start gap-4 flex-1 min-w-0">
                             <div className="relative shrink-0">
                                 <div className={cn("flex items-center justify-center h-32 w-32 rounded-2xl shadow-sm overflow-hidden relative border", getCategoryColor(item.category))}>
-                                {item.imageUrl ? (
-                                    <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
-                                ) : (
-                                    getCategoryIcon(item.category)
-                                )}
+                                {item.imageUrl ? <Image src={item.imageUrl} alt={item.name} fill className="object-cover" /> : getCategoryIcon(item.category)}
                                 </div>
-                                <div className={cn(
-                                    "absolute -top-2 -left-2 text-primary-foreground text-[12px] font-black px-2.5 py-1 rounded-full shadow-lg z-10 border-2 border-background tabular-nums",
-                                    isLowStock ? "bg-destructive" : "bg-primary"
-                                )}>
-                                    {item.stockLevel}
-                                </div>
+                                <div className={cn("absolute -top-2 -left-2 text-primary-foreground text-[12px] font-black px-2.5 py-1 rounded-full shadow-lg z-10 border-2 border-background tabular-nums", isLowStock ? "bg-destructive" : "bg-primary")}>{item.stockLevel}</div>
                             </div>
                             <div className="flex-1 flex flex-col justify-between min-w-0 h-32">
                                <div className="space-y-1">
                                   <h3 className="font-bold text-base line-clamp-2 leading-tight mb-1">{item.name}</h3>
                                   <div className="flex flex-wrap items-center gap-2">
-                                     <Badge variant="outline" className="text-[8px] h-3.5 py-0 px-1.5 uppercase font-black tracking-tight border-primary/20">
-                                     {item.category}
-                                     </Badge>
+                                     <Badge variant="outline" className="text-[8px] h-3.5 py-0 px-1.5 uppercase font-black tracking-tight border-primary/20">{item.category}</Badge>
                                      <span className="text-[10px] font-bold text-muted-foreground lowercase">{item.unitOfMeasurement}</span>
                                   </div>
                                   <div className="text-[10px] font-black text-primary mt-1">ETB {item.currentPrice?.toFixed(2) || "0.00"}</div>
@@ -491,22 +417,14 @@ export default function StorePage() {
                                <div className="flex items-center justify-between mt-auto">
                                   <div />
                                   <div className="flex gap-1 shrink-0">
-                                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full text-green-600 border-green-200" onClick={(e) => handleAdjustStock(e, item, "In")} title="Add Stock">
-                                      <PlusCircle className="h-4 w-4" />
-                                    </Button>
-                                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full text-destructive border-destructive/20" onClick={(e) => handleAdjustStock(e, item, "Out")} title="Use Stock">
-                                      <MinusCircle className="h-4 w-4" />
-                                    </Button>
+                                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full text-green-600 border-green-200" onClick={(e) => handleAdjustStock(e, item, "In")} title="Add Stock"><PlusCircle className="h-4 w-4" /></Button>
+                                    <Button variant="outline" size="icon" className="h-8 w-8 rounded-full text-destructive border-destructive/20" onClick={(e) => handleAdjustStock(e, item, "Out")} title="Use Stock"><MinusCircle className="h-4 w-4" /></Button>
                                   </div>
                                </div>
                             </div>
                           </div>
                        </div>
-                       {showBanner && (
-                          <div className="mt-4 bg-destructive/10 text-destructive text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-2">
-                            <AlertTriangle className="h-3 w-3" /> LOW STOCK ALERT
-                          </div>
-                        )}
+                       {showBanner && <div className="mt-4 bg-destructive/10 text-destructive text-[10px] font-bold py-1.5 px-3 rounded-lg flex items-center gap-2"><AlertTriangle className="h-3 w-3" /> LOW STOCK ALERT</div>}
                     </CardContent>
                  </Card>
                );
@@ -517,10 +435,7 @@ export default function StorePage() {
         <TabsContent value="items" className="space-y-6">
            <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b flex flex-row items-center justify-between">
-              <div>
-                <CardTitle className="text-xl">Item Registry</CardTitle>
-                <CardDescription className="hidden sm:block">Detailed lookup of all registered supplies.</CardDescription>
-              </div>
+              <div><CardTitle className="text-xl">Item Registry</CardTitle><CardDescription className="hidden sm:block">Detailed lookup of all registered supplies.</CardDescription></div>
               <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest bg-background/50 px-2 py-1 rounded border">Click rows for audit tools</p>
             </CardHeader>
             <CardContent className="p-0">
@@ -530,37 +445,22 @@ export default function StorePage() {
                       <PopoverTrigger asChild>
                         <div className="p-4 flex items-center gap-4 hover:bg-muted/5 transition-colors cursor-pointer group relative">
                           <div className={cn("flex items-center justify-center h-20 w-20 rounded-xl shadow-sm shrink-0 overflow-hidden relative border", getCategoryColor(item.category))}>
-                            {item.imageUrl ? (
-                              <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
-                            ) : (
-                              getCategoryIcon(item.category)
-                            )}
+                            {item.imageUrl ? <Image src={item.imageUrl} alt={item.name} fill className="object-cover" /> : getCategoryIcon(item.category)}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <h4 className="font-bold text-sm truncate">
-                                {item.name}
-                                <span className="ml-2 text-[9px] font-bold text-muted-foreground lowercase">{item.unitOfMeasurement}</span>
-                            </h4>
+                            <h4 className="font-bold text-sm truncate">{item.name}<span className="ml-2 text-[9px] font-bold text-muted-foreground lowercase">{item.unitOfMeasurement}</span></h4>
                             <div className="flex items-center gap-2 mt-1">
                               <Badge variant="secondary" className="text-[9px] h-4 py-0">{item.category}</Badge>
-                              <span className="text-[10px] font-bold text-primary flex items-center gap-1">
-                                ETB {item.currentPrice?.toFixed(2)}
-                                <TrendingUp className="h-2.5 w-2.5 opacity-50" />
-                              </span>
+                              <span className="text-[10px] font-bold text-primary flex items-center gap-1">ETB {item.currentPrice?.toFixed(2)}<TrendingUp className="h-2.5 w-2.5 opacity-50" /></span>
                             </div>
                           </div>
-                          <div className="shrink-0">
-                             <History className="h-4 w-4 text-muted-foreground opacity-30" />
-                          </div>
+                          <div className="shrink-0"><History className="h-4 w-4 text-muted-foreground opacity-30" /></div>
                         </div>
                       </PopoverTrigger>
-                      <PopoverContent className="w-80 p-0 shadow-2xl rounded-2xl border-primary/20" align="start">
-                        {renderPriceHistory(item)}
-                      </PopoverContent>
+                      <PopoverContent className="w-80 p-0 shadow-2xl rounded-2xl border-primary/20" align="start">{renderPriceHistory(item)}</PopoverContent>
                     </Popover>
                   ))}
                </div>
-
                <div className="hidden md:block">
                 <Table>
                     <TableHeader className="bg-muted/30">
@@ -578,37 +478,15 @@ export default function StorePage() {
                         <Popover key={item.id}>
                           <PopoverTrigger asChild>
                             <TableRow className="hover:bg-muted/10 transition-colors group cursor-pointer">
-                              <TableCell className="pl-6">
-                                <div className="h-14 w-14 rounded-xl overflow-hidden border bg-muted flex items-center justify-center relative shadow-sm">
-                                  {item.imageUrl ? (
-                                    <Image src={item.imageUrl} alt={item.name} fill className="object-cover" />
-                                  ) : (
-                                    <ImageIcon className="h-5 w-5 opacity-20" />
-                                  )}
-                                </div>
-                              </TableCell>
-                              <TableCell className="font-bold">
-                                {item.name}
-                                <span className="ml-2 text-[10px] font-bold text-muted-foreground lowercase">{item.unitOfMeasurement}</span>
-                              </TableCell>
+                              <TableCell className="pl-6"><div className="h-14 w-14 rounded-xl overflow-hidden border bg-muted flex items-center justify-center relative shadow-sm">{item.imageUrl ? <Image src={item.imageUrl} alt={item.name} fill className="object-cover" /> : <ImageIcon className="h-5 w-5 opacity-20" />}</div></TableCell>
+                              <TableCell className="font-bold">{item.name}<span className="ml-2 text-[10px] font-bold text-muted-foreground lowercase">{item.unitOfMeasurement}</span></TableCell>
                               <TableCell><Badge variant="secondary" className="text-[10px]">{item.category}</Badge></TableCell>
-                              <TableCell className="text-right">
-                                <div className="flex items-center justify-end gap-2 text-primary font-black">
-                                  <span className="font-mono text-xs">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span>
-                                  <TrendingUp className="h-3 w-3 opacity-40" />
-                                </div>
-                              </TableCell>
-                              <TableCell className="text-center text-xs font-semibold">
-                                {item.lowStockThreshold === 0 ? "Off" : (item.lowStockThreshold ?? 5)}
-                              </TableCell>
-                              <TableCell className="text-right pr-6">
-                                  <History className="h-4 w-4 text-muted-foreground opacity-30 group-hover:opacity-100 transition-opacity ml-auto" />
-                              </TableCell>
+                              <TableCell className="text-right"><div className="flex items-center justify-end gap-2 text-primary font-black"><span className="font-mono text-xs">ETB {item.currentPrice?.toFixed(2) || "0.00"}</span><TrendingUp className="h-3 w-3 opacity-40" /></div></TableCell>
+                              <TableCell className="text-center text-xs font-semibold">{item.lowStockThreshold === 0 ? "Off" : (item.lowStockThreshold ?? 5)}</TableCell>
+                              <TableCell className="text-right pr-6"><History className="h-4 w-4 text-muted-foreground opacity-30 group-hover:opacity-100 transition-opacity ml-auto" /></TableCell>
                             </TableRow>
                           </PopoverTrigger>
-                          <PopoverContent className="w-96 p-0 shadow-2xl rounded-2xl border-primary/20 overflow-hidden" align="end" side="bottom">
-                            {renderPriceHistory(item)}
-                          </PopoverContent>
+                          <PopoverContent className="w-96 p-0 shadow-2xl rounded-2xl border-primary/20 overflow-hidden" align="end" side="bottom">{renderPriceHistory(item)}</PopoverContent>
                         </Popover>
                       ))}
                     </TableBody>
@@ -631,53 +509,18 @@ export default function StorePage() {
                         </div>
                         <div className="h-px flex-1 bg-border" />
                      </div>
-                     
                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {group.items.map((adj) => (
                             <Card key={adj.id} className="relative overflow-hidden group hover:shadow-md transition-all border-primary/5 bg-card/50">
-                                {/* Bubble on top */}
-                                <div className={cn(
-                                    "absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl font-black text-sm shadow-sm z-10 pointer-events-none transition-transform group-hover:scale-105",
-                                    adj.type === "In" ? "bg-green-600 text-white" : "bg-destructive text-white"
-                                )}>
-                                    {adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}
-                                    <span className="ml-1 text-[8px] uppercase tracking-tighter opacity-80">{adj.type === "In" ? "Restock" : "Usage"}</span>
-                                </div>
-
+                                <div className={cn("absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl font-black text-sm shadow-sm z-10 pointer-events-none transition-transform group-hover:scale-105", adj.type === "In" ? "bg-green-600 text-white" : "bg-destructive text-white")}>{adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}<span className="ml-1 text-[8px] uppercase tracking-tighter opacity-80">{adj.type === "In" ? "Restock" : "Usage"}</span></div>
                                 <CardContent className="p-4 pt-5">
                                     <div className="space-y-3">
-                                        <div className="pr-12">
-                                            <h4 className="font-bold text-sm line-clamp-1 group-hover:text-primary transition-colors">{adj.itemName}</h4>
-                                            <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground mt-0.5">
-                                                <Clock className="h-2.5 w-2.5" />
-                                                <span>{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "HH:mm") : ""}</span>
-                                            </div>
-                                        </div>
-
+                                        <div className="pr-12"><h4 className="font-bold text-sm line-clamp-1 group-hover:text-primary transition-colors">{adj.itemName}</h4><div className="flex items-center gap-1.5 text-[9px] text-muted-foreground mt-0.5"><Clock className="h-2.5 w-2.5" /><span>{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "HH:mm") : ""}</span></div></div>
                                         <div className="flex flex-col gap-1.5 border-t border-dashed pt-3 mt-1">
-                                            {adj.employeeName && (
-                                                <div className="flex items-center gap-2 text-[10px] font-bold text-foreground">
-                                                    <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
-                                                       <User className="h-2.5 w-2.5 text-primary" />
-                                                    </div>
-                                                    <span className="truncate">{adj.employeeName}</span>
-                                                </div>
-                                            )}
-                                            {adj.orderUniqueName && (
-                                                <div className="flex items-center gap-2 text-[10px] font-black text-primary">
-                                                    <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center">
-                                                       <ShoppingBag className="h-2.5 w-2.5" />
-                                                    </div>
-                                                    <span className="truncate uppercase tracking-tight">{adj.orderUniqueName}</span>
-                                                </div>
-                                            )}
+                                            {adj.employeeName && <div className="flex items-center gap-2 text-[10px] font-bold text-foreground"><div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center"><User className="h-2.5 w-2.5 text-primary" /></div><span className="truncate">{adj.employeeName}</span></div>}
+                                            {adj.orderUniqueName && <div className="flex items-center gap-2 text-[10px] font-black text-primary"><div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center"><ShoppingBag className="h-2.5 w-2.5" /></div><span className="truncate uppercase tracking-tight">{adj.orderUniqueName}</span></div>}
                                         </div>
-
-                                        {adj.reason && (
-                                            <div className="bg-muted/30 p-2 rounded-lg text-[10px] text-muted-foreground italic line-clamp-2 leading-relaxed">
-                                                &ldquo;{adj.reason}&rdquo;
-                                            </div>
-                                        )}
+                                        {adj.reason && <div className="bg-muted/30 p-2 rounded-lg text-[10px] text-muted-foreground italic line-clamp-2 leading-relaxed">&ldquo;{adj.reason}&rdquo;</div>}
                                     </div>
                                 </CardContent>
                             </Card>
@@ -686,10 +529,7 @@ export default function StorePage() {
                   </div>
                 ))
               ) : (
-                <div className="p-20 text-center text-muted-foreground/40 flex flex-col items-center gap-3 bg-muted/10 rounded-3xl border border-dashed">
-                    <History className="h-10 w-10 opacity-20" />
-                    <p className="text-sm font-bold">No movement logs found</p>
-                </div>
+                <div className="p-20 text-center text-muted-foreground/40 flex flex-col items-center gap-3 bg-muted/10 rounded-3xl border border-dashed"><History className="h-10 w-10 opacity-20" /><p className="text-sm font-bold">No movement logs found</p></div>
               )}
            </div>
         </TabsContent>
@@ -697,56 +537,26 @@ export default function StorePage() {
         <TabsContent value="expenses" className="space-y-6">
            <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div>
-                <CardTitle className="text-xl">Purchase Costs</CardTitle>
-                <CardDescription className="hidden sm:block">Financial record of supply restocking expenses.</CardDescription>
-              </div>
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                 <Select value={selectedCostMonth} onValueChange={setSelectedCostMonth}>
-                    <SelectTrigger className="w-full sm:w-[200px] bg-background">
-                        <SelectValue placeholder="Filter by Month" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {monthOptions.map(opt => (
-                            <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
-                        ))}
-                    </SelectContent>
-                 </Select>
-              </div>
+              <div><CardTitle className="text-xl">Purchase Costs</CardTitle><CardDescription className="hidden sm:block">Financial record of supply restocking expenses.</CardDescription></div>
+              <div className="flex items-center gap-2 w-full sm:w-auto"><Select value={selectedCostMonth} onValueChange={setSelectedCostMonth}><SelectTrigger className="w-full sm:w-[200px] bg-background"><SelectValue placeholder="Filter by Month" /></SelectTrigger><SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent></Select></div>
             </CardHeader>
             <CardContent className="p-0">
                <div className="md:hidden divide-y">
-                  {filteredPurchaseHistory.length > 0 ? (
-                    filteredPurchaseHistory.map((buy) => (
-                      <div key={buy.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors">
-                        <div className="flex justify-between items-start">
-                          <div className="space-y-1">
-                            <span className="text-[10px] text-muted-foreground font-semibold block">{buy.adjustmentDate ? format(new Date(buy.adjustmentDate), "MMM d, yyyy") : "—"}</span>
-                            <h4 className="font-bold text-sm">{buy.itemName}</h4>
-                          </div>
-                          <Badge 
-                            variant={buy.paymentStatus === 'Paid' ? 'outline' : 'destructive'} 
-                            className={cn("text-[9px] uppercase font-bold", buy.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}
-                          >
-                            {buy.paymentStatus || 'Paid'}
-                          </Badge>
-                        </div>
-                        <div className="grid grid-cols-2 gap-2 text-[11px] bg-muted/30 p-2 rounded-lg">
-                          <div><span className="text-muted-foreground">Supplier:</span> <span className="font-bold">{buy.supplier || "—"}</span></div>
-                          <div><span className="text-muted-foreground">Qty:</span> <span className="font-bold">{buy.adjustmentQuantity}</span></div>
-                          <div><span className="text-muted-foreground">Unit Price:</span> <span className="font-bold">ETB {buy.unitPrice?.toFixed(2)}</span></div>
-                        </div>
-                        <div className="flex justify-between items-center pt-1 border-t border-dashed">
-                           <span className="text-xs font-semibold text-muted-foreground">Total Paid:</span>
-                           <span className="text-lg font-black text-primary">ETB {buy.totalPrice?.toFixed(2)}</span>
-                        </div>
+                  {filteredPurchaseHistory.length > 0 ? filteredPurchaseHistory.map((exp) => (
+                    <div key={exp.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors">
+                      <div className="flex justify-between items-start">
+                        <div className="space-y-1"><span className="text-[10px] text-muted-foreground font-semibold block">{format(new Date(exp.recordedAt), "MMM d, yyyy")}</span><h4 className="font-bold text-sm">{exp.itemName}</h4></div>
+                        <Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge>
                       </div>
-                    ))
-                  ) : (
-                    <div className="p-12 text-center text-muted-foreground text-sm">No expenses recorded for this period.</div>
-                  )}
+                      <div className="grid grid-cols-2 gap-2 text-[11px] bg-muted/30 p-2 rounded-lg">
+                        <div><span className="text-muted-foreground">Supplier:</span> <span className="font-bold">{exp.supplier || "—"}</span></div>
+                        <div><span className="text-muted-foreground">Qty:</span> <span className="font-bold">{exp.quantity}</span></div>
+                        <div><span className="text-muted-foreground">Unit Price:</span> <span className="font-bold">ETB {exp.unitPrice?.toFixed(2)}</span></div>
+                      </div>
+                      <div className="flex justify-between items-center pt-1 border-t border-dashed"><span className="text-xs font-semibold text-muted-foreground">Total Paid:</span><span className="text-lg font-black text-primary">ETB {exp.amount?.toFixed(2)}</span></div>
+                    </div>
+                  )) : <div className="p-12 text-center text-muted-foreground text-sm">No expenses recorded for this period.</div>}
                </div>
-
                <div className="hidden md:block overflow-x-auto">
                  <Table>
                     <TableHeader className="bg-muted/30">
@@ -760,53 +570,26 @@ export default function StorePage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {filteredPurchaseHistory.length > 0 ? (
-                        filteredPurchaseHistory.map((buy) => (
-                          <TableRow key={buy.id} className="hover:bg-muted/10 transition-colors">
-                            <TableCell className="text-[11px] text-muted-foreground pl-6">
-                              {buy.adjustmentDate ? format(new Date(buy.adjustmentDate), "MMM d, yyyy") : "—"}
-                            </TableCell>
-                            <TableCell className="font-bold">
-                               <div className="flex flex-col">
-                                  <span>{buy.itemName}</span>
-                                  <span className="text-[10px] text-muted-foreground font-normal">Qty: {buy.adjustmentQuantity}</span>
-                               </div>
-                            </TableCell>
-                            <TableCell className="text-xs font-medium">{buy.supplier || "—"}</TableCell>
-                            <TableCell className="text-right tabular-nums text-xs font-bold">ETB {buy.unitPrice?.toFixed(2) || "0.00"}</TableCell>
-                            <TableCell className="text-right tabular-nums font-black text-primary">ETB {buy.totalPrice?.toFixed(2) || "0.00"}</TableCell>
-                            <TableCell className="text-center pr-6">
-                               <Badge 
-                                  variant={buy.paymentStatus === 'Paid' ? 'outline' : 'destructive'} 
-                                  className={cn("text-[9px] uppercase font-bold", buy.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}
-                                >
-                                 {buy.paymentStatus || 'Paid'}
-                               </Badge>
-                            </TableCell>
-                          </TableRow>
-                        ))
-                      ) : (
-                        <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">No records for this period.</TableCell></TableRow>
-                      )}
+                      {filteredPurchaseHistory.length > 0 ? filteredPurchaseHistory.map((exp) => (
+                        <TableRow key={exp.id} className="hover:bg-muted/10 transition-colors">
+                          <TableCell className="text-[11px] text-muted-foreground pl-6">{format(new Date(exp.recordedAt), "MMM d, yyyy")}</TableCell>
+                          <TableCell className="font-bold"><div className="flex flex-col"><span>{exp.itemName}</span><span className="text-[10px] text-muted-foreground font-normal">Qty: {exp.quantity}</span></div></TableCell>
+                          <TableCell className="text-xs font-medium">{exp.supplier || "—"}</TableCell>
+                          <TableCell className="text-right tabular-nums text-xs font-bold">ETB {exp.unitPrice?.toFixed(2) || "0.00"}</TableCell>
+                          <TableCell className="text-right tabular-nums font-black text-primary">ETB {exp.amount?.toFixed(2) || "0.00"}</TableCell>
+                          <TableCell className="text-center pr-6"><Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge></TableCell>
+                        </TableRow>
+                      )) : <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">No records for this period.</TableCell></TableRow>}
                     </TableBody>
                  </Table>
                </div>
             </CardContent>
            </Card>
-           
            <div className="flex justify-end pr-4">
               <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 w-full max-w-sm text-center shadow-md">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">
-                    {selectedCostMonth === 'all' ? 'Total Stock Spending' : `Spending for ${monthOptions.find(o => o.value === selectedCostMonth)?.label}`}
-                  </p>
-                  <p className="text-3xl sm:text-4xl font-black text-primary">
-                    ETB {totalFilteredSpending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </p>
-                  <div className="flex items-center justify-center gap-1.5 mt-3">
-                     <div className="h-1 w-8 bg-primary/20 rounded-full" />
-                     <Wallet className="h-4 w-4 text-primary opacity-40" />
-                     <div className="h-1 w-8 bg-primary/20 rounded-full" />
-                  </div>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">{selectedCostMonth === 'all' ? 'Total Stock Spending' : `Spending for ${monthOptions.find(o => o.value === selectedCostMonth)?.label}`}</p>
+                  <p className="text-3xl sm:text-4xl font-black text-primary">ETB {totalFilteredSpending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                  <div className="flex items-center justify-center gap-1.5 mt-3"><div className="h-1 w-8 bg-primary/20 rounded-full" /><Wallet className="h-4 w-4 text-primary opacity-40" /><div className="h-1 w-8 bg-primary/20 rounded-full" /></div>
               </div>
            </div>
         </TabsContent>
