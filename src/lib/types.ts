@@ -79,6 +79,22 @@ export interface EmployeeExpense extends DocumentData {
   }
 }
 
+export interface Expense extends DocumentData {
+  id: string;
+  amount: number;
+  category: "Stock Purchase" | "Payroll" | "Operating" | "Other";
+  description: string;
+  recordedAt: string;
+  paymentStatus: "Paid" | "Unpaid";
+  itemId?: string;
+  itemName?: string;
+  quantity?: number;
+  unitOfMeasurement?: string;
+  unitPrice?: number;
+  supplier?: string;
+  adjustmentId?: string;
+}
+
 export interface Order extends DocumentData {
     id: string;
     customerName?: string;

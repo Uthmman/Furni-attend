@@ -40,6 +40,10 @@ service cloud.firestore {
       allow read, write: if isAuthenticated();
     }
 
+    match /expenses/{expenseId} {
+      allow read, write: if isAuthenticated();
+    }
+
     match /metadata/{docId} {
       allow read, write: if isAuthenticated();
     }

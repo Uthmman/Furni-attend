@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -220,6 +221,24 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       adjData.totalPrice = (data.unitPrice || 0) * data.quantity;
       adjData.supplier = data.supplier || "";
       adjData.paymentStatus = data.paymentStatus || "Paid";
+
+      // Also record as a financial expense
+      const expenseRef = doc(collection(firestore, "expenses"));
+      batch.set(expenseRef, {
+        id: expenseRef.id,
+        amount: adjData.totalPrice,
+        category: "Stock Purchase",
+        description: `Purchase of ${data.quantity} ${selectedItem.unitOfMeasurement} of ${selectedItem.name}`,
+        recordedAt: adjData.adjustmentDate,
+        paymentStatus: adjData.paymentStatus,
+        itemId: selectedItem.id,
+        itemName: selectedItem.name,
+        quantity: data.quantity,
+        unitOfMeasurement: selectedItem.unitOfMeasurement,
+        unitPrice: data.unitPrice,
+        supplier: adjData.supplier,
+        adjustmentId: adjRef.id
+      });
     }
 
     if (data.type === "Out") {

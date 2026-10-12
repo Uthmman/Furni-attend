@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -30,7 +31,7 @@ import {
 } from "@/components/ui/select";
 import type { Item, Category } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
-import { collection, doc, setDoc, query, orderBy } from "firebase/firestore";
+import { collection, doc, writeBatch, query, orderBy } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect, useState, useRef } from "react";
 import { Loader2, Upload, X, Image as ImageIcon, Camera } from "lucide-react";
@@ -60,7 +61,6 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
   const { user } = useUser();
   const { toast } = useToast();
   const isEditMode = !!item;
-  const [isSubmitting, setIsSubmitting] = useState(false);
   
   const [isCameraActive, setIsCameraActive] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -167,6 +167,57 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
   const onSubmit = (data: ItemFormValues) => {
     if (!firestore) return;
 
+    const batch = writeBatch(firestore);
+    const itemRef = isEditMode && item?.id ? doc(firestore, "items", item.id) : doc(collection(firestore, "items"));
+    const updateData: any = { ...data, id: itemRef.id };
+    const timestamp = new Date().toISOString();
+    
+    if (isEditMode) {
+      // In edit mode, we don't update stock level directly via this form usually
+      delete updateData.stockLevel;
+      if (data.currentPrice !== item?.currentPrice) {
+        updateData.priceHistory = [...(item?.priceHistory || []), { price: data.currentPrice || 0, date: timestamp }];
+      }
+    } else {
+      updateData.priceHistory = [{ price: data.currentPrice || 0, date: timestamp }];
+      
+      // If it's a new item with initial stock, log it as an adjustment AND an expense
+      if (data.stockLevel > 0) {
+        const adjRef = doc(collection(firestore, "stockAdjustments"));
+        const adjData = {
+          id: adjRef.id,
+          itemId: itemRef.id,
+          itemName: data.name,
+          adjustmentDate: timestamp,
+          adjustmentQuantity: data.stockLevel,
+          type: "In",
+          reason: "Initial Stock Setup",
+          unitPrice: data.currentPrice || 0,
+          totalPrice: (data.currentPrice || 0) * data.stockLevel,
+          paymentStatus: "Paid"
+        };
+        batch.set(adjRef, adjData);
+
+        const expenseRef = doc(collection(firestore, "expenses"));
+        batch.set(expenseRef, {
+          id: expenseRef.id,
+          amount: adjData.totalPrice,
+          category: "Stock Purchase",
+          description: `Initial setup: ${data.stockLevel} ${data.unitOfMeasurement} of ${data.name}`,
+          recordedAt: timestamp,
+          paymentStatus: "Paid",
+          itemId: itemRef.id,
+          itemName: data.name,
+          quantity: data.stockLevel,
+          unitOfMeasurement: data.unitOfMeasurement,
+          unitPrice: data.currentPrice || 0,
+          adjustmentId: adjRef.id
+        });
+      }
+    }
+
+    batch.set(itemRef, updateData, { merge: true });
+
     // Optimistic UI: Close immediately
     setIsOpen(false);
     onClose?.();
@@ -175,19 +226,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
       description: `${data.name} is being saved to the registry.`,
     });
 
-    const itemRef = isEditMode && item?.id ? doc(firestore, "items", item.id) : doc(collection(firestore, "items"));
-    const updateData: any = { ...data, id: itemRef.id };
-    
-    if (isEditMode) {
-      delete updateData.stockLevel;
-      if (data.currentPrice !== item?.currentPrice) {
-        updateData.priceHistory = [...(item?.priceHistory || []), { price: data.currentPrice || 0, date: new Date().toISOString() }];
-      }
-    } else {
-      updateData.priceHistory = [{ price: data.currentPrice || 0, date: new Date().toISOString() }];
-    }
-
-    setDoc(itemRef, updateData, { merge: true }).catch(error => {
+    batch.commit().catch(error => {
       errorEmitter.emit("permission-error", new FirestorePermissionError({
         path: itemRef.path,
         operation: isEditMode ? 'update' : 'create',
