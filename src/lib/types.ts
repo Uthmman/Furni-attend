@@ -136,6 +136,7 @@ export interface Item {
     currentPrice?: number;
     imageUrl?: string;
     priceHistory?: PriceRecord[];
+    lastUpdated?: string;
 }
 
 export type PaymentStatus = "Paid" | "Unpaid";
@@ -156,6 +157,8 @@ export interface StockAdjustment {
     orderUniqueName?: string;
     employeeId?: string;
     employeeName?: string;
+    previousStockLevel?: number;
+    resultingStockLevel?: number;
 }
 
 export interface PayrollSettings {

@@ -169,11 +169,11 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
 
     const batch = writeBatch(firestore);
     const itemRef = isEditMode && item?.id ? doc(firestore, "items", item.id) : doc(collection(firestore, "items"));
-    const updateData: any = { ...data, id: itemRef.id };
     const timestamp = new Date().toISOString();
+    const updateData: any = { ...data, id: itemRef.id, lastUpdated: timestamp };
     
     if (isEditMode) {
-      // In edit mode, we don't update stock level directly via this form usually
+      // Don't update stockLevel from basic form edit to prevent sync issues
       delete updateData.stockLevel;
       if (data.currentPrice !== item?.currentPrice) {
         updateData.priceHistory = [...(item?.priceHistory || []), { price: data.currentPrice || 0, date: timestamp }];
@@ -181,7 +181,7 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
     } else {
       updateData.priceHistory = [{ price: data.currentPrice || 0, date: timestamp }];
       
-      // If it's a new item with initial stock, log it as an adjustment AND an expense
+      // If it's a new item with initial stock, write stock level and logs
       if (data.stockLevel > 0) {
         const adjRef = doc(collection(firestore, "stockAdjustments"));
         const adjData = {
@@ -190,6 +190,8 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
           itemName: data.name,
           adjustmentDate: timestamp,
           adjustmentQuantity: data.stockLevel,
+          previousStockLevel: 0,
+          resultingStockLevel: data.stockLevel,
           type: "In",
           reason: "Initial Stock Setup",
           unitPrice: data.currentPrice || 0,
@@ -218,12 +220,11 @@ export function ItemForm({ isOpen, setIsOpen, item, onClose }: ItemFormProps) {
 
     batch.set(itemRef, updateData, { merge: true });
 
-    // Optimistic UI: Close immediately
     setIsOpen(false);
     onClose?.();
     toast({
       title: `Item ${isEditMode ? 'Updated' : 'Added'}`,
-      description: `${data.name} is being saved to the registry.`,
+      description: `${data.name} state is being saved.`,
     });
 
     batch.commit().catch(error => {

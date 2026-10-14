@@ -39,7 +39,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Item, Order, Employee, StockAdjustment } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
-import { doc, writeBatch, collection, arrayUnion, query, orderBy, limit } from "firebase/firestore";
+import { doc, writeBatch, collection, arrayUnion, query, orderBy, limit, increment } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
 import { 
@@ -205,13 +205,16 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     const linkedOrder = activeOrders.find(o => o.id === data.orderId);
     const linkedEmployee = activeEmployees.find(e => e.id === data.employeeId);
 
+    const timestamp = new Date().toISOString();
     const adjRef = doc(collection(firestore, "stockAdjustments"));
     const adjData: any = {
       id: adjRef.id,
       itemId: selectedItem.id,
       itemName: selectedItem.name,
-      adjustmentDate: new Date().toISOString(),
+      adjustmentDate: timestamp,
       adjustmentQuantity: adjustmentQuantity,
+      previousStockLevel: selectedItem.stockLevel,
+      resultingStockLevel: newStockLevel,
       type: data.type,
       reason: data.reason,
     };
@@ -222,14 +225,14 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       adjData.supplier = data.supplier || "";
       adjData.paymentStatus = data.paymentStatus || "Paid";
 
-      // Also record as a financial expense
+      // Record financial expense
       const expenseRef = doc(collection(firestore, "expenses"));
       batch.set(expenseRef, {
         id: expenseRef.id,
         amount: adjData.totalPrice,
         category: "Stock Purchase",
-        description: `Purchase of ${data.quantity} ${selectedItem.unitOfMeasurement} of ${selectedItem.name}`,
-        recordedAt: adjData.adjustmentDate,
+        description: `Purchase: ${data.quantity} ${selectedItem.unitOfMeasurement} of ${selectedItem.name}`,
+        recordedAt: timestamp,
         paymentStatus: adjData.paymentStatus,
         itemId: selectedItem.id,
         itemName: selectedItem.name,
@@ -253,12 +256,17 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     }
 
     batch.set(adjRef, adjData);
+    
+    // Explicitly update the item document for easy access
     const itemRef = doc(firestore, "items", selectedItem.id);
-    const itemUpdate: any = { stockLevel: newStockLevel };
+    const itemUpdate: any = { 
+      stockLevel: increment(adjustmentQuantity),
+      lastUpdated: timestamp
+    };
     
     if (data.type === 'In' && data.unitPrice !== undefined) {
         itemUpdate.currentPrice = data.unitPrice;
-        itemUpdate.priceHistory = arrayUnion({ price: data.unitPrice, date: new Date().toISOString() });
+        itemUpdate.priceHistory = arrayUnion({ price: data.unitPrice, date: timestamp });
     }
 
     batch.update(itemRef, itemUpdate);
@@ -267,7 +275,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     onClose();
     toast({ 
       title: data.type === 'In' ? "Logging Restock" : "Logging Usage", 
-      description: `Syncing ${selectedItem.name} balance to ${newStockLevel}.` 
+      description: `Updating balance for ${selectedItem.name}.` 
     });
 
     batch.commit()
