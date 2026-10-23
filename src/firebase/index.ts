@@ -8,36 +8,49 @@ import {
   getFirestore, 
   initializeFirestore, 
   persistentLocalCache, 
-  persistentMultipleTabManager 
+  persistentMultipleTabManager,
+  Firestore
 } from 'firebase/firestore'
 
+/**
+ * Initializes the Firebase SDKs.
+ * Strictly uses the provided firebaseConfig to ensure all devices point to the same project.
+ */
 export function initializeFirebase() {
   const apps = getApps();
-  const defaultApp = apps.find(app => app.name === '[DEFAULT]');
+  // Check for the default app instance
+  let app = apps.find(app => app.name === '[DEFAULT]');
 
-  if (!defaultApp) {
-    let firebaseApp;
+  if (!app) {
     try {
-      firebaseApp = initializeApp();
+      // Always initialize with the explicit config to prevent environment mismatches
+      app = initializeApp(firebaseConfig);
     } catch (e) {
-      if (process.env.NODE_ENV === "production") {
-        console.warn('Automatic initialization failed. Falling back to firebase config object.', e);
-      }
-      firebaseApp = initializeApp(firebaseConfig);
+      console.error('Firebase initialization failed:', e);
+      // Final fallback to no-arg initialization if config is missing (unlikely in this env)
+      app = initializeApp();
     }
-    return getSdks(firebaseApp);
   }
 
-  return getSdks(defaultApp);
+  return getSdks(app);
 }
 
+/**
+ * Sets up and returns the specialized SDK instances.
+ * Configures persistent local cache for offline support and multi-tab sync.
+ */
 export function getSdks(firebaseApp: FirebaseApp) {
-  let firestore;
+  let firestore: Firestore;
+  
   try {
+    // Attempt to initialize with persistence and multi-tab support
     firestore = initializeFirestore(firebaseApp, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+      localCache: persistentLocalCache({ 
+        tabManager: persistentMultipleTabManager() 
+      })
     });
-  } catch (e) {
+  } catch (e: any) {
+    // If firestore was already initialized, just get the existing instance
     firestore = getFirestore(firebaseApp);
   }
 
