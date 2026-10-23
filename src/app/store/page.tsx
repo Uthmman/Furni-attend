@@ -52,9 +52,11 @@ import {
   XCircle,
   Clock,
   Store,
+  CheckCircle2,
+  Loader2
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
+import { collection, query, orderBy, limit, doc, deleteDoc, updateDoc, writeBatch, getDocs, where } from "firebase/firestore";
 import type { Item, StockAdjustment, Expense } from "@/lib/types";
 import { ItemForm } from "./item-form";
 import { AdjustmentDialog } from "./adjustment-dialog";
@@ -127,9 +129,11 @@ export default function StorePage() {
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<"In" | "Out" | null>(null);
   const [editingAdjustment, setEditingAdjustment] = useState<StockAdjustment | null>(null);
+  const [settlingId, setSettlingId] = useState<string | null>(null);
   
   const [activeTab, setActiveTab] = useState("inventory");
   const [selectedCostMonth, setSelectedCostMonth] = useState<string>(format(new Date(), "yyyy-MM"));
+  const [costFilter, setCostFilter] = useState<"all" | "Paid" | "Unpaid">("all");
 
   // Countdown Deletion State
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
@@ -213,14 +217,45 @@ export default function StorePage() {
 
   const filteredPurchaseHistory = useMemo(() => {
     if (!expenses) return [];
-    const purchases = expenses.filter(e => e.category === "Stock Purchase");
-    if (selectedCostMonth === "all") return purchases;
-    return purchases.filter(e => format(new Date(e.recordedAt), "yyyy-MM") === selectedCostMonth);
-  }, [expenses, selectedCostMonth]);
+    let purchases = expenses.filter(e => e.category === "Stock Purchase");
+    
+    if (selectedCostMonth !== "all") {
+        purchases = purchases.filter(e => format(new Date(e.recordedAt), "yyyy-MM") === selectedCostMonth);
+    }
+    
+    if (costFilter !== "all") {
+        purchases = purchases.filter(e => e.paymentStatus === costFilter);
+    }
+    
+    return purchases;
+  }, [expenses, selectedCostMonth, costFilter]);
 
-  const totalFilteredSpending = useMemo(() => {
-    return filteredPurchaseHistory.reduce((acc, curr) => acc + (curr.amount || 0), 0);
+  const totalSpendingSummary = useMemo(() => {
+    const paid = filteredPurchaseHistory.filter(e => e.paymentStatus === 'Paid').reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    const unpaid = filteredPurchaseHistory.filter(e => e.paymentStatus === 'Unpaid').reduce((acc, curr) => acc + (curr.amount || 0), 0);
+    return { paid, unpaid };
   }, [filteredPurchaseHistory]);
+
+  const handleMarkAsPaid = async (expense: Expense) => {
+    if (!firestore || !expense.adjustmentId) return;
+    setSettlingId(expense.id);
+    
+    const batch = writeBatch(firestore);
+    const expRef = doc(firestore, "expenses", expense.id);
+    const adjRef = doc(firestore, "stockAdjustments", expense.adjustmentId);
+    
+    batch.update(expRef, { paymentStatus: 'Paid' });
+    batch.update(adjRef, { paymentStatus: 'Paid' });
+    
+    try {
+        await batch.commit();
+        toast({ title: "Payment Recorded", description: "Expense has been marked as settled." });
+    } catch (e) {
+        toast({ variant: 'destructive', title: "Update Failed" });
+    } finally {
+        setSettlingId(null);
+    }
+  };
 
   const handleEditItem = (e: React.MouseEvent, item: Item) => {
     e.stopPropagation();
@@ -570,12 +605,15 @@ export default function StorePage() {
                                             )}
                                         </div>
 
-                                        {adj.totalPrice && adj.totalPrice > 0 && (
-                                            <div className="flex justify-between items-center text-[10px] bg-muted/20 p-2 rounded-md">
-                                                <span className="text-muted-foreground font-medium uppercase tracking-tighter">Total Value</span>
-                                                <span className="font-black text-primary">ETB {adj.totalPrice.toFixed(2)}</span>
+                                        <div className="flex justify-between items-center text-[10px] bg-muted/20 p-2 rounded-md">
+                                            <span className="text-muted-foreground font-medium uppercase tracking-tighter">Total Value</span>
+                                            <div className="flex items-center gap-2">
+                                                <span className="font-black text-primary">ETB {adj.totalPrice?.toFixed(2) || "0.00"}</span>
+                                                {adj.type === 'In' && adj.paymentStatus === 'Unpaid' && (
+                                                    <Badge variant="destructive" className="h-4 px-1 text-[7px] font-black animate-pulse">UNPAID</Badge>
+                                                )}
                                             </div>
-                                        )}
+                                        </div>
 
                                         {adj.reason && <div className="bg-muted/30 p-2 rounded-lg text-[10px] text-muted-foreground italic line-clamp-2 leading-relaxed">&ldquo;{adj.reason}&rdquo;</div>}
                                     </div>
@@ -595,7 +633,26 @@ export default function StorePage() {
            <Card className="shadow-lg border-primary/10 overflow-hidden">
             <CardHeader className="bg-primary/5 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
               <div><CardTitle className="text-xl">Purchase Costs</CardTitle><CardDescription className="hidden sm:block">Financial record of supply restocking expenses.</CardDescription></div>
-              <div className="flex items-center gap-2 w-full sm:w-auto"><Select value={selectedCostMonth} onValueChange={setSelectedCostMonth}><SelectTrigger className="w-full sm:w-[200px] bg-background"><SelectValue placeholder="Filter by Month" /></SelectTrigger><SelectContent>{monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}</SelectContent></Select></div>
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                 <Select value={costFilter} onValueChange={(v: any) => setCostFilter(v)}>
+                    <SelectTrigger className="w-full sm:w-[140px] bg-background">
+                        <SelectValue placeholder="Status Filter" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="all">All Status</SelectItem>
+                        <SelectItem value="Paid">Paid Only</SelectItem>
+                        <SelectItem value="Unpaid">Unpaid Only</SelectItem>
+                    </SelectContent>
+                 </Select>
+                 <Select value={selectedCostMonth} onValueChange={setSelectedCostMonth}>
+                    <SelectTrigger className="w-full sm:w-[200px] bg-background">
+                        <SelectValue placeholder="Filter by Month" />
+                    </SelectTrigger>
+                    <SelectContent>
+                        {monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                    </SelectContent>
+                 </Select>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
                <div className="md:hidden divide-y">
@@ -610,7 +667,17 @@ export default function StorePage() {
                         <div><span className="text-muted-foreground">Qty:</span> <span className="font-bold">{exp.quantity}</span></div>
                         <div><span className="text-muted-foreground">Unit Price:</span> <span className="font-bold">ETB {exp.unitPrice?.toFixed(2)}</span></div>
                       </div>
-                      <div className="flex justify-between items-center pt-1 border-t border-dashed"><span className="text-xs font-semibold text-muted-foreground">Total Paid:</span><span className="text-lg font-black text-primary">ETB {exp.amount?.toFixed(2)}</span></div>
+                      <div className="flex justify-between items-center pt-1 border-t border-dashed">
+                        <span className="text-xs font-semibold text-muted-foreground">Total Paid:</span>
+                        <div className="flex items-center gap-3">
+                           <span className="text-lg font-black text-primary">ETB {exp.amount?.toFixed(2)}</span>
+                           {exp.paymentStatus === 'Unpaid' && (
+                               <Button size="sm" className="h-7 text-[9px] px-2 font-bold" onClick={() => handleMarkAsPaid(exp)} disabled={settlingId === exp.id}>
+                                  {settlingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />} Mark Paid
+                               </Button>
+                           )}
+                        </div>
+                      </div>
                     </div>
                   )) : <div className="p-12 text-center text-muted-foreground text-sm">No expenses recorded for this period.</div>}
                </div>
@@ -623,7 +690,7 @@ export default function StorePage() {
                         <TableHead>Supplier</TableHead>
                         <TableHead className="text-right">Unit Price</TableHead>
                         <TableHead className="text-right">Total Price</TableHead>
-                        <TableHead className="text-center pr-6">Status</TableHead>
+                        <TableHead className="text-center pr-6">Status / Action</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -634,7 +701,16 @@ export default function StorePage() {
                           <TableCell className="text-xs font-medium">{exp.supplier || "—"}</TableCell>
                           <TableCell className="text-right tabular-nums text-xs font-bold">ETB {exp.unitPrice?.toFixed(2) || "0.00"}</TableCell>
                           <TableCell className="text-right tabular-nums font-black text-primary">ETB {exp.amount?.toFixed(2) || "0.00"}</TableCell>
-                          <TableCell className="text-center pr-6"><Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge></TableCell>
+                          <TableCell className="text-center pr-6">
+                            <div className="flex flex-col items-center gap-1.5">
+                                <Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge>
+                                {exp.paymentStatus === 'Unpaid' && (
+                                    <Button variant="ghost" size="sm" className="h-7 text-[8px] font-black text-primary hover:text-primary hover:bg-primary/5 uppercase tracking-tighter" onClick={() => handleMarkAsPaid(exp)} disabled={settlingId === exp.id}>
+                                       {settlingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />} Confirm Payment
+                                    </Button>
+                                )}
+                            </div>
+                          </TableCell>
                         </TableRow>
                       )) : <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">No records for this period.</TableCell></TableRow>}
                     </TableBody>
@@ -642,10 +718,16 @@ export default function StorePage() {
                </div>
             </CardContent>
            </Card>
-           <div className="flex justify-end pr-4">
-              <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 w-full max-w-sm text-center shadow-md">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">{selectedCostMonth === 'all' ? 'Total Stock Spending' : `Spending for ${monthOptions.find(o => o.value === selectedCostMonth)?.label}`}</p>
-                  <p className="text-3xl sm:text-4xl font-black text-primary">ETB {totalFilteredSpending.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+           
+           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="bg-destructive/5 border border-destructive/20 rounded-2xl p-6 text-center shadow-sm">
+                  <p className="text-[10px] font-black text-destructive uppercase tracking-[0.2em] mb-1">Total Outstanding (Unpaid)</p>
+                  <p className="text-3xl font-black text-destructive">ETB {totalSpendingSummary.unpaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                  <div className="flex items-center justify-center gap-1.5 mt-3"><div className="h-px w-8 bg-destructive/20" /><AlertTriangle className="h-4 w-4 text-destructive opacity-40" /><div className="h-px w-8 bg-destructive/20" /></div>
+              </div>
+              <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 text-center shadow-sm">
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">{selectedCostMonth === 'all' ? 'Total Settled Spending' : `Paid in ${monthOptions.find(o => o.value === selectedCostMonth)?.label}`}</p>
+                  <p className="text-3xl font-black text-primary">ETB {totalSpendingSummary.paid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                   <div className="flex items-center justify-center gap-1.5 mt-3"><div className="h-1 w-8 bg-primary/20 rounded-full" /><Wallet className="h-4 w-4 text-primary opacity-40" /><div className="h-1 w-8 bg-primary/20 rounded-full" /></div>
               </div>
            </div>

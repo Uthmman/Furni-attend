@@ -292,14 +292,15 @@ export default function DashboardPage() {
                 }
             });
 
-            // 2. Fetch Stock Purchase Expenses
-            const genExpRef = collection(firestore, 'expenses');
+            // 2. Fetch Stock Purchase Expenses (ONLY PAID)
+            const genExpRef = collection(firestore, "expenses");
             const genSnap = await getDocs(genExpRef);
             const filteredSupply: Expense[] = [];
             genSnap.forEach(d => {
                 const data = d.data() as Expense;
                 const recDate = format(new Date(data.recordedAt), "yyyy-MM-dd");
-                if (data.category === 'Stock Purchase' && recDate >= startStr && recDate <= endStr) {
+                // ONLY count if paymentStatus is Paid
+                if (data.category === 'Stock Purchase' && data.paymentStatus === 'Paid' && recDate >= startStr && recDate <= endStr) {
                     filteredSupply.push(data);
                 }
             });

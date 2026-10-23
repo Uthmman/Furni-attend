@@ -160,6 +160,18 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const watchedItemId = form.watch("itemId");
   const selectedItem = items.find(i => i.id === watchedItemId);
   const currentType = form.watch("type");
+  const unitPriceValue = form.watch("unitPrice");
+
+  // Sync paymentStatus based on price when creating new restock
+  useEffect(() => {
+    if (!isEditMode && currentType === "In") {
+       if (unitPriceValue === 0) {
+           form.setValue("paymentStatus", "Unpaid");
+       } else {
+           form.setValue("paymentStatus", "Paid");
+       }
+    }
+  }, [unitPriceValue, currentType, isEditMode, form]);
 
   const filteredItemsForSearch = useMemo(() => {
     return items.filter(item => 
@@ -190,7 +202,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
           reason: "",
           unitPrice: preSelectedItem?.currentPrice || 0,
           supplier: "",
-          paymentStatus: "Paid",
+          paymentStatus: (preSelectedItem?.currentPrice || 0) === 0 ? "Unpaid" : "Paid",
           orderId: "none",
           employeeId: "none",
         });
@@ -505,7 +517,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                     />
                     <div className="flex flex-col justify-end pb-4">
                        <p className="text-[10px] text-muted-foreground font-semibold uppercase">Total Cost</p>
-                       <p className="font-bold text-lg text-primary">ETB {((Number(form.watch("quantity")) || 0) * (Number(form.unitPrice) || 0)).toFixed(2)}</p>
+                       <p className="font-bold text-lg text-primary">ETB {((Number(form.watch("quantity")) || 0) * (Number(form.getValues().unitPrice) || 0)).toFixed(2)}</p>
                     </div>
                  </div>
                  <div className="grid grid-cols-2 gap-4">
@@ -515,9 +527,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                       render={({ field }) => (
                         <FormItem className="flex flex-col">
                           <FormLabel className="text-xs">Supplier</FormLabel>
-                          <datalist id="suppliers-list">
-                              {uniqueSuppliers.map(s => <option key={s} value={s} />)}
-                          </datalist>
                           <FormControl>
                             <Input 
                                 placeholder="Type supplier name..." 
@@ -526,6 +535,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                                 {...field} 
                             />
                           </FormControl>
+                          <datalist id="suppliers-list">
+                              {uniqueSuppliers.map(s => <option key={s} value={s} />)}
+                          </datalist>
                         </FormItem>
                       )}
                     />
