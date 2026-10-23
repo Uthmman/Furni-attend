@@ -51,6 +51,7 @@ import {
   User,
   XCircle,
   Clock,
+  Store,
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
 import { collection, query, orderBy, limit, doc, deleteDoc } from "firebase/firestore";
@@ -125,6 +126,7 @@ export default function StorePage() {
   const [isCatManagerOpen, setIsCategoryManagerOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState<Item | null>(null);
   const [adjustmentType, setAdjustmentType] = useState<"In" | "Out" | null>(null);
+  const [editingAdjustment, setEditingAdjustment] = useState<StockAdjustment | null>(null);
   
   const [activeTab, setActiveTab] = useState("inventory");
   const [selectedCostMonth, setSelectedCostMonth] = useState<string>(format(new Date(), "yyyy-MM"));
@@ -156,7 +158,6 @@ export default function StorePage() {
 
   const { data: adjustments, isLoading: adjustmentsLoading } = useCollection<StockAdjustment>(adjustmentsCollectionRef);
 
-  // New: Fetch actual expenses to ensure financial ledger accuracy
   const expensesCollectionRef = useMemoFirebase(() => {
     if (!firestore || isUserLoading || !user) return null;
     return query(
@@ -210,7 +211,6 @@ export default function StorePage() {
     return options;
   }, []);
 
-  // Filter based on the actual expenses collection
   const filteredPurchaseHistory = useMemo(() => {
     if (!expenses) return [];
     const purchases = expenses.filter(e => e.category === "Stock Purchase");
@@ -232,6 +232,13 @@ export default function StorePage() {
     if (e) e.stopPropagation();
     setSelectedItem(item);
     setAdjustmentType(type);
+    setIsAdjustmentOpen(true);
+  };
+
+  const handleEditLog = (adj: StockAdjustment) => {
+    const item = items?.find(i => i.id === adj.itemId) || null;
+    setSelectedItem(item);
+    setEditingAdjustment(adj);
     setIsAdjustmentOpen(true);
   };
 
@@ -364,7 +371,15 @@ export default function StorePage() {
       </div>
 
       <ItemForm isOpen={isItemFormOpen} setIsOpen={setIsItemFormOpen} item={selectedItem} onClose={() => setSelectedItem(null)} />
-      <AdjustmentDialog isOpen={isAdjustmentOpen} setIsOpen={setIsAdjustmentOpen} items={items || []} preSelectedItem={selectedItem} forcedType={adjustmentType} onClose={() => { setSelectedItem(null); setAdjustmentType(null); }} />
+      <AdjustmentDialog 
+        isOpen={isAdjustmentOpen} 
+        setIsOpen={setIsAdjustmentOpen} 
+        items={items || []} 
+        preSelectedItem={selectedItem} 
+        forcedType={adjustmentType} 
+        editingAdjustment={editingAdjustment}
+        onClose={() => { setSelectedItem(null); setAdjustmentType(null); setEditingAdjustment(null); }} 
+      />
       <CategoryManager isOpen={isCatManagerOpen} setIsOpen={setIsCategoryManagerOpen} />
 
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-1">
@@ -515,11 +530,53 @@ export default function StorePage() {
                                 <div className={cn("absolute top-0 right-0 px-3 py-1.5 rounded-bl-2xl font-black text-sm shadow-sm z-10 pointer-events-none transition-transform group-hover:scale-105", adj.type === "In" ? "bg-green-600 text-white" : "bg-destructive text-white")}>{adj.type === "In" ? "+" : "-"}{Math.abs(adj.adjustmentQuantity)}<span className="ml-1 text-[8px] uppercase tracking-tighter opacity-80">{adj.type === "In" ? "Restock" : "Usage"}</span></div>
                                 <CardContent className="p-4 pt-5">
                                     <div className="space-y-3">
-                                        <div className="pr-12"><h4 className="font-bold text-sm line-clamp-1 group-hover:text-primary transition-colors">{adj.itemName}</h4><div className="flex items-center gap-1.5 text-[9px] text-muted-foreground mt-0.5"><Clock className="h-2.5 w-2.5" /><span>{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "HH:mm") : ""}</span></div></div>
-                                        <div className="flex flex-col gap-1.5 border-t border-dashed pt-3 mt-1">
-                                            {adj.employeeName && <div className="flex items-center gap-2 text-[10px] font-bold text-foreground"><div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center"><User className="h-2.5 w-2.5 text-primary" /></div><span className="truncate">{adj.employeeName}</span></div>}
-                                            {adj.orderUniqueName && <div className="flex items-center gap-2 text-[10px] font-black text-primary"><div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center"><ShoppingBag className="h-2.5 w-2.5" /></div><span className="truncate uppercase tracking-tight">{adj.orderUniqueName}</span></div>}
+                                        <div className="pr-12 flex justify-between items-start">
+                                            <div>
+                                                <h4 className="font-bold text-sm line-clamp-1 group-hover:text-primary transition-colors">{adj.itemName}</h4>
+                                                <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground mt-0.5">
+                                                    <Clock className="h-2.5 w-2.5" />
+                                                    <span>{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "HH:mm") : ""}</span>
+                                                </div>
+                                            </div>
+                                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleEditLog(adj)}>
+                                                <Edit2 className="h-3.5 w-3.5" />
+                                            </Button>
                                         </div>
+
+                                        <div className="flex flex-col gap-1.5 border-t border-dashed pt-3 mt-1">
+                                            {adj.type === "In" && adj.supplier && (
+                                                <div className="flex items-center gap-2 text-[10px] font-bold text-foreground">
+                                                    <div className="h-5 w-5 rounded-full bg-green-100 flex items-center justify-center">
+                                                        <Store className="h-2.5 w-2.5 text-green-600" />
+                                                    </div>
+                                                    <span className="truncate">{adj.supplier}</span>
+                                                </div>
+                                            )}
+                                            {adj.employeeName && (
+                                                <div className="flex items-center gap-2 text-[10px] font-bold text-foreground">
+                                                    <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center">
+                                                        <User className="h-2.5 w-2.5 text-primary" />
+                                                    </div>
+                                                    <span className="truncate">{adj.employeeName}</span>
+                                                </div>
+                                            )}
+                                            {adj.orderUniqueName && (
+                                                <div className="flex items-center gap-2 text-[10px] font-black text-primary">
+                                                    <div className="h-5 w-5 rounded-full bg-primary/20 flex items-center justify-center">
+                                                        <ShoppingBag className="h-2.5 w-2.5" />
+                                                    </div>
+                                                    <span className="truncate uppercase tracking-tight">{adj.orderUniqueName}</span>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        {adj.totalPrice && adj.totalPrice > 0 && (
+                                            <div className="flex justify-between items-center text-[10px] bg-muted/20 p-2 rounded-md">
+                                                <span className="text-muted-foreground font-medium uppercase tracking-tighter">Total Value</span>
+                                                <span className="font-black text-primary">ETB {adj.totalPrice.toFixed(2)}</span>
+                                            </div>
+                                        )}
+
                                         {adj.reason && <div className="bg-muted/30 p-2 rounded-lg text-[10px] text-muted-foreground italic line-clamp-2 leading-relaxed">&ldquo;{adj.reason}&rdquo;</div>}
                                     </div>
                                 </CardContent>

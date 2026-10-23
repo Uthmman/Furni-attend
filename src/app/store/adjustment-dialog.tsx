@@ -39,7 +39,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import type { Item, Order, Employee, StockAdjustment } from "@/lib/types";
 import { useFirestore, errorEmitter, FirestorePermissionError, useCollection, useMemoFirebase, useUser } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
-import { doc, writeBatch, collection, arrayUnion, query, orderBy, limit, increment } from "firebase/firestore";
+import { doc, writeBatch, collection, arrayUnion, query, orderBy, limit, increment, getDocs, where } from "firebase/firestore";
 import { useToast } from "@/hooks/use-toast";
 import { useState, useEffect, useMemo } from "react";
 import { 
@@ -59,7 +59,8 @@ import {
   Layers,
   Tag,
   Store,
-  ShoppingBag
+  ShoppingBag,
+  Edit2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notifyLowStock } from "@/app/payroll/actions";
@@ -86,6 +87,7 @@ interface AdjustmentDialogProps {
   preSelectedItem: Item | null;
   forcedType?: "In" | "Out" | null;
   onClose: () => void;
+  editingAdjustment?: StockAdjustment | null;
 }
 
 const getSmallCategoryIcon = (category: string) => {
@@ -102,10 +104,11 @@ const getSmallCategoryIcon = (category: string) => {
   }
 };
 
-export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, forcedType, onClose }: AdjustmentDialogProps) {
+export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, forcedType, onClose, editingAdjustment }: AdjustmentDialogProps) {
   const firestore = useFirestore();
   const { user: authUser } = useUser();
   const { toast } = useToast();
+  const isEditMode = !!editingAdjustment;
 
   const ordersCollectionRef = useMemoFirebase(() => {
     if (!secondaryDb || !authUser) return null;
@@ -138,13 +141,12 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
   const [isItemPopoverOpen, setIsItemPopoverOpen] = useState(false);
   const [itemSearchQuery, setItemSearchQuery] = useState("");
-  const [isSupplierPopoverOpen, setIsSupplierPopoverOpen] = useState(false);
 
   const form = useForm<AdjustmentValues>({
     resolver: zodResolver(adjustmentSchema),
     defaultValues: {
-      itemId: preSelectedItem?.id || "",
-      type: forcedType || "Out",
+      itemId: "",
+      type: "Out",
       quantity: 1,
       reason: "",
       unitPrice: 0,
@@ -158,7 +160,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const watchedItemId = form.watch("itemId");
   const selectedItem = items.find(i => i.id === watchedItemId);
   const currentType = form.watch("type");
-  const watchedSupplier = form.watch("supplier");
 
   const filteredItemsForSearch = useMemo(() => {
     return items.filter(item => 
@@ -167,54 +168,62 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     ).sort((a, b) => a.name.localeCompare(b.name));
   }, [items, itemSearchQuery]);
 
-  const filteredSuppliers = useMemo(() => {
-    if (!watchedSupplier) return uniqueSuppliers;
-    return uniqueSuppliers.filter(s => s.toLowerCase().includes(watchedSupplier.toLowerCase()));
-  }, [uniqueSuppliers, watchedSupplier]);
-
-  useEffect(() => {
-    if (selectedItem && currentType === 'In') {
-        form.setValue("unitPrice", selectedItem.currentPrice || 0);
-    }
-  }, [selectedItem?.id, currentType, form]);
-
   useEffect(() => {
     if (isOpen) {
-      form.reset({
-        itemId: preSelectedItem?.id || "",
-        type: forcedType || "Out",
-        quantity: 1,
-        reason: "",
-        unitPrice: preSelectedItem?.currentPrice || 0,
-        supplier: "",
-        paymentStatus: "Paid",
-        orderId: "none",
-        employeeId: "none",
-      });
+      if (editingAdjustment) {
+        form.reset({
+          itemId: editingAdjustment.itemId,
+          type: editingAdjustment.type,
+          quantity: Math.abs(editingAdjustment.adjustmentQuantity),
+          reason: editingAdjustment.reason,
+          unitPrice: editingAdjustment.unitPrice || 0,
+          supplier: editingAdjustment.supplier || "",
+          paymentStatus: editingAdjustment.paymentStatus || "Paid",
+          orderId: editingAdjustment.orderId || "none",
+          employeeId: editingAdjustment.employeeId || "none",
+        });
+      } else {
+        form.reset({
+          itemId: preSelectedItem?.id || "",
+          type: forcedType || "Out",
+          quantity: 1,
+          reason: "",
+          unitPrice: preSelectedItem?.currentPrice || 0,
+          supplier: "",
+          paymentStatus: "Paid",
+          orderId: "none",
+          employeeId: "none",
+        });
+      }
       setItemSearchQuery("");
     }
-  }, [isOpen, preSelectedItem, forcedType, form]);
+  }, [isOpen, preSelectedItem, forcedType, editingAdjustment, form]);
 
-  const onSubmit = (data: AdjustmentValues) => {
+  const onSubmit = async (data: AdjustmentValues) => {
     if (!firestore || !selectedItem) return;
-
-    const adjustmentQuantity = data.type === "In" ? data.quantity : -data.quantity;
-    const newStockLevel = Math.max(0, selectedItem.stockLevel + adjustmentQuantity);
 
     const batch = writeBatch(firestore);
     const linkedOrder = activeOrders.find(o => o.id === data.orderId);
     const linkedEmployee = activeEmployees.find(e => e.id === data.employeeId);
 
-    const timestamp = new Date().toISOString();
-    const adjRef = doc(collection(firestore, "stockAdjustments"));
+    const adjustmentQuantity = data.type === "In" ? data.quantity : -data.quantity;
+    
+    let stockDiff = adjustmentQuantity;
+    if (isEditMode && editingAdjustment) {
+      stockDiff = adjustmentQuantity - editingAdjustment.adjustmentQuantity;
+    }
+
+    const newStockLevel = Math.max(0, selectedItem.stockLevel + stockDiff);
+    const timestamp = isEditMode ? (editingAdjustment?.adjustmentDate || new Date().toISOString()) : new Date().toISOString();
+    
+    const adjRef = isEditMode && editingAdjustment ? doc(firestore, "stockAdjustments", editingAdjustment.id) : doc(collection(firestore, "stockAdjustments"));
+    
     const adjData: any = {
       id: adjRef.id,
       itemId: selectedItem.id,
       itemName: selectedItem.name,
       adjustmentDate: timestamp,
       adjustmentQuantity: adjustmentQuantity,
-      previousStockLevel: selectedItem.stockLevel,
-      resultingStockLevel: newStockLevel,
       type: data.type,
       reason: data.reason,
     };
@@ -224,70 +233,88 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       adjData.totalPrice = (data.unitPrice || 0) * data.quantity;
       adjData.supplier = data.supplier || "";
       adjData.paymentStatus = data.paymentStatus || "Paid";
-
-      // Record financial expense
-      const expenseRef = doc(collection(firestore, "expenses"));
-      batch.set(expenseRef, {
-        id: expenseRef.id,
-        amount: adjData.totalPrice,
-        category: "Stock Purchase",
-        description: `Purchase: ${data.quantity} ${selectedItem.unitOfMeasurement} of ${selectedItem.name}`,
-        recordedAt: timestamp,
-        paymentStatus: adjData.paymentStatus,
-        itemId: selectedItem.id,
-        itemName: selectedItem.name,
-        quantity: data.quantity,
-        unitOfMeasurement: selectedItem.unitOfMeasurement,
-        unitPrice: data.unitPrice,
-        supplier: adjData.supplier,
-        adjustmentId: adjRef.id
-      });
     }
 
     if (data.type === "Out") {
       if (data.orderId && data.orderId !== "none") {
         adjData.orderId = data.orderId;
         adjData.orderUniqueName = linkedOrder?.uniqueName || "Unknown Order";
+      } else {
+        adjData.orderId = null;
+        adjData.orderUniqueName = null;
       }
       if (data.employeeId && data.employeeId !== "none") {
         adjData.employeeId = data.employeeId;
         adjData.employeeName = linkedEmployee?.name || "Unknown Employee";
+      } else {
+        adjData.employeeId = null;
+        adjData.employeeName = null;
       }
     }
 
-    batch.set(adjRef, adjData);
+    batch.set(adjRef, adjData, { merge: true });
     
-    // Explicitly update the item document for easy access
+    // Update Item
     const itemRef = doc(firestore, "items", selectedItem.id);
     const itemUpdate: any = { 
-      stockLevel: increment(adjustmentQuantity),
-      lastUpdated: timestamp
+      stockLevel: increment(stockDiff),
+      lastUpdated: new Date().toISOString()
     };
     
     if (data.type === 'In' && data.unitPrice !== undefined) {
         itemUpdate.currentPrice = data.unitPrice;
         itemUpdate.priceHistory = arrayUnion({ price: data.unitPrice, date: timestamp });
     }
-
     batch.update(itemRef, itemUpdate);
+
+    // Sync Expense
+    if (data.type === "In") {
+      try {
+        const expensesRef = collection(firestore, "expenses");
+        const q = query(expensesRef, where("adjustmentId", "==", adjRef.id));
+        const expenseSnap = await getDocs(q);
+        
+        const expenseDocRef = !expenseSnap.empty ? expenseSnap.docs[0].ref : doc(collection(firestore, "expenses"));
+        
+        batch.set(expenseDocRef, {
+          id: expenseDocRef.id,
+          amount: adjData.totalPrice,
+          category: "Stock Purchase",
+          description: `${isEditMode ? 'Updated' : 'Purchase'}: ${data.quantity} ${selectedItem.unitOfMeasurement} of ${selectedItem.name}`,
+          recordedAt: timestamp,
+          paymentStatus: adjData.paymentStatus,
+          itemId: selectedItem.id,
+          itemName: selectedItem.name,
+          quantity: data.quantity,
+          unitOfMeasurement: selectedItem.unitOfMeasurement,
+          unitPrice: data.unitPrice,
+          supplier: adjData.supplier,
+          adjustmentId: adjRef.id
+        }, { merge: true });
+      } catch (err) {
+        console.error("Expense sync error", err);
+      }
+    }
 
     setIsOpen(false);
     onClose();
     toast({ 
-      title: data.type === 'In' ? "Logging Restock" : "Logging Usage", 
-      description: `Updating balance for ${selectedItem.name}.` 
+      title: isEditMode ? "Log Updated" : (data.type === 'In' ? "Logging Restock" : "Logging Usage"), 
+      description: `Synchronizing records for ${selectedItem.name}.` 
     });
 
     batch.commit()
       .then(() => {
-        const threshold = selectedItem.lowStockThreshold ?? 5;
-        if (data.type === 'Out' && selectedItem.lowStockThreshold !== 0 && newStockLevel <= threshold) {
-          notifyLowStock(selectedItem.name, newStockLevel, threshold, selectedItem.unitOfMeasurement);
+        if (!isEditMode && data.type === 'Out') {
+            const threshold = selectedItem.lowStockThreshold ?? 5;
+            if (selectedItem.lowStockThreshold !== 0 && newStockLevel <= threshold) {
+                notifyLowStock(selectedItem.name, newStockLevel, threshold, selectedItem.unitOfMeasurement);
+            }
         }
       })
       .catch(e => {
         errorEmitter.emit("permission-error", new FirestorePermissionError({ path: "stockAdjustments", operation: 'write', requestResourceData: adjData }));
-        toast({ variant: 'destructive', title: "Stock Sync Failed" });
+        toast({ variant: 'destructive', title: "Sync Failed" });
       });
   };
 
@@ -296,9 +323,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       <DialogContent className="sm:max-w-[480px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-center gap-2 text-primary">
-            {currentType === "In" ? <ArrowUpRight className="h-5 w-5 text-green-600" /> : <ArrowDownRight className="h-5 w-5 text-destructive" />}
+            {isEditMode ? <Edit2 className="h-5 w-5 text-primary" /> : (currentType === "In" ? <ArrowUpRight className="h-5 w-5 text-green-600" /> : <ArrowDownRight className="h-5 w-5 text-destructive" />)}
             <DialogTitle className="text-xl">
-               {currentType === "In" ? "Log Purchase / Restock" : "Log Production Usage"}
+               {isEditMode ? "Edit Movement Log" : (currentType === "In" ? "Log Purchase / Restock" : "Log Production Usage")}
             </DialogTitle>
           </div>
         </DialogHeader>
@@ -322,7 +349,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                             "w-full justify-between h-11 bg-background font-normal",
                             !field.value && "text-muted-foreground"
                           )}
-                          disabled={!!preSelectedItem}
+                          disabled={!!preSelectedItem || isEditMode}
                         >
                           {field.value
                             ? items.find((item) => item.id === field.value)?.name
@@ -456,7 +483,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                 )}
               />
                <div className="flex flex-col justify-end pb-2">
-                 <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">New Balance</p>
+                 <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-wider">Estimated Stock</p>
                  <p className={cn("font-bold text-lg", currentType === 'In' ? "text-green-600" : "text-destructive")}>
                     {selectedItem ? (currentType === "In" ? selectedItem.stockLevel + (Number(form.watch("quantity")) || 0) : Math.max(0, selectedItem.stockLevel - (Number(form.watch("quantity")) || 0))) : "—"}
                  </p>
@@ -488,40 +515,19 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                       render={({ field }) => (
                         <FormItem className="flex flex-col">
                           <FormLabel className="text-xs">Supplier</FormLabel>
-                          <Popover open={isSupplierPopoverOpen} onOpenChange={setIsSupplierPopoverOpen}>
-                             <PopoverTrigger asChild>
-                                <FormControl>
-                                    <Input 
-                                        placeholder="Supplier name" 
-                                        className="h-10 bg-background" 
-                                        {...field} 
-                                        onFocus={() => setIsSupplierPopoverOpen(true)}
-                                    />
-                                </FormControl>
-                             </PopoverTrigger>
-                             {filteredSuppliers.length > 0 && (
-                                <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-1" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
-                                    <ScrollArea className="h-40">
-                                        <div className="flex flex-col gap-0.5">
-                                            {filteredSuppliers.map(s => (
-                                                <button
-                                                    key={s}
-                                                    type="button"
-                                                    className="flex items-center gap-2 px-3 py-2 text-xs font-medium hover:bg-accent rounded-md text-left transition-colors"
-                                                    onClick={() => {
-                                                        form.setValue("supplier", s);
-                                                        setIsSupplierPopoverOpen(false);
-                                                    }}
-                                                >
-                                                    <Store className="h-3 w-3 opacity-50" />
-                                                    {s}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </ScrollArea>
-                                </PopoverContent>
-                             )}
-                          </Popover>
+                          <FormControl>
+                            <>
+                                <datalist id="suppliers-list">
+                                    {uniqueSuppliers.map(s => <option key={s} value={s} />)}
+                                </datalist>
+                                <Input 
+                                    placeholder="Type supplier name..." 
+                                    className="h-10 bg-background" 
+                                    list="suppliers-list"
+                                    {...field} 
+                                />
+                            </>
+                          </FormControl>
                         </FormItem>
                       )}
                     />
@@ -555,7 +561,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
             <DialogFooter className="pt-2">
               <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit" className={cn("h-11 shadow-lg", currentType === "In" ? "bg-green-600 hover:bg-green-700" : "bg-destructive hover:bg-destructive/90")}>Confirm Log</Button>
+              <Button type="submit" className={cn("h-11 shadow-lg", currentType === "In" ? "bg-green-600 hover:bg-green-700" : "bg-destructive hover:bg-destructive/90")}>
+                {isEditMode ? "Save Changes" : "Confirm Log"}
+              </Button>
             </DialogFooter>
           </form>
         </Form>
