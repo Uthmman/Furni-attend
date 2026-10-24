@@ -5,6 +5,15 @@ export type PaymentMethod = "Weekly" | "Monthly";
 
 export type EmployeeStatus = "Active" | "Inactive";
 
+export interface AppUser extends DocumentData {
+  uid: string;
+  email: string;
+  displayName?: string;
+  status: 'Approved' | 'Pending' | 'Rejected';
+  role: 'Admin' | 'Staff';
+  createdAt: string;
+}
+
 export interface Employee extends DocumentData {
   id: string;
   name: string;

@@ -3,11 +3,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/firebase";
+import { useAuth, useFirestore } from "@/firebase";
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
 } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ export default function LoginPage() {
   const [isCreatingAccount, setIsCreatingAccount] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const auth = useAuth();
+  const firestore = useFirestore();
   const router = useRouter();
   const { toast } = useToast();
 
@@ -47,12 +49,26 @@ export default function LoginPage() {
   };
 
   const handleCreateAccount = async () => {
-    if (!auth) return;
+    if (!auth || !firestore) return;
     setIsCreatingAccount(true);
     setError(null);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      toast({ title: "Account created successfully!" });
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Create user profile in Firestore
+      await setDoc(doc(firestore, "users", user.uid), {
+        uid: user.uid,
+        email: user.email,
+        status: user.email === 'zenbabafurniture@gmail.com' ? 'Approved' : 'Pending',
+        role: user.email === 'zenbabafurniture@gmail.com' ? 'Admin' : 'Staff',
+        createdAt: new Date().toISOString()
+      });
+
+      toast({ 
+        title: "Account created!", 
+        description: user.email === 'zenbabafurniture@gmail.com' ? "Welcome Admin." : "Your account is pending approval by the administrator." 
+      });
       router.push("/");
     } catch (err: any) {
       setError(err.message);

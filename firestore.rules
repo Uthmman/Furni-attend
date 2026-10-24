@@ -6,6 +6,16 @@ service cloud.firestore {
     function isAuthenticated() {
       return request.auth != null;
     }
+    
+    function isSuperAdmin() {
+      return request.auth != null && request.auth.token.email == 'zenbabafurniture@gmail.com';
+    }
+
+    // User profiles
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow write: if isSuperAdmin() || (request.auth.uid == userId && !exists(/databases/$(database)/documents/users/$(userId)));
+    }
 
     // Collection group helper for efficient attendance querying
     match /{path=**}/attendance/{docId} {

@@ -53,10 +53,12 @@ import {
   Clock,
   Store,
   CheckCircle2,
-  Loader2
+  Loader2,
+  ChevronRight,
+  ArrowRight
 } from "lucide-react";
 import { useCollection, useFirestore, useMemoFirebase, useUser, errorEmitter, FirestorePermissionError } from "@/firebase";
-import { collection, query, orderBy, limit, doc, deleteDoc, updateDoc, writeBatch, getDocs, where } from "firebase/firestore";
+import { collection, query, orderBy, limit, doc, deleteDoc, updateDoc, writeBatch, getDocs, where, increment } from "firebase/firestore";
 import type { Item, StockAdjustment, Expense } from "@/lib/types";
 import { ItemForm } from "./item-form";
 import { AdjustmentDialog } from "./adjustment-dialog";
@@ -130,6 +132,7 @@ export default function StorePage() {
   const [adjustmentType, setAdjustmentType] = useState<"In" | "Out" | null>(null);
   const [editingAdjustment, setEditingAdjustment] = useState<StockAdjustment | null>(null);
   const [settlingId, setSettlingId] = useState<string | null>(null);
+  const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
   
   const [activeTab, setActiveTab] = useState("inventory");
   const [selectedCostMonth, setSelectedCostMonth] = useState<string>(format(new Date(), "yyyy-MM"));
@@ -275,6 +278,40 @@ export default function StorePage() {
     setSelectedItem(item);
     setEditingAdjustment(adj);
     setIsAdjustmentOpen(true);
+  };
+
+  const handleDeleteLog = async (adj: StockAdjustment) => {
+    if (!firestore || deletingLogId) return;
+    setDeletingLogId(adj.id);
+    
+    const batch = writeBatch(firestore);
+    
+    // 1. Revert Stock level on item
+    // If it was an 'In', we subtract. If it was an 'Out', we add back.
+    const revertQuantity = -adj.adjustmentQuantity;
+    const itemRef = doc(firestore, "items", adj.itemId);
+    batch.update(itemRef, { stockLevel: increment(revertQuantity) });
+    
+    // 2. Delete the adjustment document
+    const adjRef = doc(firestore, "stockAdjustments", adj.id);
+    batch.delete(adjRef);
+    
+    // 3. Delete corresponding expense if it was a purchase
+    if (adj.type === 'In') {
+        const expensesRef = collection(firestore, "expenses");
+        const q = query(expensesRef, where("adjustmentId", "==", adj.id));
+        const expSnap = await getDocs(q);
+        expSnap.forEach(d => batch.delete(d.ref));
+    }
+    
+    try {
+        await batch.commit();
+        toast({ title: "Log Entry Removed", description: `Reverted ${Math.abs(adj.adjustmentQuantity)} and cleaned records.` });
+    } catch (e) {
+        toast({ variant: 'destructive', title: "Deletion Failed" });
+    } finally {
+        setDeletingLogId(null);
+    }
   };
 
   const handleStartDeleteCountdown = (e: React.MouseEvent, itemId: string) => {
@@ -573,9 +610,30 @@ export default function StorePage() {
                                                     <span>{adj.adjustmentDate ? format(new Date(adj.adjustmentDate), "HH:mm") : ""}</span>
                                                 </div>
                                             </div>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => handleEditLog(adj)}>
-                                                <Edit2 className="h-3.5 w-3.5" />
-                                            </Button>
+                                            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditLog(adj)}>
+                                                    <Edit2 className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <AlertDialog>
+                                                    <AlertDialogTrigger asChild>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:bg-destructive/10" disabled={deletingLogId === adj.id}>
+                                                            {deletingLogId === adj.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                                                        </Button>
+                                                    </AlertDialogTrigger>
+                                                    <AlertDialogContent>
+                                                        <AlertDialogHeader>
+                                                            <AlertDialogTitle>Delete Log Entry?</AlertDialogTitle>
+                                                            <AlertDialogDescription>
+                                                                This will delete the record and **revert the stock level** for {adj.itemName}. Any associated financial entries will also be removed.
+                                                            </AlertDialogDescription>
+                                                        </AlertDialogHeader>
+                                                        <AlertDialogFooter>
+                                                            <AlertDialogCancel>Keep</AlertDialogCancel>
+                                                            <Button variant="destructive" onClick={() => handleDeleteLog(adj)}>Reverse & Delete</Button>
+                                                        </AlertDialogFooter>
+                                                    </AlertDialogContent>
+                                                </AlertDialog>
+                                            </div>
                                         </div>
 
                                         <div className="flex flex-col gap-1.5 border-t border-dashed pt-3 mt-1">
@@ -703,7 +761,7 @@ export default function StorePage() {
                           <TableCell className="text-right tabular-nums font-black text-primary">ETB {exp.amount?.toFixed(2) || "0.00"}</TableCell>
                           <TableCell className="text-center pr-6">
                             <div className="flex flex-col items-center gap-1.5">
-                                <Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge>
+                                <Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Approved' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge>
                                 {exp.paymentStatus === 'Unpaid' && (
                                     <Button variant="ghost" size="sm" className="h-7 text-[8px] font-black text-primary hover:text-primary hover:bg-primary/5 uppercase tracking-tighter" onClick={() => handleMarkAsPaid(exp)} disabled={settlingId === exp.id}>
                                        {settlingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />} Confirm Payment
