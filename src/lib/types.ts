@@ -104,6 +104,12 @@ export interface Expense extends DocumentData {
   adjustmentId?: string;
 }
 
+export interface BOMItem {
+    name: string;
+    quantity: number;
+    unit: string;
+}
+
 export interface Order extends DocumentData {
     id: string;
     customerName?: string;
@@ -122,6 +128,7 @@ export interface Order extends DocumentData {
       height?: number;
       width?: number;
     };
+    bom?: BOMItem[];
     [key: string]: any;
 }
 

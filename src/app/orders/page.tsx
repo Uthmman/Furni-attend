@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -22,8 +23,8 @@ import { collection, query, orderBy } from "firebase/firestore";
 import { useCollection, useMemoFirebase, useUser, useFirestore } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
 import { format, isValid } from "date-fns";
-import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer, PenTool, PlayCircle, ChevronDown, ChevronUp, Box, Layers, Loader2 } from "lucide-react";
-import type { Order, OrderMaterial } from "@/lib/types";
+import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer, PenTool, PlayCircle, ChevronDown, ChevronUp, Box, Layers, Loader2, ClipboardList } from "lucide-react";
+import type { Order, OrderMaterial, BOMItem } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 
@@ -150,7 +151,7 @@ export default function OrdersPage() {
               Order Queue
             </CardTitle>
             <CardDescription>
-              Expand orders to see detailed descriptions and workshop materials consumed.
+              Expand orders to see design BOM vs. workshop material consumption.
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -195,14 +196,34 @@ export default function OrdersPage() {
                         </AccordionTrigger>
                         <AccordionContent className="bg-muted/10 p-0">
                             <div className="p-4 sm:p-6 space-y-6">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-4">
+                                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                    {/* Left Side: Info & BOM */}
+                                    <div className="space-y-6">
                                         <div>
                                             <h4 className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-2">Order Description</h4>
                                             <div className="bg-background rounded-xl p-4 border italic text-sm text-foreground/80 min-h-[80px]">
                                                 {order.description || "No detailed description provided for this order."}
                                             </div>
                                         </div>
+
+                                        {order.bom && order.bom.length > 0 && (
+                                            <div>
+                                                <h4 className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
+                                                    <ClipboardList className="h-3 w-3 text-purple-600" /> Bill of Materials (Project Plan)
+                                                </h4>
+                                                <div className="bg-background rounded-xl border p-2 space-y-1">
+                                                    {order.bom.map((item, idx) => (
+                                                        <div key={idx} className="flex items-center justify-between p-2 px-3 rounded-lg hover:bg-muted/5 transition-colors">
+                                                            <span className="text-xs font-bold text-foreground">{item.name}</span>
+                                                            <Badge variant="outline" className="font-black text-[9px] border-purple-100 bg-purple-50/50 text-purple-700">
+                                                                {item.quantity} {item.unit}
+                                                            </Badge>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div className="grid grid-cols-2 gap-4">
                                             <div className="bg-background rounded-xl p-3 border">
                                                 <p className="text-[9px] font-bold text-muted-foreground uppercase">Material Target</p>
@@ -215,9 +236,10 @@ export default function OrdersPage() {
                                         </div>
                                     </div>
 
+                                    {/* Right Side: Actual Workshop Usage */}
                                     <div>
-                                        <h4 className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-2 flex items-center gap-2">
-                                            <Layers className="h-3 w-3" /> Materials Used (From Workshop)
+                                        <h4 className="text-[10px] font-black uppercase text-muted-foreground tracking-widest mb-3 flex items-center gap-2">
+                                            <Layers className="h-3 w-3 text-primary" /> Actual Materials Used (Workshop Log)
                                         </h4>
                                         <OrderMaterialsList orderId={order.id} />
                                     </div>
