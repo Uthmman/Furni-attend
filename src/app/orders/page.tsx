@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -23,7 +22,7 @@ import { collection, query, orderBy } from "firebase/firestore";
 import { useCollection, useMemoFirebase, useUser, useFirestore } from "@/firebase";
 import { secondaryDb } from "@/firebase/secondary";
 import { format, isValid } from "date-fns";
-import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer, PenTool, PlayCircle, ChevronDown, ChevronUp, Box, Layers } from "lucide-react";
+import { ShoppingBag, Calendar, User, PackageSearch, Clock, Timer, PenTool, PlayCircle, ChevronDown, ChevronUp, Box, Layers, Loader2 } from "lucide-react";
 import type { Order, OrderMaterial } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
