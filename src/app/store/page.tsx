@@ -419,14 +419,14 @@ export default function StorePage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 relative min-h-[calc(100vh-200px)] pb-24">
-      <div className="fixed bottom-24 right-6 flex flex-col gap-3 z-50 md:bottom-12 md:right-12">
-        <Button size="lg" className="rounded-full shadow-2xl bg-green-600 hover:bg-green-700 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110" onClick={() => handleAdjustStock(null, null, "In")} title="Log Purchase / Restock">
-          <PlusCircle className="h-8 w-8" />
+    <div className="flex flex-col gap-6 relative min-h-[calc(100vh-200px)] pb-40">
+      <div className="fixed bottom-28 right-4 flex flex-col gap-4 z-50 md:bottom-12 md:right-12">
+        <Button size="lg" className="rounded-full shadow-2xl bg-green-600 hover:bg-green-700 h-14 w-14 md:h-16 md:w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110" onClick={() => handleAdjustStock(null, null, "In")} title="Log Purchase / Restock">
+          <PlusCircle className="h-7 w-7 md:h-8 md:w-8" />
           <span className="absolute right-full mr-3 bg-card border px-3 py-1.5 rounded-lg text-sm font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Log Purchase</span>
         </Button>
-        <Button size="lg" className="rounded-full shadow-2xl bg-destructive hover:bg-destructive/90 h-16 w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110" onClick={() => handleAdjustStock(null, null, "Out")} title="Log Usage">
-          <MinusCircle className="h-8 w-8" />
+        <Button size="lg" className="rounded-full shadow-2xl bg-destructive hover:bg-destructive/90 h-14 w-14 md:h-16 md:w-16 p-0 group flex items-center justify-center transition-all duration-300 hover:scale-110" onClick={() => handleAdjustStock(null, null, "Out")} title="Log Usage">
+          <MinusCircle className="h-7 w-7 md:h-8 md:w-8" />
           <span className="absolute right-full mr-3 bg-card border px-3 py-1.5 rounded-lg text-sm font-bold shadow-xl opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">Log Usage</span>
         </Button>
       </div>
