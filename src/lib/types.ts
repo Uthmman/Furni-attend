@@ -141,6 +141,8 @@ export interface OrderMaterial extends DocumentData {
     date: string;
     reason?: string;
     adjustmentId: string;
+    unitPrice?: number;
+    employeeName?: string;
 }
 
 export interface PriceRecord {

@@ -267,7 +267,9 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
             unit: selectedItem.unitOfMeasurement,
             date: timestamp,
             reason: data.reason,
-            adjustmentId: adjRef.id
+            adjustmentId: adjRef.id,
+            unitPrice: selectedItem.currentPrice || 0,
+            employeeName: linkedEmployee?.name || "General Usage"
         });
       } else {
         adjData.orderId = null;

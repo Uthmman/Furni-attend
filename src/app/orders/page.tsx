@@ -295,15 +295,26 @@ function OrderMaterialsList({ orderId }: { orderId: string }) {
                 <div key={mat.id} className="flex items-center justify-between p-3 rounded-lg border bg-muted/5 hover:bg-muted/10 transition-colors">
                     <div className="flex flex-col">
                         <span className="font-bold text-xs">{mat.itemName}</span>
-                        <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
-                            <Clock className="h-2.5 w-2.5" />
-                            <span>{format(new Date(mat.date), "MMM d, HH:mm")}</span>
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-1">
+                            <div className="flex items-center gap-1.5 text-[9px] text-muted-foreground">
+                                <Clock className="h-2.5 w-2.5" />
+                                <span>{format(new Date(mat.date), "MMM d, HH:mm")}</span>
+                            </div>
+                            {mat.employeeName && (
+                                <div className="flex items-center gap-1 text-[9px] font-medium text-primary">
+                                    <User className="h-2.5 w-2.5" />
+                                    <span>{mat.employeeName}</span>
+                                </div>
+                            )}
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex flex-col items-end gap-1">
                         <Badge variant="secondary" className="font-black text-[10px] bg-primary/10 text-primary border-none">
                             {mat.quantity} {mat.unit}
                         </Badge>
+                        {mat.unitPrice && (
+                             <span className="text-[8px] font-bold text-muted-foreground uppercase tracking-tighter">@ ETB {mat.unitPrice.toFixed(2)}</span>
+                        )}
                     </div>
                 </div>
             ))}
