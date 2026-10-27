@@ -14,6 +14,7 @@ service cloud.firestore {
     // User profiles
     match /users/{userId} {
       allow read: if isAuthenticated();
+      // Allow creation of own profile during signup, and updates by Super Admin (for approval/rejection)
       allow write: if isSuperAdmin() || (request.auth.uid == userId && !exists(/databases/$(database)/documents/users/$(userId)));
     }
 
@@ -60,6 +61,14 @@ service cloud.firestore {
 
     match /orders/{orderId} {
       allow read, write: if isAuthenticated();
+    }
+    
+    // Tracking materials used for specific orders
+    match /orderUsage/{orderId} {
+      allow read, write: if isAuthenticated();
+      match /materials/{materialId} {
+        allow read, write: if isAuthenticated();
+      }
     }
   }
 }
