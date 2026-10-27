@@ -138,7 +138,6 @@ export default function StorePage() {
   const [selectedCostMonth, setSelectedCostMonth] = useState<string>(format(new Date(), "yyyy-MM"));
   const [costFilter, setCostFilter] = useState<"all" | "Paid" | "Unpaid">("all");
 
-  // Countdown Deletion State
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
   const [deleteCountdown, setDeleteCountdown] = useState(0);
   const deleteTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -221,15 +220,12 @@ export default function StorePage() {
   const filteredPurchaseHistory = useMemo(() => {
     if (!expenses) return [];
     let purchases = expenses.filter(e => e.category === "Stock Purchase");
-    
     if (selectedCostMonth !== "all") {
         purchases = purchases.filter(e => format(new Date(e.recordedAt), "yyyy-MM") === selectedCostMonth);
     }
-    
     if (costFilter !== "all") {
         purchases = purchases.filter(e => e.paymentStatus === costFilter);
     }
-    
     return purchases;
   }, [expenses, selectedCostMonth, costFilter]);
 
@@ -242,14 +238,11 @@ export default function StorePage() {
   const handleMarkAsPaid = async (expense: Expense) => {
     if (!firestore || !expense.adjustmentId) return;
     setSettlingId(expense.id);
-    
     const batch = writeBatch(firestore);
     const expRef = doc(firestore, "expenses", expense.id);
     const adjRef = doc(firestore, "stockAdjustments", expense.adjustmentId);
-    
     batch.update(expRef, { paymentStatus: 'Paid' });
     batch.update(adjRef, { paymentStatus: 'Paid' });
-    
     try {
         await batch.commit();
         toast({ title: "Payment Recorded", description: "Expense has been marked as settled." });
@@ -283,27 +276,23 @@ export default function StorePage() {
   const handleDeleteLog = async (adj: StockAdjustment) => {
     if (!firestore || deletingLogId) return;
     setDeletingLogId(adj.id);
-    
     const batch = writeBatch(firestore);
-    
-    // 1. Revert Stock level on item
-    // If it was an 'In', we subtract. If it was an 'Out', we add back.
     const revertQuantity = -adj.adjustmentQuantity;
     const itemRef = doc(firestore, "items", adj.itemId);
     batch.update(itemRef, { stockLevel: increment(revertQuantity) });
-    
-    // 2. Delete the adjustment document
     const adjRef = doc(firestore, "stockAdjustments", adj.id);
     batch.delete(adjRef);
-    
-    // 3. Delete corresponding expense if it was a purchase
     if (adj.type === 'In') {
         const expensesRef = collection(firestore, "expenses");
         const q = query(expensesRef, where("adjustmentId", "==", adj.id));
         const expSnap = await getDocs(q);
         expSnap.forEach(d => batch.delete(d.ref));
     }
-    
+    // Clean up order materials tracking if applicable
+    if (adj.type === 'Out' && adj.orderId) {
+        const usageRef = doc(firestore, "orderUsage", adj.orderId, "materials", adj.id);
+        batch.delete(usageRef);
+    }
     try {
         await batch.commit();
         toast({ title: "Log Entry Removed", description: `Reverted ${Math.abs(adj.adjustmentQuantity)} and cleaned records.` });

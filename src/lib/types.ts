@@ -125,6 +125,17 @@ export interface Order extends DocumentData {
     [key: string]: any;
 }
 
+export interface OrderMaterial extends DocumentData {
+    id: string;
+    itemId: string;
+    itemName: string;
+    quantity: number;
+    unit: string;
+    date: string;
+    reason?: string;
+    adjustmentId: string;
+}
+
 export interface PriceRecord {
     price: number;
     date: string;

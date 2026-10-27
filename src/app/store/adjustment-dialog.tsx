@@ -60,22 +60,25 @@ import {
   Tag,
   Store,
   ShoppingBag,
-  Edit2
+  Edit2,
+  Calendar
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notifyLowStock } from "@/app/payroll/actions";
 import { getCategoryColor } from "./page";
+import { format } from "date-fns";
 
 const adjustmentSchema = z.object({
   itemId: z.string().min(1, { message: "Please select an item" }),
   type: z.enum(["In", "Out"]),
-  quantity: z.coerce.number().min(1, { message: "Quantity must be at least 1" }),
+  quantity: z.coerce.number().min(0.001, { message: "Quantity must be greater than 0" }),
   reason: z.string().min(2, { message: "Please provide a reason." }),
   unitPrice: z.coerce.number().optional(),
   supplier: z.string().optional(),
   paymentStatus: z.enum(["Paid", "Unpaid"]).optional(),
   orderId: z.string().optional(),
   employeeId: z.string().optional(),
+  adjustmentDate: z.string().optional(),
 });
 
 type AdjustmentValues = z.infer<typeof adjustmentSchema>;
@@ -154,6 +157,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       paymentStatus: "Paid",
       orderId: "none",
       employeeId: "none",
+      adjustmentDate: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     },
   });
 
@@ -162,7 +166,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const currentType = form.watch("type");
   const unitPriceValue = form.watch("unitPrice");
 
-  // Sync paymentStatus based on price when creating new restock
   useEffect(() => {
     if (!isEditMode && currentType === "In") {
        if (unitPriceValue === 0) {
@@ -193,6 +196,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
           paymentStatus: editingAdjustment.paymentStatus || "Paid",
           orderId: editingAdjustment.orderId || "none",
           employeeId: editingAdjustment.employeeId || "none",
+          adjustmentDate: editingAdjustment.adjustmentDate ? format(new Date(editingAdjustment.adjustmentDate), "yyyy-MM-dd'T'HH:mm") : format(new Date(), "yyyy-MM-dd'T'HH:mm"),
         });
       } else {
         form.reset({
@@ -205,6 +209,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
           paymentStatus: (preSelectedItem?.currentPrice || 0) === 0 ? "Unpaid" : "Paid",
           orderId: "none",
           employeeId: "none",
+          adjustmentDate: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
         });
       }
       setItemSearchQuery("");
@@ -226,7 +231,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     }
 
     const newStockLevel = Math.max(0, selectedItem.stockLevel + stockDiff);
-    const timestamp = isEditMode ? (editingAdjustment?.adjustmentDate || new Date().toISOString()) : new Date().toISOString();
+    const timestamp = data.adjustmentDate ? new Date(data.adjustmentDate).toISOString() : new Date().toISOString();
     
     const adjRef = isEditMode && editingAdjustment ? doc(firestore, "stockAdjustments", editingAdjustment.id) : doc(collection(firestore, "stockAdjustments"));
     
@@ -251,10 +256,29 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       if (data.orderId && data.orderId !== "none") {
         adjData.orderId = data.orderId;
         adjData.orderUniqueName = linkedOrder?.uniqueName || "Unknown Order";
+
+        // Track used items for the order
+        const usageRef = doc(firestore, "orderUsage", data.orderId, "materials", adjRef.id);
+        batch.set(usageRef, {
+            id: adjRef.id,
+            itemId: selectedItem.id,
+            itemName: selectedItem.name,
+            quantity: data.quantity,
+            unit: selectedItem.unitOfMeasurement,
+            date: timestamp,
+            reason: data.reason,
+            adjustmentId: adjRef.id
+        });
       } else {
         adjData.orderId = null;
         adjData.orderUniqueName = null;
+        // If it was linked to an order before, we should delete the usage record
+        if (isEditMode && editingAdjustment?.orderId) {
+            const oldUsageRef = doc(firestore, "orderUsage", editingAdjustment.orderId, "materials", adjRef.id);
+            batch.delete(oldUsageRef);
+        }
       }
+
       if (data.employeeId && data.employeeId !== "none") {
         adjData.employeeId = data.employeeId;
         adjData.employeeName = linkedEmployee?.name || "Unknown Employee";
@@ -266,7 +290,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
     batch.set(adjRef, adjData, { merge: true });
     
-    // Update Item
     const itemRef = doc(firestore, "items", selectedItem.id);
     const itemUpdate: any = { 
       stockLevel: increment(stockDiff),
@@ -279,7 +302,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     }
     batch.update(itemRef, itemUpdate);
 
-    // Sync Expense
     if (data.type === "In") {
       try {
         const expensesRef = collection(firestore, "expenses");
@@ -344,6 +366,22 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
             
+            <FormField
+                control={form.control}
+                name="adjustmentDate"
+                render={({ field }) => (
+                  <FormItem>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Calendar className="h-3 w-3 text-muted-foreground" />
+                      <FormLabel className="m-0">Logging Date & Time</FormLabel>
+                    </div>
+                    <FormControl>
+                        <Input type="datetime-local" className="h-11 font-bold" {...field} />
+                    </FormControl>
+                  </FormItem>
+                )}
+            />
+
             <FormField
               control={form.control}
               name="itemId"
@@ -489,7 +527,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
                   <FormItem>
                     <FormLabel>Quantity {selectedItem && <span className="text-muted-foreground font-normal lowercase">({selectedItem.unitOfMeasurement})</span>}</FormLabel>
                     <FormControl>
-                      <Input type="number" min="1" className="h-11" {...field} />
+                      <Input type="number" min="0.01" step="0.01" className="h-11" {...field} />
                     </FormControl>
                   </FormItem>
                 )}
