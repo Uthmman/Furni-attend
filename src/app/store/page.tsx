@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -237,14 +236,31 @@ export default function StorePage() {
   }, [filteredPurchaseHistory]);
 
   const supplierBreakdown = useMemo(() => {
-    const breakdown: Record<string, { paid: number, unpaid: number }> = {};
+    // Key is lowercase name for grouping
+    const breakdown: Record<string, { displayName: string, paid: number, unpaid: number }> = {};
+    
     filteredPurchaseHistory.forEach(exp => {
-        const s = exp.supplier || "Walk-in / Unknown";
-        if (!breakdown[s]) breakdown[s] = { paid: 0, unpaid: 0 };
-        if (exp.paymentStatus === 'Paid') breakdown[s].paid += (exp.amount || 0);
-        else breakdown[s].unpaid += (exp.amount || 0);
+        const rawName = exp.supplier?.trim() || "Walk-in / Unknown";
+        const key = rawName.toLowerCase();
+        
+        if (!breakdown[key]) {
+            breakdown[key] = { 
+                displayName: rawName, // Keep the first version found for display
+                paid: 0, 
+                unpaid: 0 
+            };
+        }
+        
+        if (exp.paymentStatus === 'Paid') {
+            breakdown[key].paid += (exp.amount || 0);
+        } else {
+            breakdown[key].unpaid += (exp.amount || 0);
+        }
     });
-    return Object.entries(breakdown).sort((a, b) => (b[1].paid + b[1].unpaid) - (a[1].paid + a[1].unpaid));
+
+    return Object.values(breakdown)
+        .sort((a, b) => (b.paid + b.unpaid) - (a.paid + a.unpaid))
+        .map(item => [item.displayName, { paid: item.paid, unpaid: item.unpaid }] as [string, { paid: number, unpaid: number }]);
   }, [filteredPurchaseHistory]);
 
   const handleMarkAsPaid = async (expense: Expense) => {
@@ -837,4 +853,3 @@ export default function StorePage() {
     </div>
   );
 }
-

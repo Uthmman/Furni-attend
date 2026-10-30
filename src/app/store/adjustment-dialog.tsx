@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -135,10 +134,22 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
   const uniqueSuppliers = useMemo(() => {
     if (!recentAdjustments) return [];
-    const suppliers = recentAdjustments
+    // Deduplicate case-insensitively
+    const seen = new Set<string>();
+    const suppliers: string[] = [];
+    
+    recentAdjustments
         .filter(a => a.type === 'In' && a.supplier)
-        .map(a => a.supplier as string);
-    return Array.from(new Set(suppliers)).sort((a, b) => a.localeCompare(b));
+        .forEach(a => {
+            const s = a.supplier!.trim();
+            const lower = s.toLowerCase();
+            if (!seen.has(lower)) {
+                seen.add(lower);
+                suppliers.push(s);
+            }
+        });
+        
+    return suppliers.sort((a, b) => a.localeCompare(b));
   }, [recentAdjustments]);
 
   const activeOrders = useMemo(() => allOrders?.filter(o => (o.status || "").toLowerCase() !== 'shipped').sort((a, b) => (a.uniqueName || "").localeCompare(b.uniqueName || "")) || [], [allOrders]);
