@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useForm } from "react-hook-form";
@@ -128,7 +129,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
   const adjQuery = useMemoFirebase(() => {
     if (!firestore || !authUser) return null;
-    return query(collection(firestore, "stockAdjustments"), orderBy("adjustmentDate", "desc"), limit(100));
+    return query(collection(firestore, "stockAdjustments"), orderBy("adjustmentDate", "desc"), limit(200));
   }, [firestore, authUser]);
   const { data: recentAdjustments } = useCollection<StockAdjustment>(adjQuery);
 
@@ -636,3 +637,4 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
     </Dialog>
   );
 }
+

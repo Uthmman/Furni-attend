@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useState, useMemo, useRef } from "react";
@@ -135,7 +136,7 @@ export default function StorePage() {
   const [deletingLogId, setDeletingLogId] = useState<string | null>(null);
   
   const [activeTab, setActiveTab] = useState("inventory");
-  const [selectedCostMonth, setSelectedCostMonth] = useState<string>(format(new Date(), "yyyy-MM"));
+  const [selectedPeriod, setSelectedPeriod] = useState<string>(format(new Date(), "yyyy-MM"));
   const [costFilter, setCostFilter] = useState<"all" | "Paid" | "Unpaid">("all");
 
   const [itemToDelete, setItemToDelete] = useState<string | null>(null);
@@ -158,7 +159,7 @@ export default function StorePage() {
     return query(
       collection(firestore, "stockAdjustments"), 
       orderBy("adjustmentDate", "desc"), 
-      limit(500)
+      limit(1000)
     );
   }, [firestore, user, isUserLoading]);
 
@@ -169,11 +170,21 @@ export default function StorePage() {
     return query(
       collection(firestore, "expenses"),
       orderBy("recordedAt", "desc"),
-      limit(500)
+      limit(1000)
     );
   }, [firestore, user, isUserLoading]);
 
   const { data: expenses, isLoading: expensesLoading } = useCollection<Expense>(expensesCollectionRef);
+
+  const monthOptions = useMemo(() => {
+    const options = [{ value: "all", label: "All Records" }];
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+        const d = subMonths(now, i);
+        options.push({ value: format(d, "yyyy-MM"), label: format(d, "MMMM yyyy") });
+    }
+    return options;
+  }, []);
 
   const filteredItems = useMemo(() => {
     if (!items) return [];
@@ -193,10 +204,25 @@ export default function StorePage() {
       });
   }, [items, searchQuery]);
 
-  const groupedAdjustments = useMemo(() => {
+  const filteredAdjustments = useMemo(() => {
     if (!adjustments) return [];
+    let filtered = adjustments;
+    if (selectedPeriod !== "all") {
+        filtered = adjustments.filter(adj => {
+            const d = adj.adjustmentDate ? new Date(adj.adjustmentDate) : new Date();
+            return format(d, "yyyy-MM") === selectedPeriod;
+        });
+    }
+    // Also filter by search if relevant
+    if (searchQuery) {
+        filtered = filtered.filter(adj => adj.itemName.toLowerCase().includes(searchQuery.toLowerCase()));
+    }
+    return filtered;
+  }, [adjustments, selectedPeriod, searchQuery]);
+
+  const groupedAdjustments = useMemo(() => {
     const groups: { date: string, formatted: string, items: StockAdjustment[] }[] = [];
-    adjustments.forEach(adj => {
+    filteredAdjustments.forEach(adj => {
         const d = adj.adjustmentDate ? new Date(adj.adjustmentDate) : new Date();
         const dateKey = format(d, "yyyy-MM-dd");
         const formatted = format(d, "MMMM d, yyyy");
@@ -205,29 +231,22 @@ export default function StorePage() {
         else groups.push({ date: dateKey, formatted, items: [adj] });
     });
     return groups;
-  }, [adjustments]);
-
-  const monthOptions = useMemo(() => {
-    const options = [{ value: "all", label: "All Records" }];
-    const now = new Date();
-    for (let i = 0; i < 12; i++) {
-        const d = subMonths(now, i);
-        options.push({ value: format(d, "yyyy-MM"), label: format(d, "MMMM yyyy") });
-    }
-    return options;
-  }, []);
+  }, [filteredAdjustments]);
 
   const filteredPurchaseHistory = useMemo(() => {
     if (!expenses) return [];
     let purchases = expenses.filter(e => e.category === "Stock Purchase");
-    if (selectedCostMonth !== "all") {
-        purchases = purchases.filter(e => format(new Date(e.recordedAt), "yyyy-MM") === selectedCostMonth);
+    if (selectedPeriod !== "all") {
+        purchases = purchases.filter(e => format(new Date(e.recordedAt), "yyyy-MM") === selectedPeriod);
     }
     if (costFilter !== "all") {
         purchases = purchases.filter(e => e.paymentStatus === costFilter);
     }
+    if (searchQuery) {
+        purchases = purchases.filter(e => e.itemName?.toLowerCase().includes(searchQuery.toLowerCase()));
+    }
     return purchases;
-  }, [expenses, selectedCostMonth, costFilter]);
+  }, [expenses, selectedPeriod, costFilter, searchQuery]);
 
   const totalSpendingSummary = useMemo(() => {
     const paid = filteredPurchaseHistory.filter(e => e.paymentStatus === 'Paid').reduce((acc, curr) => acc + (curr.amount || 0), 0);
@@ -236,7 +255,6 @@ export default function StorePage() {
   }, [filteredPurchaseHistory]);
 
   const supplierBreakdown = useMemo(() => {
-    // Key is lowercase name for grouping
     const breakdown: Record<string, { displayName: string, paid: number, unpaid: number }> = {};
     
     filteredPurchaseHistory.forEach(exp => {
@@ -245,7 +263,7 @@ export default function StorePage() {
         
         if (!breakdown[key]) {
             breakdown[key] = { 
-                displayName: rawName, // Keep the first version found for display
+                displayName: rawName,
                 paid: 0, 
                 unpaid: 0 
             };
@@ -475,12 +493,22 @@ export default function StorePage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input placeholder="Search supplies..." className="pl-10 h-11 bg-background border-primary/20 shadow-sm" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
         </div>
-        {activeTab === "items" && (
-          <div className="flex items-center gap-2 w-full sm:w-auto animate-in fade-in slide-in-from-right-2 duration-300">
-            <Button variant="outline" className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsCategoryManagerOpen(true)}><Tag className="h-4 w-4" /> Manage Categories</Button>
-            <Button className="flex-1 sm:flex-none h-11 shadow-sm gap-2" onClick={() => setIsItemFormOpen(true)}><Plus className="h-4 w-4" /> Add Item</Button>
-          </div>
-        )}
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+             <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="h-11 w-full sm:w-[200px] bg-background border-primary/20 shadow-sm font-bold">
+                    <SelectValue placeholder="Select Period" />
+                </SelectTrigger>
+                <SelectContent className="rounded-xl">
+                    {monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                </SelectContent>
+            </Select>
+            {activeTab === "items" && (
+                <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 duration-300">
+                    <Button variant="outline" className="h-11 shadow-sm gap-2" onClick={() => setIsCategoryManagerOpen(true)}><Tag className="h-4 w-4" /> Categories</Button>
+                    <Button className="h-11 shadow-sm gap-2" onClick={() => setIsItemFormOpen(true)}><Plus className="h-4 w-4" /> Add Item</Button>
+                </div>
+            )}
+        </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -698,7 +726,7 @@ export default function StorePage() {
                   </div>
                 ))
               ) : (
-                <div className="p-20 text-center text-muted-foreground/40 flex flex-col items-center gap-3 bg-muted/10 rounded-3xl border border-dashed"><History className="h-10 w-10 opacity-20" /><p className="text-sm font-bold">No movement logs found</p></div>
+                <div className="p-20 text-center text-muted-foreground/40 flex flex-col items-center gap-3 bg-muted/10 rounded-3xl border border-dashed"><History className="h-10 w-10 opacity-20" /><p className="text-sm font-bold">No logs found for this period</p></div>
               )}
            </div>
         </TabsContent>
@@ -711,7 +739,7 @@ export default function StorePage() {
                   <div className="flex items-center justify-center gap-1.5 mt-3"><div className="h-px w-8 bg-destructive/20" /><AlertTriangle className="h-4 w-4 text-destructive opacity-40" /><div className="h-px w-8 bg-destructive/20" /></div>
               </div>
               <div className="bg-primary/5 border border-primary/20 rounded-2xl p-6 text-center shadow-sm">
-                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">{selectedCostMonth === 'all' ? 'Total Settled Spending' : `Paid in ${monthOptions.find(o => o.value === selectedCostMonth)?.label}`}</p>
+                  <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">{selectedPeriod === 'all' ? 'Total Settled Spending' : `Paid in ${monthOptions.find(o => o.value === selectedPeriod)?.label}`}</p>
                   <p className="text-3xl font-black text-primary">ETB {totalSpendingSummary.paid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                   <div className="flex items-center justify-center gap-1.5 mt-3"><div className="h-1 w-8 bg-primary/20 rounded-full" /><Wallet className="h-4 w-4 text-primary opacity-40" /><div className="h-1 w-8 bg-primary/20 rounded-full" /></div>
               </div>
@@ -725,7 +753,7 @@ export default function StorePage() {
                         <CardTitle className="text-lg flex items-center gap-2">
                            <Store className="h-5 w-5 text-primary" /> Spending by Supplier
                         </CardTitle>
-                        <CardDescription>Individual totals for this period.</CardDescription>
+                        <CardDescription>Consolidated totals for this period.</CardDescription>
                     </CardHeader>
                     <CardContent className="p-0">
                         <ScrollArea className="h-[400px]">
@@ -748,7 +776,7 @@ export default function StorePage() {
                                         </div>
                                     </div>
                                 )) : (
-                                    <div className="p-12 text-center text-muted-foreground text-xs italic">No supplier data available.</div>
+                                    <div className="p-12 text-center text-muted-foreground text-xs italic">No supplier data for this period.</div>
                                 )}
                             </div>
                         </ScrollArea>
@@ -761,23 +789,15 @@ export default function StorePage() {
                 <Card className="shadow-lg border-primary/10 overflow-hidden h-full">
                     <CardHeader className="bg-primary/5 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-6">
                         <div><CardTitle className="text-lg">Detailed History</CardTitle><CardDescription>Transaction-level ledger logs.</CardDescription></div>
-                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                        <div className="flex items-center gap-2">
                             <Select value={costFilter} onValueChange={(v: any) => setCostFilter(v)}>
-                                <SelectTrigger className="w-full sm:w-[130px] h-9 bg-background text-xs">
+                                <SelectTrigger className="w-[130px] h-9 bg-background text-xs">
                                     <SelectValue placeholder="Status" />
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Status</SelectItem>
                                     <SelectItem value="Paid">Paid Only</SelectItem>
                                     <SelectItem value="Unpaid">Unpaid Only</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <Select value={selectedCostMonth} onValueChange={setSelectedCostMonth}>
-                                <SelectTrigger className="w-full sm:w-[160px] h-9 bg-background text-xs">
-                                    <SelectValue placeholder="Month" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
                                 </SelectContent>
                             </Select>
                         </div>
@@ -807,7 +827,7 @@ export default function StorePage() {
                                     </div>
                                 </div>
                                 </div>
-                            )) : <div className="p-12 text-center text-muted-foreground text-sm">No expenses found.</div>}
+                            )) : <div className="p-12 text-center text-muted-foreground text-sm">No expenses found for this period.</div>}
                         </div>
                         <div className="hidden md:block overflow-x-auto">
                             <Table>
@@ -853,3 +873,4 @@ export default function StorePage() {
     </div>
   );
 }
+
