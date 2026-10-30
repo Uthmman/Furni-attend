@@ -89,6 +89,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import Image from "next/image";
 
 export const getCategoryIcon = (category: string) => {
@@ -836,3 +837,4 @@ export default function StorePage() {
     </div>
   );
 }
+
