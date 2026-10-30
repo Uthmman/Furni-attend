@@ -61,7 +61,8 @@ import {
   Store,
   ShoppingBag,
   Edit2,
-  Calendar
+  Calendar,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { notifyLowStock } from "@/app/payroll/actions";
@@ -112,6 +113,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   const { user: authUser } = useUser();
   const { toast } = useToast();
   const isEditMode = !!editingAdjustment;
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const ordersCollectionRef = useMemoFirebase(() => {
     if (!secondaryDb || !authUser) return null;
@@ -185,6 +187,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
   useEffect(() => {
     if (isOpen) {
+      setIsSubmitting(false);
       if (editingAdjustment) {
         form.reset({
           itemId: editingAdjustment.itemId,
@@ -217,7 +220,8 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
   }, [isOpen, preSelectedItem, forcedType, editingAdjustment, form]);
 
   const onSubmit = async (data: AdjustmentValues) => {
-    if (!firestore || !selectedItem) return;
+    if (!firestore || !selectedItem || isSubmitting) return;
+    setIsSubmitting(true);
 
     const batch = writeBatch(firestore);
     const linkedOrder = activeOrders.find(o => o.id === data.orderId);
@@ -257,7 +261,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
         adjData.orderId = data.orderId;
         adjData.orderUniqueName = linkedOrder?.uniqueName || "Unknown Order";
 
-        // Track used items for the order
         const usageRef = doc(firestore, "orderUsage", data.orderId, "materials", adjRef.id);
         batch.set(usageRef, {
             id: adjRef.id,
@@ -274,7 +277,6 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
       } else {
         adjData.orderId = null;
         adjData.orderUniqueName = null;
-        // If it was linked to an order before, we should delete the usage record
         if (isEditMode && editingAdjustment?.orderId) {
             const oldUsageRef = doc(firestore, "orderUsage", editingAdjustment.orderId, "materials", adjRef.id);
             batch.delete(oldUsageRef);
@@ -349,6 +351,7 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
         }
       })
       .catch(e => {
+        setIsSubmitting(false);
         errorEmitter.emit("permission-error", new FirestorePermissionError({ path: "stockAdjustments", operation: 'write', requestResourceData: adjData }));
         toast({ variant: 'destructive', title: "Sync Failed" });
       });
@@ -611,7 +614,8 @@ export function AdjustmentDialog({ isOpen, setIsOpen, items, preSelectedItem, fo
 
             <DialogFooter className="pt-2">
               <DialogClose asChild><Button variant="outline">Cancel</Button></DialogClose>
-              <Button type="submit" className={cn("h-11 shadow-lg", currentType === "In" ? "bg-green-600 hover:bg-green-700" : "bg-destructive hover:bg-destructive/90")}>
+              <Button type="submit" disabled={isSubmitting} className={cn("h-11 shadow-lg", currentType === "In" ? "bg-green-600 hover:bg-green-700" : "bg-destructive hover:bg-destructive/90")}>
+                {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 {isEditMode ? "Save Changes" : "Confirm Log"}
               </Button>
             </DialogFooter>

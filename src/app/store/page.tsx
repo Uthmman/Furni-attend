@@ -235,6 +235,17 @@ export default function StorePage() {
     return { paid, unpaid };
   }, [filteredPurchaseHistory]);
 
+  const supplierBreakdown = useMemo(() => {
+    const breakdown: Record<string, { paid: number, unpaid: number }> = {};
+    filteredPurchaseHistory.forEach(exp => {
+        const s = exp.supplier || "Walk-in / Unknown";
+        if (!breakdown[s]) breakdown[s] = { paid: 0, unpaid: 0 };
+        if (exp.paymentStatus === 'Paid') breakdown[s].paid += (exp.amount || 0);
+        else breakdown[s].unpaid += (exp.amount || 0);
+    });
+    return Object.entries(breakdown).sort((a, b) => (b[1].paid + b[1].unpaid) - (a[1].paid + a[1].unpaid));
+  }, [filteredPurchaseHistory]);
+
   const handleMarkAsPaid = async (expense: Expense) => {
     if (!firestore || !expense.adjustmentId) return;
     setSettlingId(expense.id);
@@ -288,7 +299,6 @@ export default function StorePage() {
         const expSnap = await getDocs(q);
         expSnap.forEach(d => batch.delete(d.ref));
     }
-    // Clean up order materials tracking if applicable
     if (adj.type === 'Out' && adj.orderId) {
         const usageRef = doc(firestore, "orderUsage", adj.orderId, "materials", adj.id);
         batch.delete(usageRef);
@@ -676,96 +686,7 @@ export default function StorePage() {
            </div>
         </TabsContent>
 
-        <TabsContent value="expenses" className="space-y-6">
-           <Card className="shadow-lg border-primary/10 overflow-hidden">
-            <CardHeader className="bg-primary/5 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div><CardTitle className="text-xl">Purchase Costs</CardTitle><CardDescription className="hidden sm:block">Financial record of supply restocking expenses.</CardDescription></div>
-              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-                 <Select value={costFilter} onValueChange={(v: any) => setCostFilter(v)}>
-                    <SelectTrigger className="w-full sm:w-[140px] bg-background">
-                        <SelectValue placeholder="Status Filter" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        <SelectItem value="all">All Status</SelectItem>
-                        <SelectItem value="Paid">Paid Only</SelectItem>
-                        <SelectItem value="Unpaid">Unpaid Only</SelectItem>
-                    </SelectContent>
-                 </Select>
-                 <Select value={selectedCostMonth} onValueChange={setSelectedCostMonth}>
-                    <SelectTrigger className="w-full sm:w-[200px] bg-background">
-                        <SelectValue placeholder="Filter by Month" />
-                    </SelectTrigger>
-                    <SelectContent>
-                        {monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
-                    </SelectContent>
-                 </Select>
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-               <div className="md:hidden divide-y">
-                  {filteredPurchaseHistory.length > 0 ? filteredPurchaseHistory.map((exp) => (
-                    <div key={exp.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors">
-                      <div className="flex justify-between items-start">
-                        <div className="space-y-1"><span className="text-[10px] text-muted-foreground font-semibold block">{format(new Date(exp.recordedAt), "MMM d, yyyy")}</span><h4 className="font-bold text-sm">{exp.itemName}</h4></div>
-                        <Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge>
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 text-[11px] bg-muted/30 p-2 rounded-lg">
-                        <div><span className="text-muted-foreground">Supplier:</span> <span className="font-bold">{exp.supplier || "—"}</span></div>
-                        <div><span className="text-muted-foreground">Qty:</span> <span className="font-bold">{exp.quantity}</span></div>
-                        <div><span className="text-muted-foreground">Unit Price:</span> <span className="font-bold">ETB {exp.unitPrice?.toFixed(2)}</span></div>
-                      </div>
-                      <div className="flex justify-between items-center pt-1 border-t border-dashed">
-                        <span className="text-xs font-semibold text-muted-foreground">Total Paid:</span>
-                        <div className="flex items-center gap-3">
-                           <span className="text-lg font-black text-primary">ETB {exp.amount?.toFixed(2)}</span>
-                           {exp.paymentStatus === 'Unpaid' && (
-                               <Button size="sm" className="h-7 text-[9px] px-2 font-bold" onClick={() => handleMarkAsPaid(exp)} disabled={settlingId === exp.id}>
-                                  {settlingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />} Mark Paid
-                               </Button>
-                           )}
-                        </div>
-                      </div>
-                    </div>
-                  )) : <div className="p-12 text-center text-muted-foreground text-sm">No expenses recorded for this period.</div>}
-               </div>
-               <div className="hidden md:block overflow-x-auto">
-                 <Table>
-                    <TableHeader className="bg-muted/30">
-                      <TableRow>
-                        <TableHead className="pl-6">Date</TableHead>
-                        <TableHead>Item</TableHead>
-                        <TableHead>Supplier</TableHead>
-                        <TableHead className="text-right">Unit Price</TableHead>
-                        <TableHead className="text-right">Total Price</TableHead>
-                        <TableHead className="text-center pr-6">Status / Action</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {filteredPurchaseHistory.length > 0 ? filteredPurchaseHistory.map((exp) => (
-                        <TableRow key={exp.id} className="hover:bg-muted/10 transition-colors">
-                          <TableCell className="text-[11px] text-muted-foreground pl-6">{format(new Date(exp.recordedAt), "MMM d, yyyy")}</TableCell>
-                          <TableCell className="font-bold"><div className="flex flex-col"><span>{exp.itemName}</span><span className="text-[10px] text-muted-foreground font-normal">Qty: {exp.quantity}</span></div></TableCell>
-                          <TableCell className="text-xs font-medium">{exp.supplier || "—"}</TableCell>
-                          <TableCell className="text-right tabular-nums text-xs font-bold">ETB {exp.unitPrice?.toFixed(2) || "0.00"}</TableCell>
-                          <TableCell className="text-right tabular-nums font-black text-primary">ETB {exp.amount?.toFixed(2) || "0.00"}</TableCell>
-                          <TableCell className="text-center pr-6">
-                            <div className="flex flex-col items-center gap-1.5">
-                                <Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Approved' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge>
-                                {exp.paymentStatus === 'Unpaid' && (
-                                    <Button variant="ghost" size="sm" className="h-7 text-[8px] font-black text-primary hover:text-primary hover:bg-primary/5 uppercase tracking-tighter" onClick={() => handleMarkAsPaid(exp)} disabled={settlingId === exp.id}>
-                                       {settlingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />} Confirm Payment
-                                    </Button>
-                                )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      )) : <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">No records for this period.</TableCell></TableRow>}
-                    </TableBody>
-                 </Table>
-               </div>
-            </CardContent>
-           </Card>
-           
+        <TabsContent value="expenses" className="space-y-8">
            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="bg-destructive/5 border border-destructive/20 rounded-2xl p-6 text-center shadow-sm">
                   <p className="text-[10px] font-black text-destructive uppercase tracking-[0.2em] mb-1">Total Outstanding (Unpaid)</p>
@@ -776,6 +697,138 @@ export default function StorePage() {
                   <p className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] mb-1">{selectedCostMonth === 'all' ? 'Total Settled Spending' : `Paid in ${monthOptions.find(o => o.value === selectedCostMonth)?.label}`}</p>
                   <p className="text-3xl font-black text-primary">ETB {totalSpendingSummary.paid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
                   <div className="flex items-center justify-center gap-1.5 mt-3"><div className="h-1 w-8 bg-primary/20 rounded-full" /><Wallet className="h-4 w-4 text-primary opacity-40" /><div className="h-1 w-8 bg-primary/20 rounded-full" /></div>
+              </div>
+           </div>
+
+           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+              {/* Supplier Breakdown List */}
+              <div className="lg:col-span-1">
+                 <Card className="shadow-lg border-primary/10 h-full">
+                    <CardHeader className="bg-primary/5 border-b py-6">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                           <Store className="h-5 w-5 text-primary" /> Spending by Supplier
+                        </CardTitle>
+                        <CardDescription>Individual totals for this period.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <ScrollArea className="h-[400px]">
+                            <div className="divide-y">
+                                {supplierBreakdown.length > 0 ? supplierBreakdown.map(([name, totals], idx) => (
+                                    <div key={idx} className="p-4 hover:bg-muted/5 transition-colors">
+                                        <div className="flex justify-between items-start mb-2">
+                                            <span className="font-bold text-sm truncate pr-4">{name}</span>
+                                            <span className="font-black text-primary text-sm shrink-0">ETB {(totals.paid + totals.unpaid).toLocaleString()}</span>
+                                        </div>
+                                        <div className="flex gap-4">
+                                            <div className="flex flex-col">
+                                                <span className="text-[8px] font-black text-muted-foreground uppercase">Settled</span>
+                                                <span className="text-[11px] font-bold text-green-600">ETB {totals.paid.toLocaleString()}</span>
+                                            </div>
+                                            <div className="flex flex-col">
+                                                <span className="text-[8px] font-black text-muted-foreground uppercase">Outstanding</span>
+                                                <span className={cn("text-[11px] font-bold", totals.unpaid > 0 ? "text-destructive animate-pulse" : "text-muted-foreground")}>ETB {totals.unpaid.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )) : (
+                                    <div className="p-12 text-center text-muted-foreground text-xs italic">No supplier data available.</div>
+                                )}
+                            </div>
+                        </ScrollArea>
+                    </CardContent>
+                 </Card>
+              </div>
+
+              {/* Purchase History Table */}
+              <div className="lg:col-span-2">
+                <Card className="shadow-lg border-primary/10 overflow-hidden h-full">
+                    <CardHeader className="bg-primary/5 border-b flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 py-6">
+                        <div><CardTitle className="text-lg">Detailed History</CardTitle><CardDescription>Transaction-level ledger logs.</CardDescription></div>
+                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                            <Select value={costFilter} onValueChange={(v: any) => setCostFilter(v)}>
+                                <SelectTrigger className="w-full sm:w-[130px] h-9 bg-background text-xs">
+                                    <SelectValue placeholder="Status" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Status</SelectItem>
+                                    <SelectItem value="Paid">Paid Only</SelectItem>
+                                    <SelectItem value="Unpaid">Unpaid Only</SelectItem>
+                                </SelectContent>
+                            </Select>
+                            <Select value={selectedCostMonth} onValueChange={setSelectedCostMonth}>
+                                <SelectTrigger className="w-full sm:w-[160px] h-9 bg-background text-xs">
+                                    <SelectValue placeholder="Month" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {monthOptions.map(opt => <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>)}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </CardHeader>
+                    <CardContent className="p-0">
+                        <div className="md:hidden divide-y">
+                            {filteredPurchaseHistory.length > 0 ? filteredPurchaseHistory.map((exp) => (
+                                <div key={exp.id} className="p-4 space-y-3 hover:bg-muted/10 transition-colors">
+                                <div className="flex justify-between items-start">
+                                    <div className="space-y-1"><span className="text-[10px] text-muted-foreground font-semibold block">{format(new Date(exp.recordedAt), "MMM d, yyyy")}</span><h4 className="font-bold text-sm">{exp.itemName}</h4></div>
+                                    <Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2 text-[11px] bg-muted/30 p-2 rounded-lg">
+                                    <div><span className="text-muted-foreground">Supplier:</span> <span className="font-bold">{exp.supplier || "—"}</span></div>
+                                    <div><span className="text-muted-foreground">Qty:</span> <span className="font-bold">{exp.quantity}</span></div>
+                                    <div><span className="text-muted-foreground">Unit Price:</span> <span className="font-bold">ETB {exp.unitPrice?.toFixed(2)}</span></div>
+                                </div>
+                                <div className="flex justify-between items-center pt-1 border-t border-dashed">
+                                    <span className="text-xs font-semibold text-muted-foreground">Total Paid:</span>
+                                    <div className="flex items-center gap-3">
+                                    <span className="text-lg font-black text-primary">ETB {exp.amount?.toFixed(2)}</span>
+                                    {exp.paymentStatus === 'Unpaid' && (
+                                        <Button size="sm" className="h-7 text-[9px] px-2 font-bold" onClick={() => handleMarkAsPaid(exp)} disabled={settlingId === exp.id}>
+                                            {settlingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3 mr-1" />} Mark Paid
+                                        </Button>
+                                    )}
+                                    </div>
+                                </div>
+                                </div>
+                            )) : <div className="p-12 text-center text-muted-foreground text-sm">No expenses found.</div>}
+                        </div>
+                        <div className="hidden md:block overflow-x-auto">
+                            <Table>
+                                <TableHeader className="bg-muted/30">
+                                <TableRow>
+                                    <TableHead className="pl-6">Date</TableHead>
+                                    <TableHead>Item</TableHead>
+                                    <TableHead>Supplier</TableHead>
+                                    <TableHead className="text-right">Unit Price</TableHead>
+                                    <TableHead className="text-right">Total Price</TableHead>
+                                    <TableHead className="text-center pr-6">Action</TableHead>
+                                </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                {filteredPurchaseHistory.length > 0 ? filteredPurchaseHistory.map((exp) => (
+                                    <TableRow key={exp.id} className="hover:bg-muted/10 transition-colors">
+                                    <TableCell className="text-[11px] text-muted-foreground pl-6">{format(new Date(exp.recordedAt), "MMM d, yyyy")}</TableCell>
+                                    <TableCell className="font-bold"><div className="flex flex-col"><span>{exp.itemName}</span><span className="text-[10px] text-muted-foreground font-normal">Qty: {exp.quantity}</span></div></TableCell>
+                                    <TableCell className="text-xs font-medium">{exp.supplier || "—"}</TableCell>
+                                    <TableCell className="text-right tabular-nums text-xs font-bold">ETB {exp.unitPrice?.toFixed(2) || "0.00"}</TableCell>
+                                    <TableCell className="text-right tabular-nums font-black text-primary">ETB {exp.amount?.toFixed(2) || "0.00"}</TableCell>
+                                    <TableCell className="text-center pr-6">
+                                        <div className="flex flex-col items-center gap-1.5">
+                                            <Badge variant={exp.paymentStatus === 'Paid' ? 'outline' : 'destructive'} className={cn("text-[9px] uppercase font-bold", exp.paymentStatus === 'Paid' && "bg-green-50 text-green-700 border-green-200")}>{exp.paymentStatus || 'Paid'}</Badge>
+                                            {exp.paymentStatus === 'Unpaid' && (
+                                                <Button variant="ghost" size="sm" className="h-7 text-[8px] font-black text-primary hover:text-primary hover:bg-primary/5 uppercase tracking-tighter" onClick={() => handleMarkAsPaid(exp)} disabled={settlingId === exp.id}>
+                                                {settlingId === exp.id ? <Loader2 className="h-3 w-3 animate-spin mr-1" /> : <CheckCircle2 className="h-3 w-3 mr-1" />} Confirm Payment
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </TableCell>
+                                    </TableRow>
+                                )) : <TableRow><TableCell colSpan={6} className="h-40 text-center text-muted-foreground">No records for this period.</TableCell></TableRow>}
+                                </TableBody>
+                            </Table>
+                        </div>
+                    </CardContent>
+                </Card>
               </div>
            </div>
         </TabsContent>
